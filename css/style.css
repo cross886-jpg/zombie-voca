@@ -1,0 +1,129 @@
+/* =========================================================
+   Zombie Voca — Mobile Portrait 9:16 & Neon LED HUD Styles
+   ========================================================= */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
+}
+
+#app-shell {
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+/* 로비 내부 스크롤 영역만 세로 터치 스크롤 허용 */
+#lobby-content,
+#modal-card {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 스크롤바 최소화 */
+#lobby-content::-webkit-scrollbar,
+#modal-card::-webkit-scrollbar {
+  width: 4px;
+}
+#lobby-content::-webkit-scrollbar-thumb,
+#modal-card::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+
+/* 상단 네온 LED 전광판 */
+.led-board {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(8, 15, 32, 0.94) 0%, rgba(15, 23, 42, 0.92) 100%);
+  border: 1.5px solid rgba(34, 211, 238, 0.55);
+  box-shadow:
+    0 0 18px rgba(6, 182, 212, 0.25),
+    inset 0 0 12px rgba(34, 211, 238, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+
+.led-board::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 4px 4px;
+  pointer-events: none;
+}
+
+/* 4방향 비석 네온 화살표 인디케이터 */
+.edge-arrow {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1.5px solid rgba(34, 211, 238, 0.8);
+  color: #67e8f9;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.5);
+  animation: arrowPulse 1.1s ease-in-out infinite;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes arrowPulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.12);
+    opacity: 1;
+  }
+}
+
+/* 필살기 버튼 팝업 애니메이션 */
+.ult-btn-pop {
+  animation: ultPop 0.35s cubic-bezier(0.22, 1, 0.36, 1), ultGlow 1.3s ease-in-out infinite;
+}
+
+@keyframes ultPop {
+  0% {
+    transform: scale(0.6) translateY(16px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ultGlow {
+  0%, 100% {
+    box-shadow: 0 0 18px rgba(249, 115, 22, 0.75);
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(251, 146, 60, 0.98);
+  }
+}
+
+/* 3지선다 스킬 카드 피드백 */
+.skill-choice-card {
+  transition: transform 0.12s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+.skill-choice-card:active {
+  transform: scale(0.97);
+}
+

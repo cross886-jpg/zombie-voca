@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#070b14" />
+  <title>좀비 보카 (Zombie Voca)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 flex items-center justify-center min-h-[100dvh] overflow-hidden">
+  <!-- 9:16 모바일 세로 고정 뷰포트 (최대 480px) -->
+  <div id="app-shell" class="relative w-full max-w-[480px] h-[100dvh] max-h-[920px] bg-slate-900 overflow-hidden shadow-2xl border-x border-slate-800/80 flex flex-col">
+
+    <!-- 1 & 2. 인게임 전투 Flex 레이어 (PLAYING / PAUSED / BOSS 상태) -->
+    <div id="hud-layer" class="hidden absolute inset-0 flex flex-col z-20">
+      <!-- 상단 영역 (flex-shrink: 0): 상태바, 보스바 & LED 전광판 -->
+      <div id="hud-top-frame" class="shrink-0 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] space-y-2 bg-[#0a0f1d] border-b border-cyan-500/35 shadow-[0_6px_20px_rgba(0,0,0,0.65)]">
+        <div class="flex items-center justify-between gap-2 pointer-events-auto">
+          <div class="flex items-center gap-2 bg-slate-900/85 border border-cyan-500/40 rounded-full px-3 py-1 backdrop-blur-sm">
+            <span id="hud-stage-label" class="text-xs font-bold text-cyan-300">CH.1</span>
+            <span class="text-slate-500 text-xs">|</span>
+            <span id="hud-question-progress" class="text-xs font-extrabold text-white">1 / 30</span>
+          </div>
+
+          <div class="flex-1 max-w-[170px] space-y-1">
+            <div class="h-2.5 bg-slate-800/90 rounded-full overflow-hidden border border-slate-700">
+              <div id="hud-hp-bar" class="h-full bg-gradient-to-r from-rose-500 to-emerald-400 transition-all duration-150" style="width: 100%"></div>
+            </div>
+            <div class="h-1.5 bg-slate-800/90 rounded-full overflow-hidden border border-slate-700">
+              <div id="hud-xp-bar" class="h-full bg-gradient-to-r from-sky-400 to-indigo-400 transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <button id="btn-skip-tutorial" type="button" class="hidden px-2.5 h-9 rounded-full bg-amber-500/20 border border-amber-400/50 text-[11px] font-extrabold text-amber-200 whitespace-nowrap active:scale-95">
+              건너뛰기 ⏭
+            </button>
+            <button id="btn-pause" type="button" class="w-9 h-9 rounded-full bg-slate-900/85 border border-slate-700 flex items-center justify-center text-sm font-bold text-slate-200 active:scale-95">
+              ⏸
+            </button>
+          </div>
+        </div>
+
+        <!-- 보스 체력 바 (28~30번 문제 전용, 기본 숨김) -->
+        <div id="hud-boss-bar-wrap" class="hidden bg-slate-950/90 border border-rose-500/60 rounded-xl px-3 py-1.5 backdrop-blur-sm">
+          <div class="flex items-center justify-between text-[11px] font-bold text-rose-300 mb-1">
+            <span id="hud-boss-name">BOSS</span>
+            <span id="hud-boss-lock-text">3단계 잠금</span>
+          </div>
+          <div class="relative h-2.5 bg-slate-800 rounded-full overflow-hidden">
+            <div id="hud-boss-hp-bar" class="h-full bg-gradient-to-r from-rose-600 via-orange-500 to-amber-400 transition-all duration-200" style="width: 100%"></div>
+            <div class="absolute inset-y-0 left-1/3 w-0.5 bg-slate-950/80"></div>
+            <div class="absolute inset-y-0 left-2/3 w-0.5 bg-slate-950/80"></div>
+          </div>
+        </div>
+
+        <!-- 상단 LED 영단어 전광판 -->
+        <div id="led-scoreboard" class="led-board mx-auto w-full rounded-2xl px-4 py-3 text-center pointer-events-auto">
+          <div class="flex items-center justify-between text-[11px] text-cyan-300/80 mb-1">
+            <span id="led-course-badge" class="px-2 py-0.5 rounded bg-cyan-500/15 border border-cyan-400/30 font-semibold">Lv.1</span>
+            <span id="led-tts-indicator" class="flex items-center gap-1 font-medium">🔊 <span data-i18n="hud.ttsLoop">터치하여 발음</span></span>
+            <span id="led-streak-badge" class="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-400/30 text-amber-300 font-semibold">★ 0/3</span>
+          </div>
+          <div id="led-word-text" class="text-2xl font-black tracking-wide leading-tight text-white drop-shadow-[0_0_10px_rgba(34,211,238,0.65)]">
+            READY
+          </div>
+          <div id="led-phonetic-text" class="text-xs text-cyan-200/80 font-mono mt-1.5 leading-snug"></div>
+        </div>
+      </div>
+
+      <!-- 하단 영역 (flex: 1): 순수 게임 캔버스 & 화살표 인디케이터 뷰포트 -->
+      <div id="battle-viewport" class="relative flex-1 overflow-hidden">
+        <canvas id="game-canvas" class="absolute inset-0 w-full h-full block"></canvas>
+
+        <!-- 4방향 네온 화살표 인디케이터 컨테이너 -->
+        <div id="edge-arrows" class="absolute inset-0 pointer-events-none"></div>
+
+        <!-- 오답 확인 브레이크 중앙 카드 오버레이 (1.2초) -->
+        <div id="wrong-review-overlay" class="hidden absolute inset-0 z-30 bg-slate-950/65 backdrop-blur-[2px] flex items-center justify-center p-5 pointer-events-none">
+          <div class="w-full max-w-[320px] rounded-2xl bg-slate-900/95 border-2 border-emerald-400/85 px-5 py-4 text-center shadow-[0_0_28px_rgba(16,185,129,0.45)]">
+            <div id="wrong-review-word" class="text-2xl font-black text-white tracking-wide leading-tight"></div>
+            <div id="wrong-review-phonetic" class="text-xs font-mono text-cyan-200/85 mt-1"></div>
+            <div id="wrong-review-meaning" class="text-lg font-black text-emerald-400 mt-3 leading-snug"></div>
+          </div>
+        </div>
+
+        <!-- 우측 하단 엄지 터치 영역 원형 필살기 액션 버튼 -->
+        <button id="btn-ult" type="button" style="bottom: 48px; right: 20px;" disabled class="absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-slate-900/75 border-2 border-slate-600/70 text-slate-300 opacity-55 transition-all active:scale-95 z-20">
+          <span class="text-xl leading-none">🔥</span>
+          <span id="btn-ult-label" class="text-[10px] font-black mt-0.5 leading-none">0%</span>
+        </button>
+
+        <!-- 하단 HUD: 진화 XP & 필살기 게이지 바 -->
+        <div class="absolute bottom-0 inset-x-0 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none flex flex-col items-center gap-2">
+          <div class="w-full flex items-center justify-between text-[11px] text-slate-300 bg-slate-950/75 border border-slate-800 rounded-xl px-3 py-1.5 backdrop-blur-sm">
+            <span><span data-i18n="hud.evoXp">진화 XP</span>: <strong id="hud-evo-xp" class="text-amber-300">0</strong></span>
+            <span><span data-i18n="hud.ultGauge">필살기</span>: <strong id="hud-ult-pct" class="text-orange-400">0%</strong></span>
+          </div>
+        </div>
+
+        <!-- 플로팅 가상 조이스틱 (터치 시 동적 위치 이동) -->
+        <div id="virtual-joystick" class="hidden fixed pointer-events-none z-30">
+          <div id="joystick-base" class="w-24 h-24 rounded-full border-2 border-cyan-400/50 bg-cyan-500/10 backdrop-blur-[1px] flex items-center justify-center">
+            <div id="joystick-knob" class="w-10 h-10 rounded-full bg-cyan-300/80 shadow-[0_0_12px_rgba(34,211,238,0.8)]"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 메인 로비 레이어 (LOBBY 상태) -->
+    <div id="lobby-layer" class="relative z-10 flex flex-col h-full w-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+      <!-- 상단 재화 & 프로필 바 -->
+      <header class="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 border-b border-slate-800/90 bg-slate-950/80 backdrop-blur-md flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5">
+          <div id="lobby-evo-badge" class="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center text-xl">🐶</div>
+          <div>
+            <div class="text-xs font-extrabold text-cyan-300" id="lobby-player-title">우유</div>
+            <div class="text-[11px] text-slate-400" id="lobby-evo-stage-name">네 발 아기 강아지</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 text-xs font-bold">
+          <div class="px-2.5 py-1 rounded-full bg-slate-800/90 border border-amber-500/30 text-amber-300 flex items-center gap-1">
+            🪙 <span id="res-gold">0</span>
+          </div>
+          <div class="px-2.5 py-1 rounded-full bg-slate-800/90 border border-rose-500/30 text-rose-300 flex items-center gap-1">
+            🦴 <span id="res-snacks">0</span>
+          </div>
+          <button id="btn-open-settings" type="button" class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-sm active:scale-95">⚙️</button>
+        </div>
+      </header>
+
+      <!-- 로비 메인 콘텐츠 영역 (4개 탭 패널) -->
+      <main id="lobby-content" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <section id="tab-panel-gear" class="hidden space-y-4"></section>
+        <section id="tab-panel-battle" class="space-y-4"></section>
+        <section id="tab-panel-training" class="hidden space-y-4"></section>
+        <section id="tab-panel-wordbook" class="hidden space-y-4"></section>
+      </main>
+
+      <!-- 하단 4단 네비게이션 탭 -->
+      <nav class="grid grid-cols-4 border-t border-slate-800 bg-slate-950/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 px-2 gap-1">
+        <button type="button" data-lobby-tab="gear" class="lobby-tab-btn flex flex-col items-center py-1.5 rounded-xl text-slate-400 transition">
+          <span class="text-lg">🎒</span>
+          <span class="text-[11px] font-bold" data-i18n="lobby.tabGear">장비·코스튬</span>
+        </button>
+        <button type="button" data-lobby-tab="battle" class="lobby-tab-btn active flex flex-col items-center py-1.5 rounded-xl text-cyan-300 bg-cyan-500/15 transition">
+          <span class="text-lg">⚔️</span>
+          <span class="text-[11px] font-bold" data-i18n="lobby.tabBattle">전투</span>
+        </button>
+        <button type="button" data-lobby-tab="training" class="lobby-tab-btn flex flex-col items-center py-1.5 rounded-xl text-slate-400 transition">
+          <span class="text-lg">🏋️</span>
+          <span class="text-[11px] font-bold" data-i18n="lobby.tabTraining">훈련소</span>
+        </button>
+        <button type="button" data-lobby-tab="wordbook" class="lobby-tab-btn flex flex-col items-center py-1.5 rounded-xl text-slate-400 transition">
+          <span class="text-lg">📖</span>
+          <span class="text-[11px] font-bold" data-i18n="lobby.tabWordbook">기억수첩</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- 4. 공통 모달 & 팝업 오버레이 레이어 -->
+    <div id="modal-layer" class="hidden absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div id="modal-card" class="w-full max-w-[420px] max-h-[88dvh] overflow-y-auto bg-slate-900 border border-slate-700/90 rounded-2xl p-5 shadow-2xl"></div>
+    </div>
+
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
+
