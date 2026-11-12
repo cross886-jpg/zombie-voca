@@ -1,7 +1,15 @@
 /**
  * js/data/catalog.js
- * 스킬 8종, 간식 5종, 동물 친구 4종, 코스튬 파츠 & 도감 보너스 마스터 카탈로그
+ * 스킬 8종, 간식 5종, 동물 친구 4종, 코스튬 파츠 & 도감 보너스 마스터 카탈로그, 견종 5종
  */
+
+export const BREEDS = Object.freeze([
+  { id: 'pomeranian', name: '포메라니안' },
+  { id: 'retriever', name: '골든 리트리버' },
+  { id: 'corgi', name: '웰시코기' },
+  { id: 'shiba', name: '시바견' },
+  { id: 'beagle', name: '비글' },
+]);
 
 export const SKILLS = Object.freeze([
   // === 속성 짖기 4종 (Active Bark Skills) ===
@@ -127,7 +135,7 @@ export const COMPANIONS = Object.freeze([
     cooldown: 0.85,
     range: 95,
     attackStyle: 'slash',
-    desc: '민첩한 몸놀림으로 우유 주변 좀비를 연속 할큅니다.',
+    desc: '민첩한 몸놀림으로 강아지 주변 좀비를 연속 할큅니다.',
   },
   {
     id: 'nuts',

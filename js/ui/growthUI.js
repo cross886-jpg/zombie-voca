@@ -239,6 +239,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
 
   function renderGearTab() {
     const save = getSave();
+    const dogName = save.dogName || '우유';
     const stats = computePlayerStats(save);
     const ownedSet = new Set(save.costumes?.owned || []);
     const equipped = save.costumes?.equipped || {};
@@ -285,7 +286,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
     const showcaseHtml = `
       <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
         <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-[#e6dec8] text-xs">
-          <span class="font-extrabold text-[#1f2d24]">우유 장착 쇼케이스</span>
+          <span class="font-extrabold text-[#1f2d24]">${dogName} 장착 쇼케이스</span>
           <span class="text-[11px] font-bold text-amber-700">도감 +${collectionBonus.atkBonus} ATK / +${collectionBonus.hpBonus} HP</span>
         </div>
 
@@ -296,14 +297,14 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
             ${renderShowcaseSlot('💍', '악세', eqAcc)}
           </div>
 
-          <!-- 정중앙: 우유 캐릭터 프리뷰 & 장착 합산 스탯 -->
+          <!-- 정중앙: 캐릭터 프리뷰 & 장착 합산 스탯 -->
           <div class="flex-1 flex flex-col items-center justify-center text-center">
             <div class="relative w-20 h-20 rounded-full bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center">
               <div class="w-16 h-16 rounded-full bg-[#f0ebe0] border border-emerald-600/40 shadow-[0_0_16px_rgba(45,106,79,0.2)] flex items-center justify-center text-4xl">
                 ${stats.evoStage.icon || '🐶'}
               </div>
             </div>
-            <div class="text-xs font-black text-[#1f2d24] mt-1.5">우유</div>
+            <div class="text-xs font-black text-[#1f2d24] mt-1.5">${dogName}</div>
             <div class="inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full bg-[#f0ebe0] border border-[#d2c8b4] text-[10px] font-extrabold">
               <span class="text-emerald-800">⚔️ +${equippedAtkBonus}</span>
               <span class="text-[#a3b899]">·</span>
@@ -649,6 +650,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
 
   function renderTrainingTab() {
     const save = getSave();
+    const dogName = save.dogName || '우유';
     const training = save.training || {};
     const stats = computePlayerStats(save);
     const totalTrainLv = Object.values(training).reduce((sum, v) => sum + (Number(v) || 0), 0);
@@ -664,9 +666,9 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
       <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#e6dec8]">
           <div class="flex items-center gap-2">
-            <span class="text-2xl">${stats.evoStage.icon || '🥛'}</span>
+            <span class="text-2xl">${stats.evoStage.icon || '🐶'}</span>
             <div>
-              <div class="text-xs font-black text-[#1f2d24]">우유 실시간 상태</div>
+              <div class="text-xs font-black text-[#1f2d24]">${dogName} 실시간 상태</div>
               <div class="text-[11px] font-bold text-emerald-800">총 훈련 Lv.${totalTrainLv}</div>
             </div>
           </div>
@@ -697,7 +699,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
         <button type="button" data-train-subtab="hero" class="flex-1 py-1.5 rounded-lg text-center transition-all ${
           trainingSubTab === 'hero' ? 'bg-[#faf6ee] text-[#1f2d24] font-black shadow-sm' : 'text-[#4a584e] hover:text-[#1f2d24]'
         }">
-          💪 우유 기초 훈련
+          💪 ${dogName} 기초 훈련
         </button>
         <button type="button" data-train-subtab="companion" class="flex-1 py-1.5 rounded-lg text-center transition-all ${
           trainingSubTab === 'companion' ? 'bg-[#faf6ee] text-amber-800 font-black shadow-sm' : 'text-[#4a584e] hover:text-[#1f2d24]'

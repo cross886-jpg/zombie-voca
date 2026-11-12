@@ -41,15 +41,16 @@ body {
   border-radius: 9999px;
 }
 
-/* 상단 포레스트 그린 LED 전광판 */
+/* 상단 포레스트 그린 네온 LED 전광판 */
 .led-board {
   background:
-    radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.16), transparent 70%),
-    linear-gradient(180deg, rgba(18, 40, 29, 0.96) 0%, rgba(27, 59, 43, 0.94) 100%);
-  border: 1.5px solid rgba(52, 211, 153, 0.5);
+    radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.22), transparent 70%),
+    linear-gradient(180deg, rgba(14, 32, 23, 0.98) 0%, rgba(20, 48, 34, 0.96) 100%);
+  border: 2px solid #34d399;
   box-shadow:
-    0 0 18px rgba(45, 106, 79, 0.35),
-    inset 0 0 12px rgba(52, 211, 153, 0.12);
+    0 0 16px rgba(52, 211, 153, 0.45),
+    0 4px 18px rgba(10, 30, 20, 0.6),
+    inset 0 0 12px rgba(52, 211, 153, 0.18);
   position: relative;
   overflow: hidden;
 }
@@ -58,9 +59,16 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
   background-size: 4px 4px;
   pointer-events: none;
+}
+
+/* 네온 영단어 텍스트 글로우 */
+.neon-word-glow {
+  text-shadow:
+    0 0 10px rgba(52, 211, 153, 0.7),
+    0 0 22px rgba(16, 185, 129, 0.45);
 }
 
 /* 4방향 비석 네온 화살표 인디케이터 */

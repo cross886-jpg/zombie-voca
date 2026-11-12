@@ -15,7 +15,8 @@ import { GAME_STATES, GameEngine } from './game/gameEngine.js';
 import { createHudUI } from './ui/hudUI.js';
 import { createLobbyUI } from './ui/lobbyUI.js';
 import { createGrowthUI } from './ui/growthUI.js';
-import { createWordbookUI } from './ui/wordbookUI.js';
+import { createShopUI } from './ui/shopUI.js';
+import { createChallengeUI } from './ui/challengeUI.js';
 
 async function bootstrap() {
   const save = loadSave();
@@ -33,7 +34,8 @@ async function bootstrap() {
 
   let lobbyUI = null;
   let growthUI = null;
-  let wordbookUI = null;
+  let shopUI = null;
+  let challengeUI = null;
 
   const hudUI = createHudUI(engine, {
     onReturnToLobby() {
@@ -52,19 +54,19 @@ async function bootstrap() {
     },
   });
 
-  function startBattleFlow({ chapterNumber, courseId, isTutorial = false } = {}) {
+  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2' } = {}) {
     audioEngine.unlock();
     lobbyUI.closeModal();
     lobbyUI.hideLobby();
     hudUI.closeModal();
     hudUI.showHud();
     canvas.classList.remove('hidden');
-    engine.startBattle({ chapterNumber, courseId, isTutorial });
+    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel });
   }
 
   lobbyUI = createLobbyUI({
-    onStartBattle({ chapterNumber, courseId }) {
-      startBattleFlow({ chapterNumber, courseId, isTutorial: false });
+    onStartBattle({ chapterNumber, courseId, unitId }) {
+      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false });
     },
     onStartTutorial() {
       startBattleFlow({ chapterNumber: 1, courseId: 'lv1', isTutorial: true });
@@ -75,8 +77,11 @@ async function bootstrap() {
     onRenderTraining() {
       growthUI?.renderTrainingTab();
     },
-    onRenderWordbook() {
-      wordbookUI?.renderWordbookTab();
+    onRenderShop() {
+      shopUI?.renderShopTab();
+    },
+    onRenderChallenge() {
+      challengeUI?.renderChallengeTab();
     },
     onOpenSupplyShop() {
       growthUI?.openSupplyShopModal();
@@ -89,10 +94,19 @@ async function bootstrap() {
     closeModal: () => lobbyUI.closeModal(),
   });
 
-  wordbookUI = createWordbookUI({
+  shopUI = createShopUI({
     onResourcesChanged: () => lobbyUI.refreshHeader(),
     openModal: (html) => lobbyUI.openModal(html),
     closeModal: () => lobbyUI.closeModal(),
+  });
+
+  challengeUI = createChallengeUI({
+    onResourcesChanged: () => lobbyUI.refreshHeader(),
+    openModal: (html) => lobbyUI.openModal(html),
+    closeModal: () => lobbyUI.closeModal(),
+    onStartPromotion({ targetLevel }) {
+      startBattleFlow({ isPromotion: true, targetLevel });
+    },
   });
 
   // 화면 리사이즈 대응

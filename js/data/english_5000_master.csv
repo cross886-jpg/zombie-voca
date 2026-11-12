@@ -388,7 +388,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 387,movie,A1,unit_013,en_u13_n5,영화,/mˈuvi/,Which movie do you want to see?,어떤 영화를 보고 싶어?
 388,mouth,A1,unit_013,en_u13_n5,입,/mˈaʊθ/,Open your mouth wide.,입을 크게 벌려라.
 389,film,A1,unit_013,en_u13_n5,영화,/fˈɪlm/,We watched a great film together.,우리는 함께 멋진 영화를 봤다.
-390,month,A1,unit_013,en_u13_n5,달,/mˈʌnθ/,See you next month.,다음 달에 보자.
+390,month,A1,unit_013,en_u13_n5,월,/mˈʌnθ/,See you next month.,다음 달에 보자.
 391,train,A1,unit_014,en_u14_n1,기차,/trˈeɪn/,The train leaves at three o’clock.,기차는 3시에 출발한다.
 392,seven,A1,unit_014,en_u14_n1,일곱,/sˈɛvən/,I have seven pencils.,나는 연필이 일곱 자루 있다.
 393,wear,A1,unit_014,en_u14_n1,입다,/wˈɛr/,I wear a coat in winter.,나는 겨울에 코트를 입는다.
@@ -3113,7 +3113,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 3112,stupid,B2,unit_104,en_u104_n5,어리석은 / 멍청한,[스트이프이드],a stupid person.,우둔한 사람.
 3113,sometimes,B2,unit_104,en_u104_n5,가끔,[스어므트이므즈],Sometimes he drinks wine and sometimes beer.,그는 포도주를 마실 때도 있고 맥주를 마실 때도 있다.
 3114,outside,B2,unit_104,en_u104_n5,뒤집어서,[우트스이드],the outside of the building.,건물의 바깥쪽.
-3115,em,B2,unit_104,en_u104_n5,'em (them의 구어체 축약),[어므],Pick em up and put them away now.,그것들을 집어 들어 지금 바로 치워라.
+3115,em,B2,unit_104,en_u104_n5,그들을,[어므],Pick em up and put them away now.,그것들을 집어 들어 지금 바로 치워라.
 3116,lord,B2,unit_104,en_u104_n5,군주,[르오르드],the lord of a mansion.,대저택의 소유자.
 3117,funny,B2,unit_104,en_u104_n5,만화란,[프어느이],a funny story.,재미있는 이야기.
 3118,feeling,B2,unit_104,en_u104_n5,느낌 / 감정,[프르이으],a feeling of coldness.,추운 느낌.
@@ -3542,7 +3542,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 3541,sooner,B2,unit_119,en_u119_n1,선손,[스느어르],We should start the project sooner than later.,우리는 그 프로젝트를 늦기 전에 더 일찍 시작해야 합니다.
 3542,simon,B2,unit_119,en_u119_n1,사이먼 (인명),[스이므어느],Simon plays classical piano pieces with great skill.,사이먼은 대단한 솜씨로 클래식 피아노 곡을 연주합니다.
 3543,hidden,B2,unit_119,en_u119_n1,숨겨놓다,[흐드느],a hidden tax.,간접세.
-3544,cos,B2,unit_119,en_u119_n1,'cause (because의 구어체 축약),[크어즈],I stayed inside cos the weather was awful.,날씨가 너무 험해서 나는 실내에 머물렀습니다.
+3544,cos,B2,unit_119,en_u119_n1,왜냐하면,[크어즈],I stayed inside cos the weather was awful.,날씨가 너무 험해서 나는 실내에 머물렀습니다.
 3545,personally,B2,unit_119,en_u119_n1,손수,[프어르스어느어르이],Personally Im not convinced hes the right man for the job.,나로서는 그가 그 일에 적임자라는 확신이 서지 않습니다 .
 3546,artist,B2,unit_119,en_u119_n1,아티스트,[아르트이스트],a professional artist.,전문 예술가.
 3547,exciting,B2,unit_119,en_u119_n1,신나는 / 흥미진진한,[이크스이트이으],an exciting trip.,아주 신나는 여행.
@@ -3572,7 +3572,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 3571,alan,B2,unit_120,en_u120_n1,앨런 (인명),[애르어느],Alan booked airline tickets for our family vacation.,앨런은 우리 가족 휴가를 위한 비행기 표를 예약했습니다.
 3572,europe,B2,unit_120,en_u120_n1,유럽,[이어르어프],go into Europe EU.,의 가맹국이 된다.
 3573,memories,B2,unit_120,en_u120_n1,기억,[므므어르이],a photographic memory.,사진과 같이 정확한 기억.
-3574,da,B2,unit_120,en_u120_n1,the (방언/구어체),[da],Who is da leader of this dance crew?,이 댄스 크루의 리더는 누구인가요?
+3574,da,B2,unit_120,en_u120_n1,그,[da],Who is da leader of this dance crew?,이 댄스 크루의 리더는 누구인가요?
 3575,buying,B2,unit_120,en_u120_n1,구매,[브아이],buy a thing cheap.,물건을 싸게 사다.
 3576,dna,B2,unit_120,en_u120_n1,디옥시리보,[드느이],Scientists extracted ancient DNA from the fossil specimen.,과학자들은 화석 표본에서 고대 DNA를 추출했습니다.
 3577,liar,B2,unit_120,en_u120_n1,거짓말쟁이,[르이어르],a bad liar.,거짓말에 서투른 사람.
@@ -3586,7 +3586,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 3585,boring,B2,unit_120,en_u120_n2,구멍뚫기,[브오르이으],The lecture became really boring after thirty minutes.,그 강의는 삼십 분 후에 정말 지루해졌습니다.
 3586,warning,B2,unit_120,en_u120_n2,경계,[우오르느이으],a hurricane warning.,허리케인 경보.
 3587,knocking,B2,unit_120,en_u120_n2,노킹,[느아크이으],Someone is knocking loudly on the front door.,누군가 현관문을 크게 두드리고 있습니다.
-3588,re,B2,unit_120,en_u120_n2,re (~에 관하여),[르],I sent an email re the upcoming conference.,다가오는 콘퍼런스 건으로 이메일을 보냈습니다.
+3588,re,B2,unit_120,en_u120_n2,~에 관하여,[르],I sent an email re the upcoming conference.,다가오는 콘퍼런스 건으로 이메일을 보냈습니다.
 3589,bedroom,B2,unit_120,en_u120_n2,침실,[브드르므],The house has two bedrooms.,그 집은 두 개의 침실이 있다.
 3590,lower,B2,unit_120,en_u120_n2,내리다,[르우어르],lower a window shade.,블라인드를 내리다.
 3591,groaning,B2,unit_120,en_u120_n5,꽁꽁,[르오느],give a groan of dismay.,낙심하여 신음 소리를 내다.
@@ -4019,7 +4019,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 4018,justin,B2,unit_134,en_u134_n5,저스틴 (인명),[즈어스트어느],Justin played guitar wonderfully at the school concert.,저스틴은 학교 콘서트에서 기타를 멋지게 연주했어요.
 4019,dreaming,B2,unit_134,en_u134_n5,꿈꾸는 것 / 꿈꾸고 있는,[드르므이으],He kept dreaming about opening his own bakery.,그는 자신만의 빵집을 여는 꿈을 계속 꾸었어요.
 4020,bust,B2,unit_134,en_u134_n5,반신상,[브어스트],bust measurement.,가슴둘레의 치수.
-4021,el,B2,unit_135,en_u135_n1,접두사l앞에서의,[르],El is a short nickname for Eleanor.,엘은 엘리너의 짧은 애칭이다.
+4021,el,B2,unit_135,en_u135_n1,지상철,[르],El is a short nickname for Eleanor.,엘은 엘리너의 짧은 애칭이다.
 4022,teddy,B2,unit_135,en_u135_n1,테디,[트드이],The child fell asleep holding a soft teddy.,그 아이는 부드러운 곰 인형을 안고 잠이 들었어요.
 4023,kong,B2,unit_135,en_u135_n1,싸구려,[크아으],Many international flights connect through Hong Kong airport.,많은 국제선 항공편이 홍콩 공항을 경유해요.
 4024,enjoying,B2,unit_135,en_u135_n1,즐기는 것 / 즐기고 있는,[이느즈오이],enjoy life.,인생을 즐기다.
@@ -4246,7 +4246,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 4245,policeman,C1,unit_142,en_u142_n2,경관,[프어르스므어느],a policeman in plain clothes.,사복 경관.
 4246,na,C1,unit_142,en_u142_n2,하려고,[느아],I am gon na call you later tonight.,오늘 밤 늦게 너에게 전화할게.
 4247,precisely,C1,unit_142,en_u142_n2,바로,[프르이스이스르이],at 5 p.m. precisely.,오후 5시 정각에.
-4248,greek,C1,unit_142,en_u142_n2,그시스의,[르이크],Greek letters.,그리스 문자.
+4248,greek,C1,unit_142,en_u142_n2,그리스의,[르이크],Greek letters.,그리스 문자.
 4249,merely,C1,unit_142,en_u142_n2,다만,[므어르이],She was not merely beautiful but talented.,그녀는 아름다웠을 뿐만 아니라 재능도 있었다.
 4250,criminals,C1,unit_142,en_u142_n2,범죄의,[크르므어느르],a criminal case.,형사 사건.
 4251,underwear,C1,unit_142,en_u142_n5,내의,[underwear],Pack enough clean underwear for the whole trip.,여행 전체 일정에 맞춰 깨끗한 속옷을 충분히 챙기세요.
@@ -4508,7 +4508,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 4507,assignment,C1,unit_151,en_u151_n1,배정,[어스이느므어느트],do a history assignment.,역사 숙제를 하다.
 4508,catching,C1,unit_151,en_u151_n1,잡는 것 / 전염되는,[크애츠이으],Yawning is catching.,하품은 전염성이 있다.
 4509,canada,C1,unit_151,en_u151_n1,캐나다,[크애느어드어],My brother lives and studies in Canada.,내 남동생은 캐나다에서 살며 공부합니다.
-4510,dont,C1,unit_151,en_u151_n1,not의,[드오느트],Please dont forget to lock the door.,문 잠그는 것을 절대 잊지 마세요.
+4510,dont,C1,unit_151,en_u151_n1,~하지 않다,[드오느트],Please dont forget to lock the door.,문 잠그는 것을 절대 잊지 마세요.
 4511,han,C1,unit_151,en_u151_n2,한조,[흐아느],Han walked along the quiet river path.,Han은 조용한 강변 산책로를 걸었습니다.
 4512,von,C1,unit_151,en_u151_n2,으로부터,[브아느],Professor von Keller gave an interesting lecture.,von Keller 교수님이 흥미로운 강의를 해 주셨습니다.
 4513,marco,C1,unit_151,en_u151_n2,마르코 (인명),[므아르크오],Marco ordered a slice of cheese pizza.,Marco는 치즈 피자 한 조각을 주문했습니다.
@@ -4805,7 +4805,7 @@ Rank,Word,Level,Unit_ID,Node_ID,Meaning,Pronunciation,Example_EN,Example_KO
 4804,seth,C1,unit_161,en_u161_n1,세스 (인명),[스에스],Seth submitted his final research paper ahead time.,세스는 마감 시간보다 앞서 최종 연구 보고서를 제출했습니다.
 4805,gabriel,C1,unit_161,en_u161_n1,천사,[이브르이어르],Gabriel plays trumpet in the high school band.,가브리엘은 고등학교 밴드에서 트럼펫을 연주합니다.
 4806,detectives,C1,unit_161,en_u161_n1,탐정,[드이트크트이브],a private detective.,사립 탐정.
-4807,en,C1,unit_161,en_u161_n1,n자,[에느],The delivery package is en route right now.,배송 패키지가 지금 바로 배달 중입니다.
+4807,en,C1,unit_161,en_u161_n1,도중에,[에느],The delivery package is en route right now.,배송 패키지가 지금 바로 배달 중입니다.
 4808,organized,C1,unit_161,en_u161_n1,정리된 / 조직화된,[오르어느이즈드],highly organized.,잘 정리된.
 4809,franklin,C1,unit_161,en_u161_n1,자유,[프르애으크르이느],Franklin walked his golden retriever along the river.,프랭클린은 강을 따라 골든 리트리버를 산책시켰습니다.
 4810,gut,C1,unit_161,en_u161_n1,거트,[어트],the large gut.,대장.

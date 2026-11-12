@@ -10,6 +10,7 @@ export class Camera {
     this.x = 0;
     this.y = 0;
     this.zoom = 1.0;
+    this.centerRatioY = 0.56; // 상단 전광판 높이(약 110px)를 감안한 카메라 Y 중심 오프셋 (위쪽 시야 확보)
 
     this.shakeTimer = 0;
     this.shakeDuration = 0;
@@ -69,14 +70,15 @@ export class Camera {
 
     // 카메라 경계 클램프
     const halfViewW = (viewW / 2) / this.zoom;
-    const halfViewH = (viewH / 2) / this.zoom;
+    const topViewH = (viewH * this.centerRatioY) / this.zoom;
+    const bottomViewH = (viewH * (1 - this.centerRatioY)) / this.zoom;
     if (arenaWidth > halfViewW * 2) {
       this.x = Math.max(halfViewW, Math.min(arenaWidth - halfViewW, this.x));
     } else {
       this.x = arenaWidth / 2;
     }
-    if (arenaHeight > halfViewH * 2) {
-      this.y = Math.max(halfViewH, Math.min(arenaHeight - halfViewH, this.y));
+    if (arenaHeight > topViewH + bottomViewH) {
+      this.y = Math.max(topViewH, Math.min(arenaHeight - bottomViewH, this.y));
     } else {
       this.y = arenaHeight / 2;
     }
@@ -99,7 +101,7 @@ export class Camera {
 
   beginTransform(ctx, viewW, viewH) {
     ctx.save();
-    ctx.translate(viewW / 2 + this.shakeOffsetX, viewH / 2 + this.shakeOffsetY);
+    ctx.translate(viewW / 2 + this.shakeOffsetX, viewH * this.centerRatioY + this.shakeOffsetY);
     ctx.scale(this.zoom, this.zoom);
     ctx.translate(-this.x, -this.y);
   }
@@ -111,7 +113,7 @@ export class Camera {
   worldToScreen(wx, wy, viewW, viewH) {
     return {
       x: (wx - this.x) * this.zoom + viewW / 2,
-      y: (wy - this.y) * this.zoom + viewH / 2,
+      y: (wy - this.y) * this.zoom + viewH * this.centerRatioY,
     };
   }
 
@@ -149,8 +151,9 @@ export class Camera {
     ctx.stroke();
     ctx.restore();
 
-    // 외곽 푸른/테마 네온 방화벽 경계선
+    // 외곽 푸른/테마 네온 방화벽 경계선 (상단 전광판 안전선 topMargin 120px 반영)
     const m = BALANCE.ARENA.FIREWALL_MARGIN;
+    const topMargin = 120;
     const pulse = 0.75 + Math.sin(time * 4) * 0.25;
     ctx.save();
     ctx.strokeStyle = theme.firewallColor;
@@ -158,7 +161,7 @@ export class Camera {
     ctx.globalAlpha = pulse;
     ctx.shadowColor = theme.firewallColor;
     ctx.shadowBlur = 18;
-    ctx.strokeRect(m, m, arenaWidth - m * 2, arenaHeight - m * 2);
+    ctx.strokeRect(m, m + topMargin, arenaWidth - m * 2, arenaHeight - (m * 2 + topMargin));
     ctx.restore();
   }
 }

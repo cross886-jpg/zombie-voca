@@ -48,7 +48,30 @@ function hasMeaningOverlap(wordA, wordB) {
   return false;
 }
 
+const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+function getAdjacentLevels(level) {
+  const idx = CEFR_LEVELS.indexOf(level);
+  if (idx === -1) return [];
+  const adjacent = [];
+  if (idx > 0) adjacent.push(CEFR_LEVELS[idx - 1]);
+  if (idx < CEFR_LEVELS.length - 1) adjacent.push(CEFR_LEVELS[idx + 1]);
+  return adjacent;
+}
+
 export const wordEngine = {
+  /**
+   * 선택된 유닛(예: 'unit_001')에 속한 단어 풀 반환
+   * @param {string} [unitId]
+   * @returns {Array<object>}
+   */
+  getUnitWords(unitId) {
+    const id = unitId || getSave().selectedUnit || 'unit_001';
+    const all = getWords();
+    const filtered = all.filter((w) => w.unit === id);
+    return filtered.length > 0 ? filtered : this.getCourseWords();
+  },
+
   /**
    * 선택된 난이도 코스(lv1~lv4)에 해당하는 단어 풀 반환
    * @param {string} [courseId]
@@ -65,13 +88,25 @@ export const wordEngine = {
 
   /**
    * 30문제 집중 반복 덱 구성:
-   * 코스 단어 풀에서 핵심 목표 단어 8개를 선별(복습 우선 + 신규 + 마스터 보충)하고
-   * 30문제 큐에 고르게 반복 배치(직전 문제와 동일 단어 연속 출제 방지)
-   * @param {string} [courseId]
+   * 현재 선택된 유닛(예: Unit 1)의 단어 배열에서만 목표 단어를 선별하여
+   * 타 유닛이나 타 레벨 단어가 섞이지 않도록 엄격히 고정
+   * @param {string|object} [options]
    * @returns {Array<object>}
    */
-  buildBattleDeck(courseId) {
-    const pool = this.getCourseWords(courseId);
+  buildBattleDeck(options) {
+    let pool = [];
+    if (typeof options === 'string') {
+      pool = options.startsWith('unit_') ? this.getUnitWords(options) : this.getCourseWords(options);
+    } else if (options && typeof options === 'object') {
+      if (options.unitId) {
+        pool = this.getUnitWords(options.unitId);
+      } else if (options.courseId) {
+        pool = this.getCourseWords(options.courseId);
+      }
+    }
+    if (!pool || !pool.length) {
+      pool = this.getUnitWords();
+    }
     if (!pool.length) return [];
 
     const save = getSave();
@@ -123,6 +158,26 @@ export const wordEngine = {
   },
 
   /**
+   * 언어 등급 승급전 전용 20문제 덱
+   * @param {string} targetLevel (예: 'A2', 'B1')
+   * @returns {Array<object>}
+   */
+  buildPromotionDeck(targetLevel) {
+    const all = getWords();
+    const levelWords = all.filter((w) => w.level === targetLevel);
+    const pool = levelWords.length >= 20 ? levelWords : (levelWords.length > 0 ? levelWords : all);
+    const shuffled = shuffleArray(pool);
+    const deck = [];
+    while (deck.length < 20) {
+      for (const w of shuffled) {
+        if (deck.length >= 20) break;
+        deck.push(w);
+      }
+    }
+    return deck;
+  },
+
+  /**
    * 튜토리얼용 3문제 초급 미니 덱
    * @returns {Array<object>}
    */
@@ -133,16 +188,26 @@ export const wordEngine = {
   },
 
   /**
-   * 정답 1개 + 동음이의어/중복 뜻이 완전히 제외된 오답 3개 생성
+   * 정답 1개 + 현재 정답 단어와 동일한 CEFR 레벨(A1이면 A1만) 내 동음이의어 제외 오답 3개 생성
    * @param {object} targetWord
    * @returns {Array<{ wordId: number, meaning: string, isCorrect: boolean }>}
    */
   createQuestionChoices(targetWord) {
     const allWords = getWords();
-    // 같은 품사 우선 후보군 + 전체 풀 폴백
-    const samePos = shuffleArray(allWords.filter((w) => w.pos === targetWord.pos && w.id !== targetWord.id));
-    const others = shuffleArray(allWords.filter((w) => w.pos !== targetWord.pos && w.id !== targetWord.id));
-    const candidates = [...samePos, ...others];
+    const targetLevel = targetWord.level || 'A1';
+
+    // 1차: 현재 정답 단어와 동일한 CEFR 레벨 풀만 엄격 사용
+    const sameLevelWords = allWords.filter((w) => w.id !== targetWord.id && w.level === targetLevel);
+    const sameLevelSamePos = shuffleArray(sameLevelWords.filter((w) => w.pos === targetWord.pos));
+    const sameLevelOthers = shuffleArray(sameLevelWords.filter((w) => w.pos !== targetWord.pos));
+    let candidates = [...sameLevelSamePos, ...sameLevelOthers];
+
+    // 동일 레벨 단어가 극단적으로 부족한 예외 상황(5개 미만)에만 인접 레벨 보조 풀 사용
+    if (candidates.length < 5) {
+      const adjLevels = getAdjacentLevels(targetLevel);
+      const adjWords = shuffleArray(allWords.filter((w) => w.id !== targetWord.id && adjLevels.includes(w.level)));
+      candidates = [...candidates, ...adjWords];
+    }
 
     const selectedDistractors = [];
     for (const cand of candidates) {

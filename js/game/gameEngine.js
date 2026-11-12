@@ -109,12 +109,13 @@ export class GameEngine {
   /**
    * 전투 시작 (정규 30문제 스테이지 또는 첫 접속 30초 튜토리얼)
    */
-  startBattle({ chapterNumber, courseId, isTutorial = false } = {}) {
+  startBattle({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2' } = {}) {
     this.resizeCanvas();
     const save = getSave();
 
     this.chapter = getChapter(chapterNumber || save.selectedChapter || 1);
     const chosenCourseId = courseId || save.selectedCourse || 'lv1';
+    const chosenUnitId = unitId || save.selectedUnit || 'unit_001';
     this.course = BALANCE.COURSES.find((c) => c.id === chosenCourseId) || BALANCE.COURSES[0];
 
     this.arenaWidth = this.viewW * this.chapter.arenaScale;
@@ -136,21 +137,38 @@ export class GameEngine {
       wrongCount: 0,
       earnedEvoXp: 0,
       earnedGold: 0,
+      earnedSnacks: 0,
+      earnedGems: 0,
+      pickedGems: 0,
       newlyMasteredCount: 0,
       revivedOnce: false,
       isTutorial,
+      isPromotion,
+      targetLevel,
     };
 
     if (isTutorial) {
       this.tutorial.start();
       this.deck = wordEngine.buildTutorialDeck();
       this.enemies.spawnTutorialZombies(startX, startY);
-    } else {
+    } else if (isPromotion) {
       this.tutorial.stop();
-      this.deck = wordEngine.buildBattleDeck(this.course.id);
+      this.deck = wordEngine.buildPromotionDeck(targetLevel);
       this.enemies.spawnInitialWave(
         this.chapter,
-        this.course.enemyMult,
+        1.0,
+        startX,
+        startY,
+        this.arenaWidth,
+        this.arenaHeight,
+        10
+      );
+    } else {
+      this.tutorial.stop();
+      this.deck = wordEngine.buildBattleDeck({ courseId: this.course.id, unitId: chosenUnitId });
+      this.enemies.spawnInitialWave(
+        this.chapter,
+        1.0,
         startX,
         startY,
         this.arenaWidth,
@@ -193,7 +211,7 @@ export class GameEngine {
 
     // 28번 문제(index 27) 진입 시 챕터 보스 등장 + 1.5초 줌아웃→줌인 연출
     if (!this.runStats.isTutorial && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !this.enemies.boss) {
-      this.enemies.spawnBoss(this.chapter, this.course.enemyMult, this.player.x, this.player.y);
+      this.enemies.spawnBoss(this.chapter, 1.0, this.player.x, this.player.y);
       this.camera.triggerZoomSequence(BALANCE.BOSS.ZOOM_SEQUENCE_SEC);
     }
 
@@ -441,6 +459,9 @@ export class GameEngine {
     audioEngine.pauseAll();
     this._stopLoop();
 
+    const isPromo = Boolean(this.runStats.isPromotion);
+    const promoPassed = isPromo && this.runStats.correctCount >= 17; // 20문제 중 17문제 이상 (85%)
+
     const courseMult = this.course.rewardMult;
     const baseGold = cleared ? this.chapter.goldReward : Math.round(this.chapter.goldReward * 0.25);
     const goldEarned = this.runStats.isTutorial
@@ -449,15 +470,47 @@ export class GameEngine {
 
     const evoBonus = cleared && !this.runStats.isTutorial ? this.chapter.evoXpBonus : 0;
     const totalEvoXp = this.runStats.earnedEvoXp + evoBonus;
+    
+    // 일반 스테이지 클리어 시 뼈다귀(완벽 2개, 일반 1개), 승급전 합격 시 +3개 보상
+    let earnedSnacks = 0;
+    if (isPromo) {
+      earnedSnacks = promoPassed ? 3 : 0;
+    } else {
+      earnedSnacks = cleared ? ((this.runStats.wrongCount === 0 && this.runStats.correctCount > 0) ? 2 : 1) : 0;
+    }
+    const earnedGems = 0;
+
+    // 주간 리그 점수 산정
+    const baseScore = (this.runStats.correctCount * 100) + (this.combat.kills * 15);
+    const clearBonus = cleared ? 500 : 100;
+    const stageScore = baseScore + clearBonus;
+
     this.runStats.earnedGold = goldEarned;
+    this.runStats.earnedSnacks = earnedSnacks;
     this.runStats.earnedEvoXp = totalEvoXp;
+    this.runStats.earnedGems = earnedGems;
+    this.runStats.score = stageScore;
+    this.runStats.promoPassed = promoPassed;
 
     updateSave((s) => {
       s.gold += goldEarned;
+      if (earnedSnacks > 0) {
+        s.snacks = (s.snacks || 0) + earnedSnacks;
+      }
       s.evoXp += totalEvoXp;
-      if (cleared && !this.runStats.isTutorial && this.chapter.number >= s.unlockedChapter && s.unlockedChapter < 5) {
+      if (cleared && !this.runStats.isTutorial && !isPromo && this.chapter.number >= s.unlockedChapter && s.unlockedChapter < 5) {
         s.unlockedChapter = this.chapter.number + 1;
       }
+      if (promoPassed && this.runStats.targetLevel) {
+        s.certifiedLevel = this.runStats.targetLevel;
+      }
+
+      // 주간 챌린지 점수 자동 누적
+      if (!s.challenge) {
+        s.challenge = { leagueTier: 'bronze', weeklyScore: 0, weekKey: '', dailyFreeUsedDate: '' };
+      }
+      s.challenge.weeklyScore = (s.challenge.weeklyScore || 0) + stageScore;
+
       // 일일 미션 누적
       s.dailyMissions.progress.battles += 1;
       s.dailyMissions.progress.wordsCorrect += this.runStats.correctCount;
@@ -526,7 +579,7 @@ export class GameEngine {
       dt,
       this.player,
       this.chapter,
-      this.course.enemyMult,
+      1.0,
       this.questionIndex + 1,
       this.arenaWidth,
       this.arenaHeight,
@@ -542,6 +595,7 @@ export class GameEngine {
       if (Math.random() < 0.25) audioEngine.playCaptureTick();
     }
     if (monoRes.pickedGems > 0) {
+      this.runStats.pickedGems = (this.runStats.pickedGems || 0) + monoRes.pickedGems;
       const ultChargeBonus = getTrainingBonusValue('ultChargeLv', getSave().training?.ultChargeLv || 0);
       this.player.addUltGauge(Math.round(monoRes.pickedGemCharge * (1 + ultChargeBonus)));
       for (const tier of monoRes.pickedHighTiers) {
@@ -554,7 +608,8 @@ export class GameEngine {
       });
     }
     if (monoRes.pickedSnacks > 0) {
-      const healAmt = 25 * monoRes.pickedSnacks;
+      const healPerSnack = Math.max(1, Math.round(this.player.maxHp * (BALANCE.COMBAT.SNACK_HEAL_RATIO || 0.28)));
+      const healAmt = healPerSnack * monoRes.pickedSnacks;
       this.player.heal(healAmt);
       this.combat.spawnDamageText(this.player.x, this.player.y - 36, `+${healAmt} HP`, '#4ade80', 1.05);
       updateSave((s) => {
@@ -584,7 +639,7 @@ export class GameEngine {
       const outOfView =
         scr.x < 16 ||
         scr.x > this.viewW - 16 ||
-        scr.y < 16 ||
+        scr.y < 136 || // 상단 네온 전광판 하단 안전선 (136px 여유 간격)
         scr.y > this.viewH - 72;
       return { id: m.id, meaning: m.meaning, screenX: scr.x, screenY: scr.y, outOfView };
     });

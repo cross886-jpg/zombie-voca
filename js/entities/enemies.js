@@ -42,8 +42,8 @@ export class EnemyManager {
         typeKey,
         sx,
         sy,
-        chapter.enemyHpMult * courseEnemyMult,
-        chapter.enemyAtkMult * courseEnemyMult,
+        chapter.enemyHpMult,
+        chapter.enemyAtkMult,
         chapter.enemySpeedMult
       );
     }
@@ -85,7 +85,7 @@ export class EnemyManager {
 
   spawnBoss(chapter, courseEnemyMult, centerX, centerY) {
     const bossDef = chapter.boss;
-    const maxHp = Math.round(BALANCE.BOSS.BASE_HP * bossDef.hpMult * courseEnemyMult);
+    const maxHp = Math.round(BALANCE.BOSS.BASE_HP * bossDef.hpMult);
     this.boss = {
       isBoss: true,
       name: bossDef.name,
@@ -96,7 +96,7 @@ export class EnemyManager {
       hp: maxHp,
       maxHp,
       speed: BALANCE.BOSS.BASE_SPEED * chapter.enemySpeedMult,
-      damage: Math.round(BALANCE.BOSS.BASE_DMG * chapter.enemyAtkMult * courseEnemyMult),
+      damage: Math.round(BALANCE.BOSS.BASE_DMG * chapter.enemyAtkMult),
       radius: BALANCE.BOSS.RADIUS,
       lockStage: 0, // 0: 66% 잠금, 1: 33% 잠금, 2: 0% 잠금, 3: 완전 격파
       enraged: false,
@@ -174,8 +174,8 @@ export class EnemyManager {
             typeKey,
             sx,
             sy,
-            chapter.enemyHpMult * courseEnemyMult,
-            chapter.enemyAtkMult * courseEnemyMult,
+            chapter.enemyHpMult,
+            chapter.enemyAtkMult,
             chapter.enemySpeedMult * getQuestionSpeedMult(questionNumber)
           );
         }

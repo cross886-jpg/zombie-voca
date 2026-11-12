@@ -49,7 +49,7 @@ export const BALANCE = Object.freeze({
 
   PLAYER: {
     BASE_HP: 120,
-    BASE_SPEED: 205,
+    BASE_SPEED: 160,
     BASE_ATK: 18,
     RADIUS: 20,
     PICKUP_RADIUS: 78,
@@ -66,12 +66,12 @@ export const BALANCE = Object.freeze({
     { stage: 3, key: 'evo.stage3', minXp: 12000, hpMult: 1.6,  atkMult: 1.65, scale: 1.25, icon: '🦸' },
   ],
 
-  // 챕터와 독립적으로 작동하는 4개 난이도 코스
+  // 챕터와 독립적으로 작동하는 4개 난이도 코스 (단어 출제 풀 및 보상 배율)
   COURSES: [
-    { id: 'lv1', labelKey: 'course.lv1', cefr: ['A1'],             rewardMult: 1.0, enemyMult: 0.9 },
-    { id: 'lv2', labelKey: 'course.lv2', cefr: ['A1', 'A2'],       rewardMult: 1.25, enemyMult: 1.05 },
-    { id: 'lv3', labelKey: 'course.lv3', cefr: ['B1', 'B2'],       rewardMult: 1.55, enemyMult: 1.25 },
-    { id: 'lv4', labelKey: 'course.lv4', cefr: ['B2', 'C1', 'C2'], rewardMult: 2.0, enemyMult: 1.45 },
+    { id: 'lv1', labelKey: 'course.lv1', cefr: ['A1'],             rewardMult: 1.0, enemyMult: 1.0 },
+    { id: 'lv2', labelKey: 'course.lv2', cefr: ['A1', 'A2'],       rewardMult: 1.25, enemyMult: 1.0 },
+    { id: 'lv3', labelKey: 'course.lv3', cefr: ['B1', 'B2'],       rewardMult: 1.55, enemyMult: 1.0 },
+    { id: 'lv4', labelKey: 'course.lv4', cefr: ['B2', 'C1', 'C2'], rewardMult: 2.0, enemyMult: 1.0 },
   ],
 
   COMBAT: {
@@ -83,7 +83,8 @@ export const BALANCE = Object.freeze({
     ULT_RADIUS: 340,
     DAMAGE_TEXT_TTL: 0.65,
     GEM_XP_VALUE: 10,
-    SNACK_DROP_CHANCE: 0.06,
+    SNACK_DROP_CHANCE: 0.015, // 기존 0.06 대비 1/4 수준으로 하향 (한 판 30문제 기준 평균 1~2개 희소 드롭)
+    SNACK_HEAL_RATIO: 0.28,   // 뼈다귀 1개당 최대 체력의 28% 회복 (25%~30% 범위)
   },
 
   GEM_TIERS: [
@@ -106,11 +107,11 @@ export const BALANCE = Object.freeze({
       MAX_MULT: 1.35,
     },
     TYPES: {
-      walker:  { hp: 28,  speed: 58, dmg: 8,  radius: 17, xp: 10, color: '#6ee7b7' },
-      runner:  { hp: 20,  speed: 95, dmg: 10, radius: 15, xp: 12, color: '#fca5a5' },
-      brute:   { hp: 82,  speed: 42, dmg: 16, radius: 24, xp: 24, color: '#c4b5fd' },
-      spitter: { hp: 32,  speed: 52, dmg: 12, radius: 17, xp: 16, color: '#fde047' },
-      armored: { hp: 125, speed: 39, dmg: 18, radius: 23, xp: 30, color: '#93c5fd' },
+      walker:  { hp: 28,  speed: 42, dmg: 8,  radius: 17, xp: 10, color: '#6ee7b7' },
+      runner:  { hp: 20,  speed: 68, dmg: 10, radius: 15, xp: 12, color: '#fca5a5' },
+      brute:   { hp: 82,  speed: 30, dmg: 16, radius: 24, xp: 24, color: '#c4b5fd' },
+      spitter: { hp: 32,  speed: 38, dmg: 12, radius: 17, xp: 16, color: '#fde047' },
+      armored: { hp: 125, speed: 28, dmg: 18, radius: 23, xp: 30, color: '#93c5fd' },
     },
   },
 
@@ -119,7 +120,7 @@ export const BALANCE = Object.freeze({
     ZOOM_SEQUENCE_SEC: 1.5,   // 1.5초 줌아웃 → 줌인 연출
     HP_LOCK_THRESHOLDS: [0.66, 0.33, 0], // 3단 체력 잠금
     BASE_HP: 1200,
-    BASE_SPEED: 74,
+    BASE_SPEED: 54,
     BASE_DMG: 22,
     RADIUS: 42,
     ENRAGE_SPEED_MULT: 1.38,

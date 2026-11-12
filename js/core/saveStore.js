@@ -12,13 +12,32 @@ function createDefaultSave() {
   return {
     saveVersion: CURRENT_SAVE_VERSION,
     language: 'ko',
+    dogName: '우유',
+    selectedBreed: 'pomeranian',
+    certifiedLevel: 'A1',
+    challenge: {
+      leagueTier: 'bronze',
+      weeklyScore: 0,
+      weekKey: '',
+      dailyFreeUsedDate: '',
+    },
     tutorialCompleted: false,
     gold: 120,
     snacks: 3,
+    gems: 300,
+    ownedItems: [],
+    shopUpgrades: {
+      gemMagnet: 0,
+      bonusHp: 0,
+      bonusWeapon: 0,
+    },
+    equippedSkin: null,
     evoXp: 0,
     unlockedChapter: 1,
     selectedChapter: 1,
+    selectedUnit: 'unit_001',
     selectedCourse: 'lv1',
+    dominantHand: 'right',
     training: {
       atkLevel: 0,
       hpLevel: 0,
@@ -95,6 +114,22 @@ function mergeWithDefaults(defaults, saved) {
     }
   }
   result.saveVersion = CURRENT_SAVE_VERSION;
+  if (!result.dogName) result.dogName = '우유';
+  if (!result.selectedBreed) result.selectedBreed = 'pomeranian';
+  if (!result.certifiedLevel) result.certifiedLevel = 'A1';
+  if (!result.challenge) {
+    result.challenge = {
+      leagueTier: 'bronze',
+      weeklyScore: 0,
+      weekKey: '',
+      dailyFreeUsedDate: '',
+    };
+  } else {
+    if (!result.challenge.leagueTier) result.challenge.leagueTier = 'bronze';
+    if (typeof result.challenge.weeklyScore !== 'number') result.challenge.weeklyScore = 0;
+    if (typeof result.challenge.weekKey !== 'string') result.challenge.weekKey = '';
+    if (typeof result.challenge.dailyFreeUsedDate !== 'string') result.challenge.dailyFreeUsedDate = '';
+  }
   return result;
 }
 
@@ -136,6 +171,11 @@ export function loadSave() {
     }
     if (!state.costumes.equipped.weapon) {
       state.costumes.equipped.weapon = 'weapon_boomerang';
+      persistSave();
+    }
+
+    if (!['right', 'left'].includes(state.dominantHand)) {
+      state.dominantHand = 'right';
       persistSave();
     }
   } catch (err) {
@@ -280,5 +320,151 @@ export function importSaveBase64(base64Str) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+export const LEAGUE_TIERS = ['bronze', 'silver', 'gold', 'ruby', 'diamond'];
+
+export const RIVAL_PROFILES = [
+  { id: 'r1', name: '뽀삐', breed: 'pomeranian', level: 'A2' },
+  { id: 'r2', name: '초코', breed: 'retriever', level: 'B1' },
+  { id: 'r3', name: '콩이', breed: 'corgi', level: 'A1' },
+  { id: 'r4', name: '보리', breed: 'shiba', level: 'B2' },
+  { id: 'r5', name: '두부', breed: 'beagle', level: 'A2' },
+  { id: 'r6', name: '뭉치', breed: 'pomeranian', level: 'B1' },
+  { id: 'r7', name: '별이', breed: 'retriever', level: 'C1' },
+  { id: 'r8', name: '호두', breed: 'corgi', level: 'A2' },
+  { id: 'r9', name: '루키', breed: 'shiba', level: 'B1' },
+  { id: 'r10', name: '코코', breed: 'beagle', level: 'B2' },
+  { id: 'r11', name: '망고', breed: 'pomeranian', level: 'A1' },
+  { id: 'r12', name: '까미', breed: 'retriever', level: 'A2' },
+  { id: 'r13', name: '모찌', breed: 'corgi', level: 'B1' },
+  { id: 'r14', name: '몽이', breed: 'shiba', level: 'A1' },
+  { id: 'r15', name: '쿠키', breed: 'beagle', level: 'B2' },
+  { id: 'r16', name: '나비', breed: 'pomeranian', level: 'A2' },
+  { id: 'r17', name: '레오', breed: 'retriever', level: 'B2' },
+  { id: 'r18', name: '하루', breed: 'corgi', level: 'C1' },
+  { id: 'r19', name: '루루', breed: 'shiba', level: 'B1' },
+];
+
+/**
+ * 매주 월요일 00:00:00 기준 주차 키 (예: "2026-W-1109")
+ */
+export function getWeekKey(d = new Date()) {
+  const target = new Date(d);
+  const day = (target.getDay() + 6) % 7; // 월: 0 ~ 일: 6
+  target.setDate(target.getDate() - day);
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, '0');
+  const date = String(target.getDate()).padStart(2, '0');
+  return `${y}-W-${m}${date}`;
+}
+
+/**
+ * 다음 주 월요일 00:00:00까지 남은 시간
+ */
+export function getTimeUntilNextWeeklyReset(now = new Date()) {
+  const nextMonday = new Date(now);
+  const day = (nextMonday.getDay() + 6) % 7;
+  const daysUntilMonday = 7 - day;
+  nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
+  nextMonday.setHours(0, 0, 0, 0);
+  const diffMs = Math.max(0, nextMonday.getTime() - now.getTime());
+  const days = Math.floor(diffMs / (24 * 3600 * 1000));
+  const hours = Math.floor((diffMs % (24 * 3600 * 1000)) / (3600 * 1000));
+  const minutes = Math.floor((diffMs % (3600 * 1000)) / (60 * 1000));
+  return { days, hours, minutes, diffMs };
+}
+
+function pseudoHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * 특정 티어와 주차 키에 따른 19명 가상 라이벌 점수 생성 (시드 기반)
+ */
+export function generateRivals(tier, weekKey = getWeekKey()) {
+  const TIER_RANGES = {
+    bronze: { min: 400, max: 2400 },
+    silver: { min: 1400, max: 4200 },
+    gold: { min: 2800, max: 6800 },
+    ruby: { min: 5000, max: 9800 },
+    diamond: { min: 7500, max: 14500 },
+  };
+  const range = TIER_RANGES[tier] || TIER_RANGES.bronze;
+
+  return RIVAL_PROFILES.map((rival) => {
+    const seed = pseudoHash(`${weekKey}_${rival.id}_${tier}`);
+    const normalized = (seed % 1000) / 1000;
+    const base = range.min + Math.round(normalized * (range.max - range.min));
+    const score = Math.max(50, Math.round(base / 10) * 10);
+    return {
+      ...rival,
+      score,
+      isPlayer: false,
+    };
+  });
+}
+
+/**
+ * 주차 변경 여부 검사 및 주간 20인 리그 정산
+ * @param {object} save
+ * @returns {object|null} 정산 결과
+ */
+export function checkAndSettleWeeklyLeague(save) {
+  if (!save.challenge) {
+    save.challenge = { leagueTier: 'bronze', weeklyScore: 0, weekKey: '', dailyFreeUsedDate: '' };
+  }
+  const currentWeek = getWeekKey();
+  if (!save.challenge.weekKey) {
+    save.challenge.weekKey = currentWeek;
+    return null;
+  }
+  if (save.challenge.weekKey === currentWeek) {
+    return null;
+  }
+
+  const prevTier = save.challenge.leagueTier || 'bronze';
+  const myScore = save.challenge.weeklyScore || 0;
+  const rivals = generateRivals(prevTier, save.challenge.weekKey);
+  const fullLeaderboard = [
+    { isPlayer: true, score: myScore },
+    ...rivals.map((r) => ({ isPlayer: false, score: r.score })),
+  ].sort((a, b) => b.score - a.score);
+
+  const rank = fullLeaderboard.findIndex((item) => item.isPlayer) + 1;
+  const curIdx = Math.max(0, LEAGUE_TIERS.indexOf(prevTier));
+
+  let outcome = 'stay';
+  let rewardSnacks = 0;
+  let newTier = prevTier;
+
+  if (rank <= 5) {
+    const nextIdx = Math.min(LEAGUE_TIERS.length - 1, curIdx + 1);
+    newTier = LEAGUE_TIERS[nextIdx];
+    outcome = nextIdx > curIdx ? 'promoted' : 'stay_top';
+    const REWARD_MAP = { bronze: 3, silver: 4, gold: 5, ruby: 7, diamond: 10 };
+    rewardSnacks = REWARD_MAP[prevTier] || 3;
+    save.snacks = (save.snacks || 0) + rewardSnacks;
+  } else if (rank >= 18 && curIdx > 0) {
+    newTier = LEAGUE_TIERS[curIdx - 1];
+    outcome = 'demoted';
+  }
+
+  save.challenge.leagueTier = newTier;
+  save.challenge.weeklyScore = 0;
+  save.challenge.weekKey = currentWeek;
+
+  return {
+    outcome,
+    prevTier,
+    newTier,
+    rank,
+    rewardSnacks,
+  };
 }
 

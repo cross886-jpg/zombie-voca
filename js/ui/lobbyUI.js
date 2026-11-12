@@ -5,9 +5,10 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { COMPANIONS, COSTUMES } from '../data/catalog.js';
+import { BREEDS, COMPANIONS, COSTUMES } from '../data/catalog.js';
 import { CHAPTERS } from '../data/chapters.js';
 import { SUPPORTED_LANGUAGES, applyI18nToDOM, getLanguage, setLanguage, t } from '../data/i18n.js';
+import { getUnits, getWords } from '../data/data_en.js?v=2';
 import {
   exportSaveBase64,
   getSave,
@@ -15,13 +16,18 @@ import {
   updateSave,
 } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
-import { computePlayerStats, getEvolutionStage } from '../entities/player.js';
+import {
+  computePlayerStats,
+  drawDogCharacter,
+  drawDogSkin,
+  getEvolutionStage,
+} from '../entities/player.js';
 
 const DAILY_MISSION_DEFS = [
   { id: 'm_battle', key: 'battles', title: '전투 1회 출격', target: 1, gold: 100, snacks: 1 },
   { id: 'm_words', key: 'wordsCorrect', title: '영단어 20문제 정답', target: 20, gold: 150, snacks: 1 },
   { id: 'm_kills', key: 'kills', title: '좀비 50마리 처치', target: 50, gold: 140, snacks: 1 },
-  { id: 'm_review', key: 'miniReview', title: '기억 수첩 미니 복습 1회', target: 1, gold: 120, snacks: 2 },
+  { id: 'm_shop', key: 'shopVisit', title: '💎 상점 방문하기', target: 1, gold: 120, snacks: 2 },
 ];
 
 const ATTENDANCE_REWARDS = [
@@ -43,7 +49,8 @@ export function createLobbyUI({
   onStartTutorial,
   onRenderGear,
   onRenderTraining,
-  onRenderWordbook,
+  onRenderShop,
+  onRenderChallenge,
   onOpenSupplyShop,
 } = {}) {
   const lobbyLayer = document.getElementById('lobby-layer');
@@ -55,6 +62,7 @@ export function createLobbyUI({
   const evoStageName = document.getElementById('lobby-evo-stage-name');
   const resGold = document.getElementById('res-gold');
   const resSnacks = document.getElementById('res-snacks');
+  const resGems = document.getElementById('res-gems');
   const btnOpenSettings = document.getElementById('btn-open-settings');
 
   const battlePanel = document.getElementById('tab-panel-battle');
@@ -62,7 +70,8 @@ export function createLobbyUI({
     gear: document.getElementById('tab-panel-gear'),
     battle: battlePanel,
     training: document.getElementById('tab-panel-training'),
-    wordbook: document.getElementById('tab-panel-wordbook'),
+    shop: document.getElementById('tab-panel-shop'),
+    challenge: document.getElementById('tab-panel-challenge'),
   };
   const tabButtons = document.querySelectorAll('.lobby-tab-btn');
 
@@ -107,10 +116,15 @@ export function createLobbyUI({
     const save = getSave();
     const evo = getEvolutionStage(save.evoXp || 0);
     evoBadge.textContent = evo.icon;
-    playerTitle.textContent = t('app.playerDefaultName');
+    playerTitle.textContent = save.dogName || t('app.playerDefaultName');
     evoStageName.textContent = t(evo.key);
+    const certBadge = document.getElementById('lobby-cert-badge');
+    if (certBadge) {
+      certBadge.textContent = `🏅 ${save.certifiedLevel || 'A1'}`;
+    }
     resGold.textContent = String(save.gold || 0);
     resSnacks.textContent = String(save.snacks || 0);
+    if (resGems) resGems.textContent = String(save.gems ?? 300);
     const shopDot = document.getElementById('supply-shop-dot');
     if (shopDot) {
       shopDot.classList.toggle('hidden', (save.gold || 0) < BALANCE.SHOP.NORMAL_BOX_GOLD);
@@ -118,27 +132,8 @@ export function createLobbyUI({
   }
 
   const battleCtaBar = document.getElementById('battle-cta-bar');
-  let toastTimer = null;
-
-  function showToast(msg) {
-    let el = document.getElementById('lobby-toast');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'lobby-toast';
-      el.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-[#faf6ee] shadow-md border border-[#d2c8b4] text-xs font-bold text-[#1f2d24] pointer-events-none whitespace-nowrap transition-opacity';
-      lobbyLayer.appendChild(el);
-    }
-    el.textContent = msg;
-    el.classList.remove('hidden', 'opacity-0');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.add('opacity-0'), 1500);
-  }
 
   function switchTab(tabKey) {
-    if (tabKey === 'challenge') {
-      showToast('🔒 추후 오픈 예정인 도전 모드입니다!');
-      return;
-    }
     if (!tabPanels[tabKey]) return;
     activeTab = tabKey;
 
@@ -154,7 +149,6 @@ export function createLobbyUI({
 
     tabButtons.forEach((btn) => {
       const btnTab = btn.getAttribute('data-lobby-tab');
-      if (btnTab === 'challenge') return;
       const isCenter = btnTab === 'battle';
       const isActive = btnTab === tabKey;
 
@@ -185,8 +179,15 @@ export function createLobbyUI({
       onRenderGear?.();
     } else if (activeTab === 'training') {
       onRenderTraining?.();
-    } else if (activeTab === 'wordbook') {
-      onRenderWordbook?.();
+    } else if (activeTab === 'shop') {
+      updateSave((s) => {
+        if (!s.dailyMissions) s.dailyMissions = { progress: {} };
+        if (!s.dailyMissions.progress) s.dailyMissions.progress = {};
+        s.dailyMissions.progress.shopVisit = 1;
+      });
+      onRenderShop?.();
+    } else if (activeTab === 'challenge') {
+      onRenderChallenge?.();
     }
   }
 
@@ -225,6 +226,11 @@ export function createLobbyUI({
     ].join('');
 
     const currentCourse = BALANCE.COURSES.find((c) => c.id === save.selectedCourse) || BALANCE.COURSES[0];
+    const curUnitId = save.selectedUnit || 'unit_001';
+    const unitNum = parseInt(curUnitId.replace(/\D/g, ''), 10) || 1;
+    const allWords = getWords();
+    const curUnitWords = allWords.filter((w) => w.unit === curUnitId);
+    const curUnitLevel = curUnitWords[0]?.level || currentCourse.id.toUpperCase();
 
     const currentChNum = viewedChapter ?? (save.selectedChapter || 1);
     const chIndex = Math.max(0, CHAPTERS.findIndex((c) => c.number === currentChNum));
@@ -232,6 +238,23 @@ export function createLobbyUI({
     const chUnlocked = ch.number <= (save.unlockedChapter || 1);
     const hasPrevCh = chIndex > 0;
     const hasNextCh = chIndex < CHAPTERS.length - 1;
+
+    const curBreedId = save.selectedBreed || 'pomeranian';
+    const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
+    const dogName = save.dogName || '우유';
+
+    let heroIcon = stats.evoStage.icon;
+    let heroName = dogName;
+    if (save.equippedSkin === 'skin_crown') {
+      heroIcon = '👑';
+      heroName = `👑 황금 왕관 ${dogName}`;
+    } else if (save.equippedSkin === 'skin_astronaut') {
+      heroIcon = '🧑‍🚀';
+      heroName = `🧑‍🚀 우주비행사 ${dogName}`;
+    } else if (save.equippedSkin === 'skin_detective') {
+      heroIcon = '🕵️';
+      heroName = `🕵️ 탐정 ${dogName}`;
+    }
 
     battlePanel.className = 'flex flex-col justify-between min-h-full py-2';
     battlePanel.innerHTML = `
@@ -252,17 +275,48 @@ export function createLobbyUI({
             </button>
           </div>
 
-          <!-- 정중앙: 우유 오픈 스테이지 프리뷰 & 핵심 스탯 -->
+          <!-- 정중앙: 강아지 오픈 스테이지 프리뷰 & 이름표 & 견종 전환 & 핵심 스탯 -->
           <div class="flex-1 min-w-0 flex flex-col items-center text-center pt-1">
-            <div class="relative w-24 h-24 rounded-full bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center">
-              <div class="w-20 h-20 rounded-full bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] flex items-center justify-center text-5xl">${stats.evoStage.icon}</div>
+            <!-- 캐릭터 프리뷰 원형 및 좌우 견종 전환 화살표 -->
+            <div class="flex items-center justify-center gap-2">
+              <button id="btn-breed-prev" type="button" class="w-8 h-8 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[#1f2d24] hover:bg-[#efe9dc] font-black text-xs flex items-center justify-center active:scale-90 transition shrink-0" title="이전 견종">
+                ◀
+              </button>
+
+              <div class="relative w-24 h-24 rounded-full bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center">
+                <canvas id="lobby-hero-canvas" width="88" height="88" class="w-20 h-20 rounded-full bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
+              </div>
+
+              <button id="btn-breed-next" type="button" class="w-8 h-8 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[#1f2d24] hover:bg-[#efe9dc] font-black text-xs flex items-center justify-center active:scale-90 transition shrink-0" title="다음 견종">
+                ▶
+              </button>
             </div>
-            <div class="flex items-center justify-center gap-1.5 mt-1.5">
-              <span class="text-sm font-black text-[#1f2d24]">🐶 우유</span>
+
+            <!-- 강아지 이름표 (클릭 시 이름 편집) & 전투력 -->
+            <div class="flex items-center justify-center gap-1.5 mt-2">
+              <button id="btn-edit-dog-name" type="button" class="group inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#faf6ee] hover:bg-[#efe9dc] border border-[#d2c8b4] shadow-xs active:scale-95 transition" title="강아지 이름 변경">
+                <span class="text-xs">🐾</span>
+                <span class="text-sm font-black text-[#1f2d24] group-hover:text-emerald-800">${heroName}</span>
+                <span class="text-[11px] text-[#4a584e] group-hover:text-emerald-700">✏️</span>
+              </button>
               <span class="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-600/35 text-[10px] font-black text-amber-800">전투력 ${stats.combatPower}</span>
             </div>
-            <div class="text-[11px] font-bold text-emerald-800 truncate max-w-full mt-0.5">${t(stats.evoStage.key)}</div>
-            <div class="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[10px] font-bold text-[#1f2d24]">📚 ${t(currentCourse.labelKey)}</div>
+
+            <!-- 현재 선택된 견종명 배지 & 진화 단계 -->
+            <div class="flex items-center justify-center gap-1.5 mt-1">
+              <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">
+                🐶 ${curBreed.name}
+              </span>
+              <span class="text-[10px] text-[#a3b899]">·</span>
+              <span class="text-[10px] font-bold text-emerald-800 truncate">${t(stats.evoStage.key)}</span>
+            </div>
+
+            <button id="btn-select-unit" type="button" class="inline-flex items-center gap-1.5 px-3 py-1 mt-1 rounded-full bg-[#faf6ee] shadow-sm border border-emerald-600/40 text-[10px] font-extrabold text-emerald-900 hover:bg-emerald-50 active:scale-95 transition">
+              <span>📚</span>
+              <span>Unit ${unitNum}</span>
+              <span class="text-[9px] px-1 rounded bg-emerald-100 text-emerald-800 font-bold">${curUnitLevel}</span>
+              <span class="text-[8px] text-[#4a584e]">▾</span>
+            </button>
             ${visualBadgesHtml ? `<div class="flex flex-wrap justify-center gap-1 mt-1.5">${visualBadgesHtml}</div>` : ''}
 
             <div class="flex items-center justify-center gap-3 mt-3 text-xs font-extrabold">
@@ -299,6 +353,28 @@ export function createLobbyUI({
       </div>
     `;
 
+    const drawLobbyPreview = () => {
+      const canvas = document.getElementById('lobby-hero-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
+      drawDogCharacter(ctx, {
+        breedId: curBreedId,
+        scale: 1.45,
+        bodyY: 0,
+        lookX: 0,
+        isBipedal: false,
+      });
+      if (save.equippedSkin) {
+        drawDogSkin(ctx, save.equippedSkin, 1.45, 0);
+      }
+      ctx.restore();
+    };
+
+    drawLobbyPreview();
+
     const moveChapter = (delta) => {
       const nextIdx = Math.max(0, Math.min(CHAPTERS.length - 1, chIndex + delta));
       const targetCh = CHAPTERS[nextIdx];
@@ -311,6 +387,23 @@ export function createLobbyUI({
       renderBattleTab();
     };
 
+    const switchBreed = (delta) => {
+      const cur = getSave();
+      const id = cur.selectedBreed || 'pomeranian';
+      const idx = Math.max(0, BREEDS.findIndex((b) => b.id === id));
+      const nextIdx = (idx + delta + BREEDS.length) % BREEDS.length;
+      updateSave((s) => {
+        s.selectedBreed = BREEDS[nextIdx].id;
+      });
+      audioEngine.playCaptureTick();
+      renderBattleTab();
+    };
+
+    document.getElementById('btn-breed-prev')?.addEventListener('click', () => switchBreed(-1));
+    document.getElementById('btn-breed-next')?.addEventListener('click', () => switchBreed(1));
+    document.getElementById('btn-edit-dog-name')?.addEventListener('click', openEditDogNameModal);
+
+    document.getElementById('btn-select-unit')?.addEventListener('click', openUnitSelectModal);
     document.getElementById('btn-chapter-prev')?.addEventListener('click', () => moveChapter(-1));
     document.getElementById('btn-chapter-next')?.addEventListener('click', () => moveChapter(1));
 
@@ -319,12 +412,143 @@ export function createLobbyUI({
     document.getElementById('btn-open-attendance')?.addEventListener('click', openAttendanceModal);
   }
 
+  function openEditDogNameModal(options = {}) {
+    const onSaved = typeof options === 'function' ? options : options.onSaved;
+    const onCancel = options.onCancel;
+    const save = getSave();
+    const currentName = save.dogName || '우유';
+
+    openModal(`
+      <div class="space-y-3.5 text-center">
+        <div class="text-4xl">🐾</div>
+        <div>
+          <h3 class="text-base font-black text-emerald-800">강아지 이름 변경</h3>
+          <p class="text-xs text-[#4a584e] mt-0.5">내 강아지의 새 이름을 입력해 주세요 (최대 8자)</p>
+        </div>
+        <div>
+          <input
+            id="input-dog-name"
+            type="text"
+            maxlength="8"
+            value="${currentName}"
+            placeholder="이름 입력 (1~8자)"
+            class="w-full px-3 py-2.5 rounded-xl border border-emerald-600/40 bg-[#faf6ee] text-[#1f2d24] font-black text-center text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner"
+          />
+          <div id="dog-name-error" class="text-[11px] font-bold text-rose-600 mt-1.5 hidden">이름을 1~8글자로 입력해 주세요.</div>
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button id="btn-cancel-dog-name" type="button" class="flex-1 py-2.5 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] text-[#1f2d24] font-bold text-xs active:scale-95 transition">
+            취소
+          </button>
+          <button id="btn-save-dog-name" type="button" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-xs shadow-md active:scale-95 transition">
+            저장
+          </button>
+        </div>
+      </div>
+    `);
+
+    const input = document.getElementById('input-dog-name');
+    input?.focus();
+    input?.select();
+
+    const doSave = () => {
+      const newName = input?.value?.trim() || '';
+      if (!newName || newName.length > 8) {
+        const err = document.getElementById('dog-name-error');
+        if (err) err.classList.remove('hidden');
+        return;
+      }
+      updateSave((s) => {
+        s.dogName = newName;
+      });
+      audioEngine.playCaptureTick();
+      closeModal();
+      refreshHeader();
+      renderBattleTab();
+      if (onSaved) onSaved();
+    };
+
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSave();
+      }
+    });
+
+    document.getElementById('btn-cancel-dog-name')?.addEventListener('click', () => {
+      closeModal();
+      if (onCancel) onCancel();
+    });
+    document.getElementById('btn-save-dog-name')?.addEventListener('click', doSave);
+  }
+
+  function openUnitSelectModal() {
+    const save = getSave();
+    const curUnit = save.selectedUnit || 'unit_001';
+    const allWords = getWords();
+    const units = getUnits();
+
+    const unitItems = units.slice(0, 40).map((u) => {
+      const uWords = allWords.filter((w) => w.unit === u);
+      const level = uWords[0]?.level || 'A1';
+      const preview = uWords.slice(0, 3).map((w) => w.word).join(', ');
+      const isSelected = u === curUnit;
+      const num = parseInt(u.replace(/\D/g, ''), 10) || 1;
+      return `
+        <button type="button" data-unit="${u}" class="btn-pick-unit w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
+          isSelected
+            ? 'bg-emerald-700 text-white border-emerald-500 shadow-md'
+            : 'bg-[#faf6ee] text-[#1f2d24] border-[#d2c8b4] hover:bg-emerald-50'
+        }">
+          <div>
+            <div class="text-xs font-black flex items-center gap-1.5">
+              <span>Unit ${num}</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-emerald-900 text-emerald-200' : 'bg-emerald-100 text-emerald-800'} font-bold">${level}</span>
+            </div>
+            <div class="text-[10px] ${isSelected ? 'text-emerald-100' : 'text-[#4a584e]'} mt-0.5">${preview}... (${uWords.length}단어)</div>
+          </div>
+          ${isSelected ? '<span class="text-xs">✔</span>' : ''}
+        </button>
+      `;
+    }).join('');
+
+    openModal(`
+      <div class="space-y-3">
+        <div class="flex items-center justify-between border-b border-[#d2c8b4] pb-2">
+          <h3 class="text-sm font-black text-emerald-800">📚 학습 유닛 선택</h3>
+          <span class="text-xs text-[#4a584e] font-bold">초급(Unit 1~26)</span>
+        </div>
+        <div class="max-h-[360px] overflow-y-auto space-y-1.5 pr-1">
+          ${unitItems}
+        </div>
+      </div>
+    `);
+
+    modalCard.querySelectorAll('.btn-pick-unit').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const picked = btn.dataset.unit;
+        updateSave((s) => {
+          s.selectedUnit = picked;
+          const uWords = allWords.filter((w) => w.unit === picked);
+          const lvl = uWords[0]?.level || 'A1';
+          if (lvl === 'A1') s.selectedCourse = 'lv1';
+          else if (lvl === 'A2') s.selectedCourse = 'lv2';
+          else if (lvl === 'B1' || lvl === 'B2') s.selectedCourse = 'lv3';
+          else s.selectedCourse = 'lv4';
+        });
+        closeModal();
+        renderBattleTab();
+      });
+    });
+  }
+
   document.getElementById('btn-start-battle')?.addEventListener('click', () => {
     console.log('[Lobby] Start Battle clicked');
     const cur = getSave();
     onStartBattle?.({
       chapterNumber: cur.selectedChapter,
       courseId: cur.selectedCourse,
+      unitId: cur.selectedUnit || 'unit_001',
     });
   });
 
@@ -448,6 +672,11 @@ export function createLobbyUI({
   function openSettingsModal() {
     const save = getSave();
     const curLang = getLanguage();
+    const curBreedId = save.selectedBreed || 'pomeranian';
+    const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
+    const evo = getEvolutionStage(save.evoXp || 0);
+    const certLevel = save.certifiedLevel || 'A1';
+    const dogName = save.dogName || '우유';
 
     const langBtns = SUPPORTED_LANGUAGES.map(
       (l) => `
@@ -459,6 +688,8 @@ export function createLobbyUI({
     `
     ).join('');
 
+    const isRight = (save.dominantHand || 'right') === 'right';
+
     openModal(`
       <div class="space-y-4">
         <div class="flex items-center justify-between">
@@ -466,9 +697,47 @@ export function createLobbyUI({
           <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold">✕</button>
         </div>
 
+        <!-- 강아지 프로필 카드 -->
+        <div class="p-3 rounded-2xl bg-gradient-to-r from-[#234735] to-[#1b3b2b] text-[#f8f5ec] shadow-sm flex items-center gap-3 border border-[#2d5a43]">
+          <div class="w-16 h-16 rounded-xl bg-[#142c20]/60 border border-[#2d5a43] flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+            <canvas id="settings-dog-canvas" width="64" height="64" class="w-16 h-16"></canvas>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-sm font-black text-amber-200 truncate">${dogName}</span>
+              <button id="btn-settings-edit-name" type="button" class="px-1.5 py-0.5 rounded-md bg-[#2d5a43] hover:bg-[#386d52] text-[10px] font-bold text-white active:scale-95 transition" title="이름 변경">
+                ✏️ 수정
+              </button>
+            </div>
+            <div class="text-[11px] font-medium text-emerald-200/80 mt-0.5">
+              ${curBreed.name} · ${t(evo.key)}
+            </div>
+            <div class="mt-1 flex items-center gap-1.5">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-[10px] font-black text-amber-300">
+                🏅 공인 등급: ${certLevel}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div class="space-y-1.5">
           <div class="text-xs font-bold text-[#4a584e]">${t('modal.languageLabel')}</div>
           <div class="flex gap-2">${langBtns}</div>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="text-xs font-bold text-[#4a584e] flex items-center justify-between">
+            <span>🖐️ 조작 손 설정</span>
+            <span class="text-[11px] font-semibold text-emerald-800">${isRight ? '필살기: 왼쪽 하단' : '필살기: 오른쪽 하단'}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" class="hand-btn py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 ${isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#f0ebe0] text-[#4a584e] border-[#d2c8b4]'}" data-hand="right">
+              👉 오른손잡이
+            </button>
+            <button type="button" class="hand-btn py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 ${!isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#f0ebe0] text-[#4a584e] border-[#d2c8b4]'}" data-hand="left">
+              👈 왼손잡이
+            </button>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-2">
@@ -499,6 +768,35 @@ export function createLobbyUI({
       </div>
     `);
 
+    const drawSettingsDog = () => {
+      const canvas = document.getElementById('settings-dog-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
+      drawDogCharacter(ctx, {
+        breedId: curBreedId,
+        scale: 1.15,
+        bodyY: 0,
+        lookX: 0,
+        isBipedal: false,
+      });
+      if (save.equippedSkin) {
+        drawDogSkin(ctx, save.equippedSkin, 1.15, 0);
+      }
+      ctx.restore();
+    };
+
+    drawSettingsDog();
+
+    document.getElementById('btn-settings-edit-name')?.addEventListener('click', () => {
+      openEditDogNameModal({
+        onSaved: () => openSettingsModal(),
+        onCancel: () => openSettingsModal(),
+      });
+    });
+
     document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
 
     modalCard.querySelectorAll('.lang-btn').forEach((btn) => {
@@ -511,6 +809,16 @@ export function createLobbyUI({
         applyI18nToDOM();
         refreshHeader();
         renderActiveTab();
+        openSettingsModal();
+      });
+    });
+
+    modalCard.querySelectorAll('.hand-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const hand = btn.getAttribute('data-hand');
+        updateSave((s) => {
+          s.dominantHand = hand;
+        });
         openSettingsModal();
       });
     });

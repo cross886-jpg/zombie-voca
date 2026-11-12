@@ -30,15 +30,20 @@ export function computePlayerStats(saveData, skills = {}) {
   const trainSpeedBonus = getTrainingBonusValue('speedLv', safeSave.training?.speedLv || 0);
   const trainMagnetBonus = getTrainingBonusValue('magnetLv', safeSave.training?.magnetLv || 0);
 
+  const shopHp = (safeSave.shopUpgrades?.bonusHp || 0) * 20;
+  const shopMagnet = (safeSave.shopUpgrades?.gemMagnet || 0) * 25;
+  const skinAtk = safeSave.equippedSkin === 'skin_crown' ? 8 : (safeSave.equippedSkin === 'skin_astronaut' ? 5 : (safeSave.equippedSkin === 'skin_detective' ? 3 : 0));
+  const skinHp = safeSave.equippedSkin === 'skin_crown' ? 30 : (safeSave.equippedSkin === 'skin_astronaut' ? 20 : (safeSave.equippedSkin === 'skin_detective' ? 10 : 0));
+
   const passiveAtkMult = 1 + (skills.passive_sharp_fangs || 0) * (SKILLS.find((s) => s.id === 'passive_sharp_fangs')?.perLevel || 0.14);
   const passiveHpMult = 1 + (skills.passive_thick_fur || 0) * (SKILLS.find((s) => s.id === 'passive_thick_fur')?.perLevel || 0.15);
   const passiveSpeedMult = 1 + (skills.passive_zoomies || 0) * (SKILLS.find((s) => s.id === 'passive_zoomies')?.perLevel || 0.1);
   const passivePickupMult = 1 + (skills.passive_magnet || 0) * (SKILLS.find((s) => s.id === 'passive_magnet')?.perLevel || 0.25);
 
-  const maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus) * evoStage.hpMult * passiveHpMult);
-  const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus) * evoStage.atkMult * passiveAtkMult);
+  const maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus + shopHp + skinHp) * evoStage.hpMult * passiveHpMult);
+  const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus + skinAtk) * evoStage.atkMult * passiveAtkMult);
   const speed = BALANCE.PLAYER.BASE_SPEED * (1 + trainSpeedBonus) * passiveSpeedMult;
-  const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus) * passivePickupMult;
+  const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus + shopMagnet) * passivePickupMult;
   const radius = BALANCE.PLAYER.RADIUS * evoStage.scale;
   const combatPower = Math.round(atk * 5 + maxHp * 0.8 + speed * 0.5);
 
@@ -92,6 +97,14 @@ export class Player {
     this.walkPhase = 0;
 
     this.skills = { bark_sonic: 1 };
+    if ((saveData?.shopUpgrades?.bonusWeapon || 0) >= 1) {
+      this.skills.bark_flame = 1;
+    }
+    if ((saveData?.shopUpgrades?.bonusWeapon || 0) >= 2) {
+      this.skills.passive_sharp_fangs = Math.max(1, saveData.shopUpgrades.bonusWeapon - 1);
+    }
+    this.equippedSkin = saveData?.equippedSkin || null;
+    this.selectedBreed = saveData?.selectedBreed || 'pomeranian';
     this.evoStage = getEvolutionStage(saveData.evoXp || 0);
     this.equipped = { ...(saveData.costumes?.equipped || {}) };
 
@@ -150,13 +163,15 @@ export class Player {
     this.y += this.vy * dt;
     resolveCircleCollisions(this, obstacles);
 
-    // 네온 방화벽 경계 클램프
-    const minBound = BALANCE.ARENA.FIREWALL_MARGIN + this.radius;
+    // 네온 방화벽 경계 클램프 (상단 전광판 높이 감안 topMargin 보정)
+    const topMargin = 120;
+    const minBoundX = BALANCE.ARENA.FIREWALL_MARGIN + this.radius;
+    const minBoundY = BALANCE.ARENA.FIREWALL_MARGIN + this.radius + topMargin;
     const maxBoundX = arenaWidth - BALANCE.ARENA.FIREWALL_MARGIN - this.radius;
     const maxBoundY = arenaHeight - BALANCE.ARENA.FIREWALL_MARGIN - this.radius;
 
-    this.x = Math.max(minBound, Math.min(maxBoundX, this.x));
-    this.y = Math.max(minBound, Math.min(maxBoundY, this.y));
+    this.x = Math.max(minBoundX, Math.min(maxBoundX, this.x));
+    this.y = Math.max(minBoundY, Math.min(maxBoundY, this.y));
   }
 
   takeDamage(amount) {
@@ -249,55 +264,18 @@ export class Player {
       ctx.fill();
     }
 
-    // [레이어 3] 화이트 포메라니안 '우유' 본체 (진화 단계별 실루엣)
+    // [레이어 3] 선택된 견종 강아지 본체
     const isBipedal = this.evoStage.stage >= 1;
     const bodyY = (isBipedal ? -2 : 2) + bob;
-
-    // 복슬복슬 꼬리
-    ctx.fillStyle = '#f8fafc';
-    ctx.beginPath();
-    ctx.arc(-13 * s, (bodyY + 4) * s, 7 * s, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 몸통 (4족 -> 2족 직립)
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    if (isBipedal) {
-      ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-    } else {
-      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-    }
-    ctx.fill();
-
-    // 머리 (포메라니안 둥근 털)
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 뾰족한 귀 2개
-    ctx.fillStyle = '#f1f5f9';
-    ctx.beginPath();
-    ctx.moveTo(-10 * s, (bodyY - 16) * s);
-    ctx.lineTo(-6 * s, (bodyY - 24) * s);
-    ctx.lineTo(-2 * s, (bodyY - 17) * s);
-    ctx.moveTo(10 * s, (bodyY - 16) * s);
-    ctx.lineTo(6 * s, (bodyY - 24) * s);
-    ctx.lineTo(2 * s, (bodyY - 17) * s);
-    ctx.fill();
-
-    // 눈 & 코
     const lookX = Math.cos(this.facingAngle) * 2.5;
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.arc((-4.5 + lookX) * s, (bodyY - 9) * s, 1.9 * s, 0, Math.PI * 2);
-    ctx.arc((4.5 + lookX) * s, (bodyY - 9) * s, 1.9 * s, 0, Math.PI * 2);
-    ctx.fill();
 
-    ctx.fillStyle = '#1e293b';
-    ctx.beginPath();
-    ctx.arc(lookX * s, (bodyY - 5.5) * s, 1.6 * s, 0, Math.PI * 2);
-    ctx.fill();
+    drawDogCharacter(ctx, {
+      breedId: this.selectedBreed,
+      scale: s,
+      bodyY,
+      lookX,
+      isBipedal,
+    });
 
     // [레이어 4] 진화 2단계 이상 에너지 블레이드 또는 무기 파츠
     const weaponItem = this._getCostumeItem('weapon');
@@ -321,6 +299,381 @@ export class Player {
       ctx.fill();
     }
 
+    // [레이어 6] 상점 프리미엄 우유 스킨 시각 효과 (모든 견종 호환)
+    if (this.equippedSkin) {
+      drawDogSkin(ctx, this.equippedSkin, s, bodyY);
+    }
+
+    ctx.restore();
+  }
+}
+
+/**
+ * 5종 강아지 견종 외형 캔버스 렌더러 (포메라니안, 골든 리트리버, 웰시코기, 시바견, 비글)
+ */
+export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY = 0, lookX = 0, isBipedal = false } = {}) {
+  const s = scale;
+
+  switch (breedId) {
+    case 'retriever': {
+      // 골든 리트리버: 풍성한 꿀빛 골드 털, 늘어진 큰 귀, 긴 꼬리
+      // 1. 살랑이는 긴 꼬리
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(-12 * s, (bodyY + 6) * s);
+      ctx.quadraticCurveTo(-22 * s, (bodyY + 1) * s, -18 * s, (bodyY - 7) * s);
+      ctx.quadraticCurveTo(-14 * s, (bodyY + 1) * s, -9 * s, (bodyY + 7) * s);
+      ctx.fill();
+
+      // 2. 몸통 & 밝은 가슴 털
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 14 * s, 15 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 12 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 크림빛 가슴털
+      ctx.fillStyle = '#fef3c7';
+      ctx.beginPath();
+      ctx.ellipse(0, (bodyY + 7) * s, 8 * s, 8 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. 머리 (따뜻한 골드)
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 머즐 (주둥이)
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 5) * s, 7 * s, 5.5 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. 양옆으로 늘어진 큰 귀 (Hound/Retriever Floppy Ears)
+      ctx.fillStyle = '#d97706';
+      ctx.beginPath();
+      ctx.moveTo(-9 * s, (bodyY - 14) * s);
+      ctx.bezierCurveTo(-16 * s, (bodyY - 8) * s, -17 * s, (bodyY + 2) * s, -11 * s, (bodyY + 4) * s);
+      ctx.bezierCurveTo(-9 * s, (bodyY + 1) * s, -8 * s, (bodyY - 7) * s, -7 * s, (bodyY - 12) * s);
+      ctx.moveTo(9 * s, (bodyY - 14) * s);
+      ctx.bezierCurveTo(16 * s, (bodyY - 8) * s, 17 * s, (bodyY + 2) * s, 11 * s, (bodyY + 4) * s);
+      ctx.bezierCurveTo(9 * s, (bodyY + 1) * s, 8 * s, (bodyY - 7) * s, 7 * s, (bodyY - 12) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'corgi': {
+      // 웰시코기: 황갈색·흰색 투톤, 거대하고 쫑긋한 귀, 둥근 식빵 엉덩이 디테일
+      // 1. 둥근 식빵 엉덩이 & 짧은 꼬리
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      ctx.arc(-13 * s, (bodyY + 6) * s, 7.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fed7aa';
+      ctx.beginPath();
+      ctx.arc(-14 * s, (bodyY + 6) * s, 4.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 몸통 (상단 황갈색 + 하단 흰색 투톤)
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 14 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 11.5 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 흰색 앞가슴/배 털
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(0, (bodyY + 8) * s, 9 * s, 8 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. 머리 (황갈색)
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 코기 얼굴 흰색 블레이즈 (눈 사이부터 주둥이까지 이어지는 흰 털)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 6) * s, 5.5 * s, 6.5 * s, 0, 0, Math.PI * 2);
+      ctx.moveTo((-2 + lookX) * s, (bodyY - 15) * s);
+      ctx.lineTo((2 + lookX) * s, (bodyY - 15) * s);
+      ctx.lineTo((3.5 + lookX) * s, (bodyY - 9) * s);
+      ctx.lineTo((-3.5 + lookX) * s, (bodyY - 9) * s);
+      ctx.fill();
+
+      // 4. 크고 쫑긋한 세모 귀 (Large rounded triangle ears)
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      ctx.moveTo(-11 * s, (bodyY - 14) * s);
+      ctx.lineTo(-9 * s, (bodyY - 27) * s);
+      ctx.lineTo(-3 * s, (bodyY - 17) * s);
+      ctx.moveTo(11 * s, (bodyY - 14) * s);
+      ctx.lineTo(9 * s, (bodyY - 27) * s);
+      ctx.lineTo(3 * s, (bodyY - 17) * s);
+      ctx.fill();
+
+      // 핑크빛 귀 안쪽
+      ctx.fillStyle = '#fed7aa';
+      ctx.beginPath();
+      ctx.moveTo(-9.5 * s, (bodyY - 15) * s);
+      ctx.lineTo(-8.5 * s, (bodyY - 24) * s);
+      ctx.lineTo(-4.5 * s, (bodyY - 17) * s);
+      ctx.moveTo(9.5 * s, (bodyY - 15) * s);
+      ctx.lineTo(8.5 * s, (bodyY - 24) * s);
+      ctx.lineTo(4.5 * s, (bodyY - 17) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'shiba': {
+      // 시바견: 황갈색 털, 하얀 볼터치(우라지로), 하얀 눈썹 점, 돌돌 말린 꼬리
+      // 1. 돌돌 말린 도넛 꼬리 (Curled tail)
+      ctx.fillStyle = '#c2410c';
+      ctx.beginPath();
+      ctx.arc(-13 * s, (bodyY + 2) * s, 6.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fafaf9';
+      ctx.beginPath();
+      ctx.arc(-13 * s, (bodyY + 2) * s, 3 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 몸통 & 흰 가슴 (우라지로)
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = '#fafaf9';
+      ctx.beginPath();
+      ctx.ellipse(0, (bodyY + 7) * s, 8 * s, 8 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. 머리 (황갈색)
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 하얀 볼살 패치 (양 볼의 흰 우라지로)
+      ctx.fillStyle = '#fafaf9';
+      ctx.beginPath();
+      ctx.ellipse((-6.5 + lookX * 0.5) * s, (bodyY - 5.5) * s, 5 * s, 4.5 * s, -0.2, 0, Math.PI * 2);
+      ctx.ellipse((6.5 + lookX * 0.5) * s, (bodyY - 5.5) * s, 5 * s, 4.5 * s, 0.2, 0, Math.PI * 2);
+      ctx.ellipse(lookX * s, (bodyY - 5.5) * s, 4.5 * s, 4 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. 단단하고 쫑긋한 세모 귀
+      ctx.fillStyle = '#c2410c';
+      ctx.beginPath();
+      ctx.moveTo(-10 * s, (bodyY - 15) * s);
+      ctx.lineTo(-7 * s, (bodyY - 24) * s);
+      ctx.lineTo(-2.5 * s, (bodyY - 17) * s);
+      ctx.moveTo(10 * s, (bodyY - 15) * s);
+      ctx.lineTo(7 * s, (bodyY - 24) * s);
+      ctx.lineTo(2.5 * s, (bodyY - 17) * s);
+      ctx.fill();
+
+      ctx.fillStyle = '#fed7aa';
+      ctx.beginPath();
+      ctx.moveTo(-8.5 * s, (bodyY - 16) * s);
+      ctx.lineTo(-7 * s, (bodyY - 22) * s);
+      ctx.lineTo(-4 * s, (bodyY - 17) * s);
+      ctx.moveTo(8.5 * s, (bodyY - 16) * s);
+      ctx.lineTo(7 * s, (bodyY - 22) * s);
+      ctx.lineTo(4 * s, (bodyY - 17) * s);
+      ctx.fill();
+
+      // 5. 시바견의 상징: 하얀 눈썹 점 2개!
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc((-5 + lookX) * s, (bodyY - 13) * s, 1.6 * s, 0, Math.PI * 2);
+      ctx.arc((5 + lookX) * s, (bodyY - 13) * s, 1.6 * s, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case 'beagle': {
+      // 비글: 흰색 바탕에 갈색·검정 삼색 얼룩(Tri-color), 처진 귀, 흰 끝 꼬리
+      // 1. 위로 솟은 흰 끝 사냥개 꼬리
+      ctx.fillStyle = '#92400e';
+      ctx.beginPath();
+      ctx.moveTo(-11 * s, (bodyY + 6) * s);
+      ctx.lineTo(-19 * s, (bodyY - 4) * s);
+      ctx.lineTo(-16 * s, (bodyY - 6) * s);
+      ctx.lineTo(-8 * s, (bodyY + 6) * s);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-18 * s, (bodyY - 4) * s, 3.2 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 몸통 (흰색 바탕 + 검은 안장 패치)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 등 부분 블랙 안장 패치 (Black saddle)
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.ellipse(-2 * s, (bodyY + 3) * s, 8.5 * s, 9 * s, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. 머리 (갈색 + 흰 블레이즈)
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 얼굴 중앙 흰색 주둥이 & 블레이즈
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 5.5) * s, 5.5 * s, 5 * s, 0, 0, Math.PI * 2);
+      ctx.moveTo((-1.8 + lookX) * s, (bodyY - 14) * s);
+      ctx.lineTo((1.8 + lookX) * s, (bodyY - 14) * s);
+      ctx.lineTo((2.5 + lookX) * s, (bodyY - 8) * s);
+      ctx.lineTo((-2.5 + lookX) * s, (bodyY - 8) * s);
+      ctx.fill();
+
+      // 4. 길게 처진 비글 귀 (Hound floppy ears)
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.moveTo(-9 * s, (bodyY - 13) * s);
+      ctx.bezierCurveTo(-16 * s, (bodyY - 7) * s, -17 * s, (bodyY + 1) * s, -11 * s, (bodyY + 3) * s);
+      ctx.bezierCurveTo(-9 * s, (bodyY) * s, -8 * s, (bodyY - 6) * s, -7 * s, (bodyY - 11) * s);
+      ctx.moveTo(9 * s, (bodyY - 13) * s);
+      ctx.bezierCurveTo(16 * s, (bodyY - 7) * s, 17 * s, (bodyY + 1) * s, 11 * s, (bodyY + 3) * s);
+      ctx.bezierCurveTo(9 * s, (bodyY) * s, 8 * s, (bodyY - 6) * s, 7 * s, (bodyY - 11) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'pomeranian':
+    default: {
+      // 포메라니안: 뽀얀 크림 화이트 솜사탕 털, 쫑긋한 작은 세모 귀, 말린 꼬리
+      // 1. 복슬복슬 둥근 꼬리
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(-13 * s, (bodyY + 4) * s, 7 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 몸통
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 3. 머리 (솜사탕 털)
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. 쫑긋한 작은 세모 귀
+      ctx.fillStyle = '#f1f5f9';
+      ctx.beginPath();
+      ctx.moveTo(-10 * s, (bodyY - 16) * s);
+      ctx.lineTo(-6 * s, (bodyY - 24) * s);
+      ctx.lineTo(-2 * s, (bodyY - 17) * s);
+      ctx.moveTo(10 * s, (bodyY - 16) * s);
+      ctx.lineTo(6 * s, (bodyY - 24) * s);
+      ctx.lineTo(2 * s, (bodyY - 17) * s);
+      ctx.fill();
+
+      // 핑크빛 안쪽 귀
+      ctx.fillStyle = '#fecdd3';
+      ctx.beginPath();
+      ctx.moveTo(-8.5 * s, (bodyY - 17) * s);
+      ctx.lineTo(-6 * s, (bodyY - 22) * s);
+      ctx.lineTo(-3.5 * s, (bodyY - 18) * s);
+      ctx.moveTo(8.5 * s, (bodyY - 17) * s);
+      ctx.lineTo(6 * s, (bodyY - 22) * s);
+      ctx.lineTo(3.5 * s, (bodyY - 18) * s);
+      ctx.fill();
+      break;
+    }
+  }
+
+  // 공통: 초롱초롱한 눈 & 반짝이는 코
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc((-4.5 + lookX) * s, (bodyY - 9) * s, 1.9 * s, 0, Math.PI * 2);
+  ctx.arc((4.5 + lookX) * s, (bodyY - 9) * s, 1.9 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 눈 하이라이트 (반짝임)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc((-5.2 + lookX) * s, (bodyY - 9.7) * s, 0.7 * s, 0, Math.PI * 2);
+  ctx.arc((3.8 + lookX) * s, (bodyY - 9.7) * s, 0.7 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 코
+  ctx.fillStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.arc(lookX * s, (bodyY - 5.5) * s, 1.6 * s, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * 상점 프리미엄 스킨 (황금 왕관, 탐정 모자, 우주 헬멧) 렌더러
+ */
+export function drawDogSkin(ctx, skinId, scale = 1, bodyY = 0) {
+  const s = scale;
+  if (skinId === 'skin_crown') {
+    ctx.save();
+    ctx.fillStyle = '#facc15';
+    ctx.shadowColor = '#eab308';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(-8 * s, (bodyY - 21) * s);
+    ctx.lineTo(-6 * s, (bodyY - 30) * s);
+    ctx.lineTo(-2 * s, (bodyY - 24) * s);
+    ctx.lineTo(0, (bodyY - 32) * s);
+    ctx.lineTo(2 * s, (bodyY - 24) * s);
+    ctx.lineTo(6 * s, (bodyY - 30) * s);
+    ctx.lineTo(8 * s, (bodyY - 21) * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  } else if (skinId === 'skin_detective') {
+    ctx.save();
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.roundRect(-12 * s, (bodyY - 22) * s, 24 * s, 5 * s, 2 * s);
+    ctx.roundRect(-8 * s, (bodyY - 28) * s, 16 * s, 8 * s, 3 * s);
+    ctx.fill();
+    ctx.restore();
+  } else if (skinId === 'skin_astronaut') {
+    ctx.save();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.28)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, (bodyY - 8) * s, 15 * s, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fill();
     ctx.restore();
   }
 }

@@ -48,13 +48,25 @@ function parseCsvLine(line) {
  */
 export function sanitizeMeaning(rawMeaning, maxChars = BALANCE.VOCA.MEANING_MAX_CHARS) {
   if (!rawMeaning) return '';
-  let text = String(rawMeaning)
-    .replace(/\([^)]*\)/g, '') // 괄호 제거
-    .split(/[,;/·]/)[0]          // 첫 번째 핵심 뜻만 사용
+
+  // 복수 의미 중 첫 번째가 단순 인명/지명인 경우 일반 의미 우선 선택
+  const parts = String(rawMeaning).split('/');
+  let candidate = parts[0];
+  if (parts.length > 1 && /(?:인명|지명|성씨)/.test(candidate)) {
+    candidate = parts.find((p) => !/(?:인명|지명|성씨)/.test(p)) || parts[0];
+  }
+
+  let text = String(candidate)
+    .replace(/\([^)]*\)/g, '') // 괄호 부연설명 제거
+    .replace(/[a-zA-Z]/g, '')  // 잔여 영문 알파벳 제거
+    .split(/[,;·]/)[0]         // 첫 번째 핵심 뜻 추출
     .trim();
 
   if (!text) {
-    text = String(rawMeaning).trim();
+    text = String(rawMeaning)
+      .replace(/\([^)]*\)/g, '')
+      .replace(/[a-zA-Z]/g, '')
+      .trim();
   }
 
   if (text.length > maxChars) {
@@ -106,12 +118,19 @@ function parseMasterCsv(csvText) {
 
     if (!word || !rawMeaning) continue;
 
+    // 단순 서양 인명/고유명사 단독 항목(예: '루크 (인명)', '존 (인명)' 등 학습 비적합 어휘) 필터링
+    const isPureProperName = /(?:\(인명\)|여자이름|남자이름|\(지명\)|\(성씨\/인명\))/.test(rawMeaning) && !rawMeaning.includes('/');
+    if (isPureProperName) continue;
+
+    const meaning = sanitizeMeaning(rawMeaning);
+    if (!meaning) continue;
+
     unitSet.add(unit);
     words.push({
       id: rank,
       unit,
       word,
-      meaning: sanitizeMeaning(rawMeaning),
+      meaning,
       pos: inferPos(rawMeaning),
       level,
       phonetic,

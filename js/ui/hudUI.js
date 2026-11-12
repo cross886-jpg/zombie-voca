@@ -8,6 +8,8 @@ import { BALANCE } from '../config/balance.js';
 import { t } from '../data/i18n.js';
 import { audioEngine } from '../core/audioEngine.js';
 import { GAME_STATES } from '../game/gameEngine.js';
+import { getSave, updateSave } from '../core/saveStore.js';
+import { clampIndicatorToThumbSafeZone } from '../entities/monoliths.js';
 
 export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const hudLayer = document.getElementById('hud-layer');
@@ -15,10 +17,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const modalCard = document.getElementById('modal-card');
   const canvas = document.getElementById('game-canvas');
 
-  const stageLabel = document.getElementById('hud-stage-label');
-  const questionProgress = document.getElementById('hud-question-progress');
   const hpBar = document.getElementById('hud-hp-bar');
-  const xpBar = document.getElementById('hud-xp-bar');
   const btnPause = document.getElementById('btn-pause');
   const btnSkipTutorial = document.getElementById('btn-skip-tutorial');
 
@@ -28,28 +27,27 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const bossHpBar = document.getElementById('hud-boss-hp-bar');
 
   const ledScoreboard = document.getElementById('led-scoreboard');
-  const ledCourseBadge = document.getElementById('led-course-badge');
-  const ledStreakBadge = document.getElementById('led-streak-badge');
   const ledWordText = document.getElementById('led-word-text');
-  const ledPhoneticText = document.getElementById('led-phonetic-text');
+
+  const skillSparks = [
+    document.getElementById('skill-spark-0'),
+    document.getElementById('skill-spark-1'),
+    document.getElementById('skill-spark-2'),
+  ];
+  const skillSparksWrap = document.getElementById('hud-skill-sparks');
 
   const edgeArrowsWrap = document.getElementById('edge-arrows');
   const btnUlt = document.getElementById('btn-ult');
   const btnUltLabel = document.getElementById('btn-ult-label');
-  const hudEvoXp = document.getElementById('hud-evo-xp');
-  const hudUltPct = document.getElementById('hud-ult-pct');
 
   const joystickEl = document.getElementById('virtual-joystick');
   const joystickKnob = document.getElementById('joystick-knob');
 
   const wrongReviewOverlay = document.getElementById('wrong-review-overlay');
   const wrongReviewWord = document.getElementById('wrong-review-word');
-  const wrongReviewPhonetic = document.getElementById('wrong-review-phonetic');
   const wrongReviewMeaning = document.getElementById('wrong-review-meaning');
 
-  const skillWrap = document.getElementById('hud-skill-wrap');
-  const skillFill = document.getElementById('hud-skill-fill');
-  const skillLabel = document.getElementById('hud-skill-label');
+
 
   let currentWordText = '';
   let prevSkillStep = -1;
@@ -60,10 +58,25 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
   const keysDown = new Set();
 
+  function updateUltButtonPosition() {
+    if (!btnUlt) return;
+    const hand = getSave().dominantHand || 'right';
+    if (hand === 'left') {
+      btnUlt.style.left = '';
+      btnUlt.style.right = '20px';
+      btnUlt.style.bottom = 'max(20px, env(safe-area-inset-bottom))';
+    } else {
+      btnUlt.style.right = '';
+      btnUlt.style.left = '20px';
+      btnUlt.style.bottom = 'max(20px, env(safe-area-inset-bottom))';
+    }
+  }
+
   function showHud() {
     closeModal();
     resetJoystick();
     prevSkillStep = -1;
+    updateUltButtonPosition();
     hudLayer.classList.remove('hidden');
   }
 
@@ -77,7 +90,15 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     bossWrap.classList.add('hidden');
     wrongReviewOverlay?.classList.add('hidden');
     btnSkipTutorial?.classList.add('hidden');
-    if (btnUlt) btnUlt.disabled = true;
+    skillSparks.forEach((el) => {
+      if (el) el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95';
+    });
+    if (btnUlt) {
+      btnUlt.disabled = true;
+      btnUlt.style.opacity = '0.5';
+      btnUlt.style.boxShadow = 'none';
+      btnUlt.className = 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-[#1b3b2b]/85 border-2 border-emerald-500/70 text-emerald-100 opacity-50 transition-all z-20';
+    }
     if (btnUltLabel) btnUltLabel.textContent = '0%';
   }
 
@@ -218,7 +239,8 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
     const minX = 40;
     const maxXBound = viewW - 40;
-    const minY = 20;
+    const topPadding = 136; // 전광판 하단(약 105px) + 31px 여유 간격
+    const minY = topPadding;
     const maxYBound = viewH - 74;
 
     // 레이-박스 교차 기준점(우유 화면 좌표)을 안전 영역 내로 클램프
@@ -239,8 +261,10 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       const ty = sin > 0.0001 ? (maxYBound - oy) / sin : sin < -0.0001 ? (minY - oy) / sin : Infinity;
       const tHit = Math.min(tx, ty);
 
-      const ax = Math.max(minX, Math.min(maxXBound, ox + cos * tHit));
-      const ay = Math.max(minY, Math.min(maxYBound, oy + sin * tHit));
+      const rawAx = Math.max(minX, Math.min(maxXBound, ox + cos * tHit));
+      const rawAy = Math.max(minY, Math.min(maxYBound, oy + sin * tHit));
+      const hand = getSave().dominantHand || 'right';
+      const { x: ax, y: ay } = clampIndicatorToThumbSafeZone(rawAx, rawAy, viewW, viewH, hand);
       const deg = (angle * 180) / Math.PI + 90;
       const ptrX = cos * 22;
       const ptrY = sin * 16;
@@ -262,11 +286,30 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
   // === 모달 렌더러 ===
   function showPauseModal() {
+    const save = getSave();
+    const isRight = (save.dominantHand || 'right') === 'right';
+
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-3xl">⏸️</div>
         <h2 class="text-xl font-black text-[#1f2d24]">${t('modal.pauseTitle')}</h2>
-        <div class="space-y-2.5 pt-2">
+
+        <div class="p-3 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4] space-y-2 text-left">
+          <div class="text-xs font-bold text-[#4a584e] flex items-center justify-between">
+            <span>🖐️ 조작 손 설정</span>
+            <span class="text-[11px] font-semibold text-emerald-800">${isRight ? '필살기: 왼쪽 하단' : '필살기: 오른쪽 하단'}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" class="pause-hand-btn py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition active:scale-95 ${isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#faf6ee] text-[#4a584e] border-[#d2c8b4]'}" data-hand="right">
+              👉 오른손잡이
+            </button>
+            <button type="button" class="pause-hand-btn py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition active:scale-95 ${!isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#faf6ee] text-[#4a584e] border-[#d2c8b4]'}" data-hand="left">
+              👈 왼손잡이
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2.5 pt-1">
           <button id="btn-modal-resume" type="button" class="w-full py-3 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition">
             ${t('modal.resume')}
           </button>
@@ -276,6 +319,17 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
         </div>
       </div>
     `);
+
+    modalCard.querySelectorAll('.pause-hand-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const hand = btn.getAttribute('data-hand');
+        updateSave((s) => {
+          s.dominantHand = hand;
+        });
+        updateUltButtonPosition();
+        showPauseModal();
+      });
+    });
 
     document.getElementById('btn-modal-resume')?.addEventListener('click', () => {
       closeModal();
@@ -347,10 +401,12 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   }
 
   function showGameOverModal({ canRevive }) {
+    const save = getSave?.() || {};
+    const dogName = save.dogName || '우유';
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-4xl">🩹</div>
-        <h2 class="text-xl font-black text-rose-600">${t('modal.gameOverTitle')}</h2>
+        <h2 class="text-xl font-black text-rose-600">${t('modal.gameOverTitle', { name: dogName })}</h2>
         <div class="space-y-2.5 pt-1">
           ${
             canRevive
@@ -380,6 +436,46 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   }
 
   function showStageResultModal(res) {
+    if (res.isPromotion) {
+      const passed = Boolean(res.promoPassed);
+      openModal(`
+        <div class="text-center space-y-4">
+          <div class="text-4xl">${passed ? '🎓✨' : '📚💦'}</div>
+          <h2 class="text-xl font-black ${passed ? 'text-amber-600' : 'text-slate-700'}">
+            ${passed ? `축하합니다! ${res.targetLevel} 승급!` : '승급 기준 미달'}
+          </h2>
+          <p class="text-xs text-[#4a584e] leading-relaxed">
+            ${passed
+              ? `목표 등급 <b>${res.targetLevel}</b>을 성공적으로 달성했습니다!<br/>보너스 뼈다귀와 주간 랭킹 점수를 획득했습니다.`
+              : `아쉽습니다! 정답률 85%(17문제) 이상이어야 승급됩니다.<br/>다시 도전해 보세요!`
+            }
+          </p>
+          <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs">
+            <div class="text-[#4a584e]">정답 수</div>
+            <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount} / 20 (${Math.round((res.correctCount / 20) * 100)}%)</div>
+            <div class="text-[#4a584e]">승급 판정</div>
+            <div class="text-right font-extrabold ${passed ? 'text-emerald-700 font-black' : 'text-rose-600'}">${passed ? '합격 (PASSED)' : '불합격'}</div>
+            <div class="text-[#4a584e]">획득 뼈다귀</div>
+            <div class="text-right font-extrabold text-amber-900">+${res.earnedSnacks || 0} 🦴</div>
+            <div class="text-[#4a584e]">주간 리그 점수</div>
+            <div class="text-right font-extrabold text-emerald-800">+${res.score || 0}점</div>
+            <div class="text-[#4a584e]">처치 좀비</div>
+            <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
+          </div>
+          <button id="btn-result-confirm" type="button" class="w-full py-3 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition">
+            확인
+          </button>
+        </div>
+      `);
+
+      document.getElementById('btn-result-confirm')?.addEventListener('click', () => {
+        closeModal();
+        hideHud();
+        onReturnToLobby?.();
+      });
+      return;
+    }
+
     const title = res.cleared ? t('modal.resultClearTitle') : t('modal.resultFailTitle');
     const icon = res.cleared ? (res.isTutorial ? '🎉' : '🏆') : '💀';
 
@@ -395,6 +491,14 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
           <div class="text-right font-extrabold text-emerald-800">+${res.earnedEvoXp}</div>
           <div class="text-[#4a584e]">${t('modal.resultGold')}</div>
           <div class="text-right font-extrabold text-amber-700">+${res.earnedGold} 🪙</div>
+          <div class="text-[#4a584e]">획득 뼈다귀</div>
+          <div class="text-right font-extrabold text-amber-900">+${res.earnedSnacks || 0} 🦴</div>
+          <div class="text-[#4a584e]">주간 리그 점수</div>
+          <div class="text-right font-extrabold text-emerald-800">+${res.score || 0}점</div>
+          ${(res.earnedGems || 0) > 0 ? `
+            <div class="text-[#4a584e]">획득 보석</div>
+            <div class="text-right font-extrabold text-cyan-700">+${res.earnedGems} 💎</div>
+          ` : ''}
           <div class="text-[#4a584e]">${t('modal.resultMastered')}</div>
           <div class="text-right font-extrabold text-emerald-800">${res.newlyMasteredCount}</div>
         </div>
@@ -412,11 +516,13 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   }
 
   function showStartPathModal() {
+    const save = getSave?.() || {};
+    const dogName = save.dogName || '우유';
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-4xl">🐶✨</div>
         <h2 class="text-xl font-black text-[#1f2d24]">튜토리얼 완료!</h2>
-        <p class="text-xs text-[#4a584e] leading-relaxed">우유와 함께할 시작 경로를 선택해 주세요.</p>
+        <p class="text-xs text-[#4a584e] leading-relaxed">${dogName}와(과) 함께할 시작 경로를 선택해 주세요.</p>
         <div class="space-y-2.5 pt-1">
           <button id="btn-start-path-ch1" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
             <span>🌱 CH.1 기초부터 시작</span>
@@ -446,15 +552,11 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
   // === GameEngine 핸들러 바인딩 ===
   engine.setHandlers({
-    onQuestionChanged({ word, questionNumber, totalQuestions, streak, courseId, chapterNumber, tutorialText, isTutorial }) {
+    onQuestionChanged({ word, isTutorial }) {
       currentWordText = word?.word || '';
-      stageLabel.textContent = tutorialText ? 'TUTORIAL' : `CH.${chapterNumber}`;
-      questionProgress.textContent = `${questionNumber} / ${totalQuestions}`;
-      ledCourseBadge.textContent = courseId ? courseId.toUpperCase() : 'LV1';
-      ledStreakBadge.textContent = `★ ${streak || 0}/${BALANCE.VOCA.MASTERY_STREAK}`;
-      ledWordText.textContent = currentWordText || 'READY';
-      ledPhoneticText.className = 'text-xs text-emerald-200/80 font-mono mt-1.5 leading-snug';
-      ledPhoneticText.textContent = tutorialText || word?.phonetic || '';
+      if (ledWordText) {
+        ledWordText.textContent = currentWordText || 'READY';
+      }
 
       if (btnSkipTutorial) {
         if (isTutorial) {
@@ -465,55 +567,74 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       }
     },
 
-    onWrongFeedback(feedbackText) {
-      ledPhoneticText.className = 'text-xs text-rose-300 font-extrabold mt-1.5 leading-snug';
-      ledPhoneticText.textContent = feedbackText;
+    onWrongFeedback() {
+      if (ledWordText) {
+        ledWordText.classList.add('text-rose-400');
+        setTimeout(() => {
+          ledWordText?.classList.remove('text-rose-400');
+        }, 500);
+      }
     },
 
     onHudUpdate({ hp, maxHp, xp, xpToNext, ultGauge, evoXp, boss, edgeArrows, viewW, viewH, wrongReview }) {
       if (wrongReviewOverlay) {
         if (wrongReview) {
           wrongReviewWord.textContent = wrongReview.word || '';
-          wrongReviewPhonetic.textContent = wrongReview.phonetic || '';
-          wrongReviewPhonetic.classList.toggle('hidden', !wrongReview.phonetic);
-          wrongReviewMeaning.textContent = `⭕ 정답: ${wrongReview.meaning || ''}`;
+          wrongReviewMeaning.textContent = wrongReview.meaning || '';
           wrongReviewOverlay.classList.remove('hidden');
         } else {
           wrongReviewOverlay.classList.add('hidden');
         }
       }
-      const hpPct = Math.max(0, Math.min(100, (hp / Math.max(1, maxHp)) * 100));
-      const xpPct = Math.max(0, Math.min(100, (xp / Math.max(1, xpToNext)) * 100));
-      hpBar.style.width = `${hpPct}%`;
-      xpBar.style.width = `${xpPct}%`;
 
-      if (skillFill && skillLabel) {
-        const step = xpToNext === 3 ? Math.max(0, Math.min(3, xp)) : Math.min(3, Math.floor((xp / Math.max(1, xpToNext)) * 3));
-        const skillPct = (step / 3) * 100;
-        skillFill.style.width = `${skillPct.toFixed(1)}%`;
-        const dots = [0, 1, 2].map((i) => (i < step ? '●' : '○')).join(' ');
-        skillLabel.textContent = `⚡ 스킬 충전 ${dots} (${step}/3)`;
-
-        if (prevSkillStep !== -1 && step > prevSkillStep && skillWrap) {
-          skillWrap.classList.add('shadow-[0_0_16px_rgba(52,211,153,0.9)]', 'border-emerald-300');
-          clearTimeout(skillFlashTimer);
-          skillFlashTimer = setTimeout(() => {
-            skillWrap.classList.remove('shadow-[0_0_16px_rgba(52,211,153,0.9)]', 'border-emerald-300');
-          }, 400);
+      // 체력(HP) 업데이트: 두껍고 시인성 높은 게이지 바 + 수치 + 비율별 컬러 전환 (초록 -> 노랑 -> 빨강)
+      const curHp = Math.max(0, Math.round(hp));
+      const totalHp = Math.max(1, Math.round(maxHp));
+      const hpPct = Math.max(0, Math.min(100, (curHp / totalHp) * 100));
+      if (hpBar) {
+        hpBar.style.width = `${hpPct}%`;
+        if (hpPct >= 60) {
+          hpBar.className = 'h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] transition-all duration-200';
+        } else if (hpPct >= 30) {
+          hpBar.className = 'h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 shadow-[0_0_8px_rgba(245,158,11,0.6)] transition-all duration-200';
+        } else {
+          hpBar.className = 'h-full rounded-full bg-gradient-to-r from-rose-600 to-red-500 shadow-[0_0_12px_rgba(239,68,68,0.85)] animate-pulse transition-all duration-200';
         }
-        prevSkillStep = step;
       }
 
-      hudEvoXp.textContent = String(evoXp || 0);
-      const ultPct = Math.min(100, Math.round((ultGauge / BALANCE.COMBAT.ULT_MAX_GAUGE) * 100));
-      hudUltPct.textContent = `${ultPct}%`;
+      // 스킬 인디케이터 (번개 3개 아이콘)
+      const step = xpToNext === 3 ? Math.max(0, Math.min(3, xp)) : Math.min(3, Math.floor((xp / Math.max(1, xpToNext)) * 3));
+      skillSparks.forEach((el, idx) => {
+        if (!el) return;
+        if (idx < step) {
+          el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-100 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.95)] scale-110';
+        } else {
+          el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95';
+        }
+      });
 
+      if (prevSkillStep !== -1 && step > prevSkillStep && skillSparksWrap) {
+        skillSparksWrap.classList.add('shadow-[0_0_14px_rgba(251,191,36,0.8)]', 'border-amber-400');
+        clearTimeout(skillFlashTimer);
+        skillFlashTimer = setTimeout(() => {
+          skillSparksWrap.classList.remove('shadow-[0_0_14px_rgba(251,191,36,0.8)]', 'border-amber-400');
+        }, 400);
+      }
+      prevSkillStep = step;
+
+      const ultPct = Math.min(100, Math.round((ultGauge / BALANCE.COMBAT.ULT_MAX_GAUGE) * 100));
       const ultReady = ultGauge >= BALANCE.COMBAT.ULT_MAX_GAUGE;
       if (btnUlt) {
         btnUlt.disabled = !ultReady;
-        btnUlt.className = ultReady
-          ? 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center ult-btn-pop bg-gradient-to-br from-orange-500 via-rose-500 to-amber-500 border-2 border-amber-200 text-white shadow-[0_0_24px_rgba(249,115,22,0.85)] opacity-100 transition-all active:scale-95 z-20'
-          : 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-[#1b3b2b]/80 border-2 border-emerald-600/60 text-emerald-100 opacity-55 transition-all z-20';
+        if (ultReady) {
+          btnUlt.className = 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center ult-btn-pop bg-gradient-to-br from-orange-500 via-rose-500 to-amber-500 border-2 border-amber-200 text-white shadow-[0_0_24px_rgba(249,115,22,0.85)] opacity-100 transition-all active:scale-95 z-20';
+          btnUlt.style.opacity = '';
+          btnUlt.style.boxShadow = '';
+        } else {
+          btnUlt.className = 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-[#1b3b2b]/85 border-2 border-emerald-500/70 text-emerald-100 transition-all z-20';
+          btnUlt.style.opacity = (0.45 + (ultPct / 100) * 0.45).toFixed(2);
+          btnUlt.style.boxShadow = ultPct > 30 ? `0 0 ${Math.round((ultPct / 100) * 16)}px rgba(52, 211, 153, 0.4)` : 'none';
+        }
       }
       if (btnUltLabel) {
         btnUltLabel.textContent = ultReady ? '대폭발' : `${ultPct}%`;

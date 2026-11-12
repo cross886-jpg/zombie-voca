@@ -45,8 +45,9 @@ export class MonolithManager {
 
     choices.forEach((choice, idx) => {
       const dir = quadrantDirs[idx % 4];
+      const topMargin = 120; // 상단 전광판 높이 감안 안전 마진
       const clampX = (val) => Math.max(margin, Math.min(arenaWidth - margin, val));
-      const clampY = (val) => Math.max(margin, Math.min(arenaHeight - margin, val));
+      const clampY = (val) => Math.max(margin + topMargin, Math.min(arenaHeight - margin, val));
 
       // 사분면별 기본 오프셋(기존 대비 1.4배 확대): 가로 반경 182~294px, 세로 반경 224~364px
       let px = clampX(playerX + dir.sx * 230);
@@ -154,6 +155,13 @@ export class MonolithManager {
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       d.bobPhase += dt * 5;
+
+      // 풀피(100% 체력) 상태에서는 회복 뼈다귀가 헛되이 소모되지 않도록 자석 흡수 및 획득 방지
+      const isFullHp = player.hp >= player.maxHp;
+      if (d.type === 'snack' && isFullHp) {
+        continue;
+      }
+
       const dx = player.x - d.x;
       const dy = player.y - d.y;
       const dist = Math.hypot(dx, dy);
@@ -280,5 +288,74 @@ export class MonolithManager {
       ctx.restore();
     }
   }
+}
+
+/**
+ * 화면 밖 비석 인디케이터(말풍선) 좌표가 조이스틱 엄지 및 반대쪽 필살기(🔥) 버튼 영역에 가려지지 않도록 안전 구역 보정
+ * @param {number} ax 말풍선 화면 X 좌표
+ * @param {number} ay 말풍선 화면 Y 좌표
+ * @param {number} viewW 뷰포트 너비
+ * @param {number} viewH 뷰포트 높이
+ * @param {'right'|'left'} dominantHand 주손 설정
+ * @param {number} topPadding 상단 전광판 안전선 (기본 136px)
+ * @returns {{ x: number, y: number }}
+ */
+export function clampIndicatorToThumbSafeZone(ax, ay, viewW, viewH, dominantHand = 'right', topPadding = 136) {
+  const thumbW = 165;
+  const thumbH = 170;
+  const ultW = 95;
+  const ultH = 95;
+  const safeMargin = 8;
+
+  // 상단 네온 전광판 하단 안전선(topPadding 136px) 이하로 내려오지 않도록 보정
+  ay = Math.max(topPadding, ay);
+
+  if (dominantHand === 'left') {
+    // 왼손잡이: 좌측 하단 조이스틱(165x170) + 우측 하단 필살기 버튼(95x95)
+    const inDangerLeft = ax <= thumbW && ay >= viewH - thumbH;
+    if (inDangerLeft) {
+      const distToTop = ay - (viewH - thumbH - safeMargin);
+      const distToRight = thumbW + safeMargin - ax;
+      if (distToTop <= distToRight) {
+        ay = viewH - thumbH - safeMargin;
+      } else {
+        ax = thumbW + safeMargin;
+      }
+    }
+    const inDangerRight = ax >= viewW - ultW && ay >= viewH - ultH;
+    if (inDangerRight) {
+      const distToTop = ay - (viewH - ultH - safeMargin);
+      const distToLeft = ax - (viewW - ultW - safeMargin);
+      if (distToTop <= distToLeft) {
+        ay = viewH - ultH - safeMargin;
+      } else {
+        ax = viewW - ultW - safeMargin;
+      }
+    }
+  } else {
+    // 오른손잡이: 우측 하단 조이스틱(165x170) + 좌측 하단 필살기 버튼(95x95)
+    const inDangerRight = ax >= viewW - thumbW && ay >= viewH - thumbH;
+    if (inDangerRight) {
+      const distToTop = ay - (viewH - thumbH - safeMargin);
+      const distToLeft = ax - (viewW - thumbW - safeMargin);
+      if (distToTop <= distToLeft) {
+        ay = viewH - thumbH - safeMargin;
+      } else {
+        ax = viewW - thumbW - safeMargin;
+      }
+    }
+    const inDangerLeft = ax <= ultW && ay >= viewH - ultH;
+    if (inDangerLeft) {
+      const distToTop = ay - (viewH - ultH - safeMargin);
+      const distToRight = ultW + safeMargin - ax;
+      if (distToTop <= distToRight) {
+        ay = viewH - ultH - safeMargin;
+      } else {
+        ax = ultW + safeMargin;
+      }
+    }
+  }
+
+  return { x: ax, y: ay };
 }
 

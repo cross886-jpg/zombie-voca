@@ -40,6 +40,8 @@ const DICTIONARY = {
       tabBattle: '전투',
       tabTraining: '훈련소',
       tabWordbook: '기억수첩',
+      tabShop: '상점',
+      tabChallenge: '챌린지',
       startBattle: '전투 출격',
       selectCourse: '영단어 난이도 코스',
       selectChapter: '미국 횡단 챕터',
@@ -58,11 +60,11 @@ const DICTIONARY = {
       shopTitle: '보급 상점',
       normalBox: '일반 보급 상자',
       premiumSuitcase: '프리미엄 여행 가방',
-      trainingTitle: '우유 & 동료 훈련소',
+      trainingTitle: '{name} & 동료 훈련소',
       upgradeAtk: '공격력 훈련',
       upgradeHp: '체력 훈련',
       upgradeCompanion: '동료 강화',
-      wordbookTitle: '우유의 기억 수첩',
+      wordbookTitle: '{name}의 기억 수첩',
       masteryRate: '3연속 마스터 달성률',
       wrongQueueCount: '복습 대기 오답 단어',
       startMiniReview: '30초 미니 복습 시작',
@@ -73,7 +75,7 @@ const DICTIONARY = {
       resume: '계속하기',
       quitToLobby: '로비로 돌아가기',
       skillPickTitle: '레벨 업! 스킬 선택',
-      gameOverTitle: '우유가 쓰러졌어요...',
+      gameOverTitle: '{name}(이)가 쓰러졌어요...',
       reviveAdBtn: '📺 광고 보고 1회 부활 (HP 70%)',
       giveUpBtn: '정산하고 로비로',
       resultClearTitle: '스테이지 클리어!',
@@ -138,6 +140,8 @@ const DICTIONARY = {
       tabBattle: 'Battle',
       tabTraining: 'Training',
       tabWordbook: 'Wordbook',
+      tabShop: 'Shop',
+      tabChallenge: 'Challenge',
       startBattle: 'Start Battle',
       selectCourse: 'Vocabulary Course',
       selectChapter: 'Cross-USA Chapter',
@@ -156,11 +160,11 @@ const DICTIONARY = {
       shopTitle: 'Supply Shop',
       normalBox: 'Standard Supply Box',
       premiumSuitcase: 'Premium Travel Suitcase',
-      trainingTitle: 'Milk & Companion Training',
+      trainingTitle: '{name} & Companion Training',
       upgradeAtk: 'Attack Training',
       upgradeHp: 'HP Training',
       upgradeCompanion: 'Upgrade Companion',
-      wordbookTitle: "Milk's Memory Wordbook",
+      wordbookTitle: "{name}'s Memory Wordbook",
       masteryRate: '3-Streak Mastery Rate',
       wrongQueueCount: 'Words to Review',
       startMiniReview: 'Start 30s Mini Review',
@@ -171,7 +175,7 @@ const DICTIONARY = {
       resume: 'Resume',
       quitToLobby: 'Return to Lobby',
       skillPickTitle: 'Level Up! Pick a Skill',
-      gameOverTitle: 'Milk Collapsed...',
+      gameOverTitle: '{name} Collapsed...',
       reviveAdBtn: '📺 Watch Ad to Revive (70% HP)',
       giveUpBtn: 'Finish & Return',
       resultClearTitle: 'Stage Cleared!',
@@ -217,6 +221,8 @@ const DICTIONARY = {
       tabBattle: 'Batalla',
       tabTraining: 'Entreno',
       tabWordbook: 'Libreta',
+      tabShop: 'Tienda',
+      tabChallenge: 'Desafío',
       startBattle: 'Iniciar Batalla',
     },
   },
@@ -265,7 +271,8 @@ export function t(key, params = {}) {
   };
 
   let text = lookup(DICTIONARY[currentLang]) ?? lookup(DICTIONARY.ko) ?? key;
-  for (const [k, v] of Object.entries(params)) {
+  const effectiveParams = { name: '우유', ...params };
+  for (const [k, v] of Object.entries(effectiveParams)) {
     text = text.replaceAll(`{${k}}`, String(v));
   }
   return text;
