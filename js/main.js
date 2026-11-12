@@ -78,6 +78,9 @@ async function bootstrap() {
     onRenderWordbook() {
       wordbookUI?.renderWordbookTab();
     },
+    onOpenSupplyShop() {
+      growthUI?.openSupplyShopModal();
+    },
   });
 
   growthUI = createGrowthUI({

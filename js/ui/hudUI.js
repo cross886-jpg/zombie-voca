@@ -47,7 +47,13 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const wrongReviewPhonetic = document.getElementById('wrong-review-phonetic');
   const wrongReviewMeaning = document.getElementById('wrong-review-meaning');
 
+  const skillWrap = document.getElementById('hud-skill-wrap');
+  const skillFill = document.getElementById('hud-skill-fill');
+  const skillLabel = document.getElementById('hud-skill-label');
+
   let currentWordText = '';
+  let prevSkillStep = -1;
+  let skillFlashTimer = null;
   let activePointerId = null;
   let joyOrigin = { x: 0, y: 0 };
   const JOY_MAX_RADIUS = 38;
@@ -57,12 +63,15 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   function showHud() {
     closeModal();
     resetJoystick();
+    prevSkillStep = -1;
     hudLayer.classList.remove('hidden');
   }
 
   function hideHud() {
     closeModal();
     resetJoystick();
+    prevSkillStep = -1;
+    clearTimeout(skillFlashTimer);
     hudLayer.classList.add('hidden');
     edgeArrowsWrap.innerHTML = '';
     bossWrap.classList.add('hidden');
@@ -239,11 +248,11 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
       htmlParts.push(`
         <div class="absolute pointer-events-none" style="left:${ax.toFixed(1)}px;top:${ay.toFixed(1)}px;transform:translate(-50%,-50%);">
-          <div class="relative flex items-center justify-center px-2.5 py-1 rounded-full bg-slate-950/90 border border-cyan-400/85 shadow-[0_0_12px_rgba(34,211,238,0.55)]">
-            <svg width="14" height="14" viewBox="0 0 14 14" style="position:absolute;left:50%;top:50%;transform:translate(calc(-50% + ${ptrX.toFixed(1)}px),calc(-50% + ${ptrY.toFixed(1)}px)) rotate(${deg.toFixed(1)}deg);filter:drop-shadow(0 0 4px rgba(34,211,238,0.9));">
-              <polygon points="7,0 13,12 7,9 1,12" fill="#22d3ee" />
+          <div class="relative flex items-center justify-center px-2.5 py-1 rounded-full bg-[#1b3b2b]/95 border border-emerald-400/85 shadow-[0_0_12px_rgba(45,106,79,0.55)]">
+            <svg width="14" height="14" viewBox="0 0 14 14" style="position:absolute;left:50%;top:50%;transform:translate(calc(-50% + ${ptrX.toFixed(1)}px),calc(-50% + ${ptrY.toFixed(1)}px)) rotate(${deg.toFixed(1)}deg);filter:drop-shadow(0 0 4px rgba(52,211,153,0.9));">
+              <polygon points="7,0 13,12 7,9 1,12" fill="#34d399" />
             </svg>
-            ${meaningText ? `<span class="text-[11px] font-extrabold text-white whitespace-nowrap leading-none">${meaningText}</span>` : ''}
+            ${meaningText ? `<span class="text-[11px] font-extrabold text-[#f8f5ec] whitespace-nowrap leading-none">${meaningText}</span>` : ''}
           </div>
         </div>
       `);
@@ -256,12 +265,12 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-3xl">⏸️</div>
-        <h2 class="text-xl font-black text-white">${t('modal.pauseTitle')}</h2>
+        <h2 class="text-xl font-black text-[#1f2d24]">${t('modal.pauseTitle')}</h2>
         <div class="space-y-2.5 pt-2">
-          <button id="btn-modal-resume" type="button" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-sm active:scale-95 transition">
+          <button id="btn-modal-resume" type="button" class="w-full py-3 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition">
             ${t('modal.resume')}
           </button>
-          <button id="btn-modal-quit" type="button" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm active:scale-95 transition">
+          <button id="btn-modal-quit" type="button" class="w-full py-3 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] border border-[#d2c8b4] text-[#1f2d24] font-bold text-sm active:scale-95 transition">
             ${t('modal.quitToLobby')}
           </button>
         </div>
@@ -287,28 +296,28 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
         if (choice.kind === 'skill') {
           const sk = choice.skill;
           return `
-            <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-cyan-500/40 flex items-center gap-3 active:scale-98 transition">
-              <div class="w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl shrink-0">${sk.icon}</div>
+            <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-[#f0ebe0] hover:bg-[#e6dec8] border border-[#d2c8b4] flex items-center gap-3 active:scale-98 transition">
+              <div class="w-11 h-11 rounded-xl bg-[#faf6ee] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0">${sk.icon}</div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between gap-2">
-                  <span class="font-extrabold text-sm text-white truncate">${sk.name}</span>
-                  <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300">Lv.${choice.nextLevel}</span>
+                  <span class="font-extrabold text-sm text-[#1f2d24] truncate">${sk.name}</span>
+                  <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-800">Lv.${choice.nextLevel}</span>
                 </div>
-                <p class="text-xs text-slate-300 mt-0.5 line-clamp-2">${sk.desc}</p>
+                <p class="text-xs text-[#4a584e] mt-0.5 line-clamp-2">${sk.desc}</p>
               </div>
             </button>
           `;
         }
         const comp = choice.companion;
         return `
-          <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-amber-500/40 flex items-center gap-3 active:scale-98 transition">
-            <div class="w-11 h-11 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl shrink-0">${comp.icon}</div>
+          <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-[#f0ebe0] hover:bg-[#e6dec8] border border-amber-600/40 flex items-center gap-3 active:scale-98 transition">
+            <div class="w-11 h-11 rounded-xl bg-[#faf6ee] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0">${comp.icon}</div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between gap-2">
-                <span class="font-extrabold text-sm text-amber-200 truncate">${comp.name}</span>
-                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">Lv.${choice.nextLevel}</span>
+                <span class="font-extrabold text-sm text-amber-900 truncate">${comp.name}</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800">Lv.${choice.nextLevel}</span>
               </div>
-              <p class="text-xs text-slate-300 mt-0.5">${comp.role} 공격력 +20%</p>
+              <p class="text-xs text-[#4a584e] mt-0.5">${comp.role} 공격력 +20%</p>
             </div>
           </button>
         `;
@@ -319,7 +328,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       <div class="space-y-3">
         <div class="text-center">
           <div class="text-2xl mb-1">✨</div>
-          <h2 class="text-lg font-black text-cyan-300">${t('modal.skillPickTitle')}</h2>
+          <h2 class="text-lg font-black text-emerald-800">${t('modal.skillPickTitle')}</h2>
         </div>
         <div class="space-y-2.5">${cardsHtml}</div>
       </div>
@@ -341,16 +350,16 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-4xl">🩹</div>
-        <h2 class="text-xl font-black text-rose-400">${t('modal.gameOverTitle')}</h2>
+        <h2 class="text-xl font-black text-rose-600">${t('modal.gameOverTitle')}</h2>
         <div class="space-y-2.5 pt-1">
           ${
             canRevive
-              ? `<button id="btn-revive-ad" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-black text-sm shadow-lg active:scale-95 transition">
+              ? `<button id="btn-revive-ad" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#2d6a4f] to-[#d97706] text-[#f8f5ec] font-black text-sm shadow-lg active:scale-95 transition">
                   ${t('modal.reviveAdBtn')}
                 </button>`
               : ''
           }
-          <button id="btn-give-up" type="button" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-sm active:scale-95 transition">
+          <button id="btn-give-up" type="button" class="w-full py-3 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] border border-[#d2c8b4] text-[#1f2d24] font-bold text-sm active:scale-95 transition">
             ${t('modal.giveUpBtn')}
           </button>
         </div>
@@ -377,19 +386,19 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-4xl">${icon}</div>
-        <h2 class="text-xl font-black ${res.cleared ? 'text-amber-300' : 'text-rose-400'}">${title}</h2>
-        ${res.isTutorial ? `<p class="text-xs text-cyan-300 font-semibold">${t('tutorial.complete')}</p>` : ''}
-        <div class="grid grid-cols-2 gap-2 text-left bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs">
-          <div class="text-slate-400">${t('modal.resultCorrect')}</div>
-          <div class="text-right font-extrabold text-white">${res.correctCount}</div>
-          <div class="text-slate-400">${t('modal.resultEvoXp')}</div>
-          <div class="text-right font-extrabold text-cyan-300">+${res.earnedEvoXp}</div>
-          <div class="text-slate-400">${t('modal.resultGold')}</div>
-          <div class="text-right font-extrabold text-amber-300">+${res.earnedGold} 🪙</div>
-          <div class="text-slate-400">${t('modal.resultMastered')}</div>
-          <div class="text-right font-extrabold text-emerald-300">${res.newlyMasteredCount}</div>
+        <h2 class="text-xl font-black ${res.cleared ? 'text-amber-700' : 'text-rose-600'}">${title}</h2>
+        ${res.isTutorial ? `<p class="text-xs text-emerald-800 font-semibold">${t('tutorial.complete')}</p>` : ''}
+        <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs">
+          <div class="text-[#4a584e]">${t('modal.resultCorrect')}</div>
+          <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount}</div>
+          <div class="text-[#4a584e]">${t('modal.resultEvoXp')}</div>
+          <div class="text-right font-extrabold text-emerald-800">+${res.earnedEvoXp}</div>
+          <div class="text-[#4a584e]">${t('modal.resultGold')}</div>
+          <div class="text-right font-extrabold text-amber-700">+${res.earnedGold} 🪙</div>
+          <div class="text-[#4a584e]">${t('modal.resultMastered')}</div>
+          <div class="text-right font-extrabold text-emerald-800">${res.newlyMasteredCount}</div>
         </div>
-        <button id="btn-result-confirm" type="button" class="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-sm active:scale-95 transition">
+        <button id="btn-result-confirm" type="button" class="w-full py-3 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition">
           ${t('modal.confirm')}
         </button>
       </div>
@@ -406,14 +415,14 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-4xl">🐶✨</div>
-        <h2 class="text-xl font-black text-white">튜토리얼 완료!</h2>
-        <p class="text-xs text-slate-300 leading-relaxed">우유와 함께할 시작 경로를 선택해 주세요.</p>
+        <h2 class="text-xl font-black text-[#1f2d24]">튜토리얼 완료!</h2>
+        <p class="text-xs text-[#4a584e] leading-relaxed">우유와 함께할 시작 경로를 선택해 주세요.</p>
         <div class="space-y-2.5 pt-1">
-          <button id="btn-start-path-ch1" type="button" class="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
+          <button id="btn-start-path-ch1" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
             <span>🌱 CH.1 기초부터 시작</span>
             <span class="text-xs font-extrabold opacity-80">LV.1 →</span>
           </button>
-          <button id="btn-start-path-diag" type="button" class="w-full py-3.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
+          <button id="btn-start-path-diag" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#d97706] hover:bg-[#b45309] text-white font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
             <span>⚡ 30초 실력 진단 테스트</span>
             <span class="text-xs font-extrabold opacity-80">추천 레벨 찾기 →</span>
           </button>
@@ -444,7 +453,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       ledCourseBadge.textContent = courseId ? courseId.toUpperCase() : 'LV1';
       ledStreakBadge.textContent = `★ ${streak || 0}/${BALANCE.VOCA.MASTERY_STREAK}`;
       ledWordText.textContent = currentWordText || 'READY';
-      ledPhoneticText.className = 'text-xs text-cyan-200/80 font-mono mt-1.5 leading-snug';
+      ledPhoneticText.className = 'text-xs text-emerald-200/80 font-mono mt-1.5 leading-snug';
       ledPhoneticText.textContent = tutorialText || word?.phonetic || '';
 
       if (btnSkipTutorial) {
@@ -478,6 +487,23 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       hpBar.style.width = `${hpPct}%`;
       xpBar.style.width = `${xpPct}%`;
 
+      if (skillFill && skillLabel) {
+        const step = xpToNext === 3 ? Math.max(0, Math.min(3, xp)) : Math.min(3, Math.floor((xp / Math.max(1, xpToNext)) * 3));
+        const skillPct = (step / 3) * 100;
+        skillFill.style.width = `${skillPct.toFixed(1)}%`;
+        const dots = [0, 1, 2].map((i) => (i < step ? '●' : '○')).join(' ');
+        skillLabel.textContent = `⚡ 스킬 충전 ${dots} (${step}/3)`;
+
+        if (prevSkillStep !== -1 && step > prevSkillStep && skillWrap) {
+          skillWrap.classList.add('shadow-[0_0_16px_rgba(52,211,153,0.9)]', 'border-emerald-300');
+          clearTimeout(skillFlashTimer);
+          skillFlashTimer = setTimeout(() => {
+            skillWrap.classList.remove('shadow-[0_0_16px_rgba(52,211,153,0.9)]', 'border-emerald-300');
+          }, 400);
+        }
+        prevSkillStep = step;
+      }
+
       hudEvoXp.textContent = String(evoXp || 0);
       const ultPct = Math.min(100, Math.round((ultGauge / BALANCE.COMBAT.ULT_MAX_GAUGE) * 100));
       hudUltPct.textContent = `${ultPct}%`;
@@ -487,7 +513,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
         btnUlt.disabled = !ultReady;
         btnUlt.className = ultReady
           ? 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center ult-btn-pop bg-gradient-to-br from-orange-500 via-rose-500 to-amber-500 border-2 border-amber-200 text-white shadow-[0_0_24px_rgba(249,115,22,0.85)] opacity-100 transition-all active:scale-95 z-20'
-          : 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-slate-900/75 border-2 border-slate-600/70 text-slate-300 opacity-55 transition-all z-20';
+          : 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-[#1b3b2b]/80 border-2 border-emerald-600/60 text-emerald-100 opacity-55 transition-all z-20';
       }
       if (btnUltLabel) {
         btnUltLabel.textContent = ultReady ? '대폭발' : `${ultPct}%`;

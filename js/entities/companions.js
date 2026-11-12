@@ -6,6 +6,15 @@
 import { BALANCE } from '../config/balance.js';
 import { COMPANIONS } from '../data/catalog.js';
 
+const PROJECTILE_STYLES = {
+  acorn:     { speed: 340, radius: 7,  aoeRadius: 0,  pierce: 1, count: 1, spread: 0,    slowDuration: 0 },
+  dive:      { speed: 380, radius: 12, aoeRadius: 54, pierce: 1, count: 1, spread: 0,    slowDuration: 0 },
+  thorn:     { speed: 360, radius: 6,  aoeRadius: 0,  pierce: 1, count: 3, spread: 0.24, slowDuration: 0 },
+  flame:     { speed: 320, radius: 10, aoeRadius: 48, pierce: 1, count: 1, spread: 0,    slowDuration: 0 },
+  sonic:     { speed: 400, radius: 11, aoeRadius: 0,  pierce: 3, count: 1, spread: 0,    slowDuration: 0 },
+  lightning: { speed: 460, radius: 12, aoeRadius: 62, pierce: 1, count: 1, spread: 0,    slowDuration: 0.9 },
+};
+
 export class CompanionManager {
   constructor() {
     this.activeCompanions = [];
@@ -19,7 +28,7 @@ export class CompanionManager {
       const def = COMPANIONS.find((c) => c.id === id);
       if (!def) return;
       const lobbyLv = saveData.companions?.levels?.[id] || 1;
-      const angle = idx === 0 ? -Math.PI * 0.75 : -Math.PI * 0.25;
+      const angle = (idx / Math.max(1, activeIds.length)) * Math.PI * 2 - Math.PI * 0.5;
 
       this.activeCompanions.push({
         id: def.id,
@@ -49,8 +58,10 @@ export class CompanionManager {
       const comp = this.activeCompanions[i];
       if (comp.attackFlash > 0) comp.attackFlash = Math.max(0, comp.attackFlash - dt);
 
-      // 우유 주변 좌/우 추종 목표 위치 계산
-      const sideAngle = player.facingAngle + (i === 0 ? 2.2 : -2.2);
+      // 우유 주변 좌/우 추종 목표 위치 계산 (동행 인원 확장 대응)
+      const sideSign = i % 2 === 0 ? 1 : -1;
+      const tierOffset = Math.floor(i / 2) * 0.65;
+      const sideAngle = player.facingAngle + sideSign * (2.2 - tierOffset);
       const targetX = player.x + Math.cos(sideAngle) * 46;
       const targetY = player.y + Math.sin(sideAngle) * 46;
 
@@ -106,20 +117,27 @@ export class CompanionManager {
     const lvMult = 1 + (comp.lobbyLv - 1) * BALANCE.COMPANIONS.ATK_PER_LEVEL + (comp.runLv - 1) * 0.25;
     const dmg = Math.round(comp.def.baseAtk * lvMult);
     const style = comp.def.attackStyle;
+    const projCfg = PROJECTILE_STYLES[style];
 
-    if (style === 'acorn' || style === 'dive') {
-      const angle = Math.atan2(target.y - comp.y, target.x - comp.x);
-      combatSystem.spawnProjectile({
-        x: comp.x,
-        y: comp.y,
-        vx: Math.cos(angle) * (style === 'dive' ? 380 : 340),
-        vy: Math.sin(angle) * (style === 'dive' ? 380 : 340),
-        damage: dmg,
-        radius: style === 'dive' ? 12 : 7,
-        color: comp.def.color,
-        aoeRadius: style === 'dive' ? 54 : 0,
-        ttl: 1.1,
-      });
+    if (projCfg) {
+      const baseAngle = Math.atan2(target.y - comp.y, target.x - comp.x);
+      const half = (projCfg.count - 1) / 2;
+      for (let i = 0; i < projCfg.count; i++) {
+        const angle = baseAngle + (i - half) * projCfg.spread;
+        combatSystem.spawnProjectile({
+          x: comp.x,
+          y: comp.y,
+          vx: Math.cos(angle) * projCfg.speed,
+          vy: Math.sin(angle) * projCfg.speed,
+          damage: dmg,
+          radius: projCfg.radius,
+          color: comp.def.color,
+          aoeRadius: projCfg.aoeRadius,
+          pierce: projCfg.pierce,
+          slowDuration: projCfg.slowDuration,
+          ttl: 1.15,
+        });
+      }
     } else {
       // 근접 할퀴기(루키) 또는 돌진(맥스)
       combatSystem.damageEnemy(target, dmg, comp.def.color);

@@ -17,6 +17,34 @@ export function getEvolutionStage(evoXp) {
   return current;
 }
 
+/**
+ * 세이브 데이터 + 인게임 패시브 스킬 기반 우유 전투 스탯 단일 계산기
+ */
+export function computePlayerStats(saveData, skills = {}) {
+  const safeSave = saveData || { training: { atkLevel: 0, hpLevel: 0 }, costumes: { owned: [] } };
+  const evoStage = getEvolutionStage(safeSave.evoXp || 0);
+  const collectionBonus = getCostumeCollectionBonus(safeSave.costumes?.owned || []);
+
+  const trainAtk = getTrainingBonusValue('atkLevel', safeSave.training?.atkLevel || 0);
+  const trainHp = getTrainingBonusValue('hpLevel', safeSave.training?.hpLevel || 0);
+  const trainSpeedBonus = getTrainingBonusValue('speedLv', safeSave.training?.speedLv || 0);
+  const trainMagnetBonus = getTrainingBonusValue('magnetLv', safeSave.training?.magnetLv || 0);
+
+  const passiveAtkMult = 1 + (skills.passive_sharp_fangs || 0) * (SKILLS.find((s) => s.id === 'passive_sharp_fangs')?.perLevel || 0.14);
+  const passiveHpMult = 1 + (skills.passive_thick_fur || 0) * (SKILLS.find((s) => s.id === 'passive_thick_fur')?.perLevel || 0.15);
+  const passiveSpeedMult = 1 + (skills.passive_zoomies || 0) * (SKILLS.find((s) => s.id === 'passive_zoomies')?.perLevel || 0.1);
+  const passivePickupMult = 1 + (skills.passive_magnet || 0) * (SKILLS.find((s) => s.id === 'passive_magnet')?.perLevel || 0.25);
+
+  const maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus) * evoStage.hpMult * passiveHpMult);
+  const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus) * evoStage.atkMult * passiveAtkMult);
+  const speed = BALANCE.PLAYER.BASE_SPEED * (1 + trainSpeedBonus) * passiveSpeedMult;
+  const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus) * passivePickupMult;
+  const radius = BALANCE.PLAYER.RADIUS * evoStage.scale;
+  const combatPower = Math.round(atk * 5 + maxHp * 0.8 + speed * 0.5);
+
+  return { maxHp, atk, speed, pickupRadius, radius, evoStage, combatPower };
+}
+
 export class Player {
   constructor() {
     this.x = 0;
@@ -71,25 +99,14 @@ export class Player {
   }
 
   recalcStats(resetHpToMax = false) {
-    const saveData = this._saveRef || { training: { atkLevel: 0, hpLevel: 0 }, costumes: { owned: [] } };
-    const collectionBonus = getCostumeCollectionBonus(saveData.costumes?.owned || []);
-
-    const trainAtk = getTrainingBonusValue('atkLevel', saveData.training?.atkLevel || 0);
-    const trainHp = getTrainingBonusValue('hpLevel', saveData.training?.hpLevel || 0);
-    const trainSpeedBonus = getTrainingBonusValue('speedLv', saveData.training?.speedLv || 0);
-    const trainMagnetBonus = getTrainingBonusValue('magnetLv', saveData.training?.magnetLv || 0);
-
-    const passiveAtkMult = 1 + (this.skills.passive_sharp_fangs || 0) * (SKILLS.find((s) => s.id === 'passive_sharp_fangs')?.perLevel || 0.14);
-    const passiveHpMult = 1 + (this.skills.passive_thick_fur || 0) * (SKILLS.find((s) => s.id === 'passive_thick_fur')?.perLevel || 0.15);
-    const passiveSpeedMult = 1 + (this.skills.passive_zoomies || 0) * (SKILLS.find((s) => s.id === 'passive_zoomies')?.perLevel || 0.1);
-    const passivePickupMult = 1 + (this.skills.passive_magnet || 0) * (SKILLS.find((s) => s.id === 'passive_magnet')?.perLevel || 0.25);
-
     const prevMaxHp = this.maxHp;
-    this.maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus) * this.evoStage.hpMult * passiveHpMult);
-    this.atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus) * this.evoStage.atkMult * passiveAtkMult);
-    this.speed = BALANCE.PLAYER.BASE_SPEED * (1 + trainSpeedBonus) * passiveSpeedMult;
-    this.pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus) * passivePickupMult;
-    this.radius = BALANCE.PLAYER.RADIUS * this.evoStage.scale;
+    const stats = computePlayerStats(this._saveRef, this.skills);
+    this.evoStage = stats.evoStage;
+    this.maxHp = stats.maxHp;
+    this.atk = stats.atk;
+    this.speed = stats.speed;
+    this.pickupRadius = stats.pickupRadius;
+    this.radius = stats.radius;
 
     if (resetHpToMax) {
       this.hp = this.maxHp;

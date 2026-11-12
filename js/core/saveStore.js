@@ -33,12 +33,13 @@ function createDefaultSave() {
       levels: {},
     },
     costumes: {
-      owned: [],
+      owned: ['weapon_boomerang'],
       equipped: {
+        weapon: 'weapon_boomerang',
         hat: null,
         outfit: null,
-        weapon: null,
         aura: null,
+        acc: null,
       },
     },
     wordStats: {},
@@ -126,6 +127,16 @@ export function loadSave() {
         state.tutorialCompleted = true;
         persistSave();
       }
+    }
+
+    // 기본 무기(나무 뼈다귀 부메랑) 마이그레이션: 없으면 owned에 추가 및 기본 장착
+    if (!state.costumes.owned.includes('weapon_boomerang')) {
+      state.costumes.owned.unshift('weapon_boomerang');
+      persistSave();
+    }
+    if (!state.costumes.equipped.weapon) {
+      state.costumes.equipped.weapon = 'weapon_boomerang';
+      persistSave();
     }
   } catch (err) {
     console.warn('[saveStore] 세이브 로드 실패, 기본값으로 초기화합니다.', err);

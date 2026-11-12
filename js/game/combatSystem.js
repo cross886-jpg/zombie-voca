@@ -4,7 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { SKILLS } from '../data/catalog.js';
+import { COSTUMES, SKILLS } from '../data/catalog.js';
 import { audioEngine } from '../core/audioEngine.js';
 
 export class CombatSystem {
@@ -104,19 +104,52 @@ export class CombatSystem {
     const target = this._findNearestTarget(player.x, player.y, skillDef.range + 70);
 
     if (skillDef.id === 'bark_sonic') {
+      const weapon =
+        COSTUMES.find((c) => c.id === player.equipped?.weapon) ||
+        COSTUMES.find((c) => c.id === 'weapon_boomerang');
+      const wType = weapon?.type || 'single';
       const ang = target ? Math.atan2(target.y - player.y, target.x - player.x) : player.facingAngle;
       audioEngine.playBark();
-      this.spawnProjectile({
-        x: player.x,
-        y: player.y,
-        vx: Math.cos(ang) * 430,
-        vy: Math.sin(ang) * 430,
-        damage: dmg,
-        radius: 10,
-        color: skillDef.color,
-        aoeRadius: 0,
-        ttl: 0.75,
-      });
+
+      if (wType === 'wave') {
+        const waveRange = weapon.range || 160;
+        this.shockwaves.push({
+          x: player.x,
+          y: player.y,
+          radius: 12,
+          maxRadius: waveRange,
+          color: weapon.projColor || '#fbbf24',
+          ttl: 0.32,
+          maxTtl: 0.32,
+        });
+        const targets = [...this._enemyManager.enemies];
+        if (this._enemyManager.boss && this._enemyManager.boss.hp > 0) targets.push(this._enemyManager.boss);
+        for (const t of targets) {
+          if (Math.hypot(t.x - player.x, t.y - player.y) <= waveRange) {
+            this.damageEnemy(t, dmg, weapon.projColor || '#fbbf24');
+          }
+        }
+      } else {
+        const spd = weapon.projSpeed || 430;
+        const rad = weapon.projRadius || 10;
+        const col = weapon.projColor || skillDef.color;
+        const pierceCount = weapon.pierce || 0;
+        const shape = weapon.shape || 'bone';
+
+        this.spawnProjectile({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          damage: dmg,
+          radius: rad,
+          color: col,
+          shape,
+          pierce: pierceCount,
+          aoeRadius: 0,
+          ttl: 0.75,
+        });
+      }
     } else if (skillDef.id === 'bark_flame') {
       if (!target) return;
       const ang = Math.atan2(target.y - player.y, target.x - player.x);
@@ -275,9 +308,12 @@ export class CombatSystem {
       const lv = player.skills[skillDef.id] || 0;
       if (lv <= 0) continue;
 
+      const weapon = COSTUMES.find((c) => c.id === player.equipped?.weapon);
+      const cdMult = (skillDef.id === 'bark_sonic' && weapon?.cooldownMult) ? weapon.cooldownMult : 1.0;
+
       this.cooldowns[skillDef.id] = (this.cooldowns[skillDef.id] ?? 0) - dt;
       if (this.cooldowns[skillDef.id] <= 0) {
-        this.cooldowns[skillDef.id] = skillDef.cooldown;
+        this.cooldowns[skillDef.id] = skillDef.cooldown * cdMult;
         this._triggerSkill(skillDef, lv, player);
       }
     }
@@ -296,11 +332,11 @@ export class CombatSystem {
 
       let hitTarget = null;
       const boss = this._enemyManager.boss;
-      if (boss && boss.hp > 0 && Math.hypot(boss.x - p.x, boss.y - p.y) <= boss.radius + p.radius) {
+      if (boss && boss.hp > 0 && (!p.hitSet || !p.hitSet.has(boss)) && Math.hypot(boss.x - p.x, boss.y - p.y) <= boss.radius + p.radius) {
         hitTarget = boss;
       } else {
         for (const e of this._enemyManager.enemies) {
-          if (e.hp > 0 && Math.hypot(e.x - p.x, e.y - p.y) <= e.radius + p.radius) {
+          if (e.hp > 0 && (!p.hitSet || !p.hitSet.has(e)) && Math.hypot(e.x - p.x, e.y - p.y) <= e.radius + p.radius) {
             hitTarget = e;
             break;
           }
@@ -329,7 +365,14 @@ export class CombatSystem {
         } else {
           this.damageEnemy(hitTarget, p.damage, p.color);
         }
-        this.projectiles.splice(i, 1);
+
+        if (p.pierce && p.pierce > 0) {
+          p.pierce -= 1;
+          p.hitSet = p.hitSet || new Set();
+          p.hitSet.add(hitTarget);
+        } else {
+          this.projectiles.splice(i, 1);
+        }
       }
     }
 
@@ -404,9 +447,29 @@ export class CombatSystem {
       ctx.fillStyle = p.color;
       ctx.shadowColor = p.color;
       ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fill();
+      if (p.shape === 'slash') {
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.radius * 1.5, p.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'bone') {
+        const spin = (Date.now() / 90) % (Math.PI * 2);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(spin);
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-p.radius, -p.radius * 0.45, p.radius * 2, p.radius * 0.9, 4);
+        } else {
+          ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
 

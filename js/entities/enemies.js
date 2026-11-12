@@ -7,6 +7,16 @@ import { BALANCE } from '../config/balance.js';
 import { getWaveForQuestion } from '../data/chapters.js';
 import { resolveCircleCollisions } from '../game/obstacles.js';
 
+function getQuestionSpeedMult(questionNumber = 1) {
+  const c = BALANCE.ENEMIES.SPEED_CURVE;
+  const q = Math.max(1, questionNumber);
+  const earlyQ = Math.min(q - 1, c.EARLY_END_Q - 1);
+  const midQ = Math.max(0, Math.min(q - c.EARLY_END_Q, c.MID_END_Q - c.EARLY_END_Q));
+  const lateQ = Math.max(0, q - c.MID_END_Q);
+  const mult = 1 + earlyQ * c.EARLY_STEP + midQ * c.MID_STEP + lateQ * c.LATE_STEP;
+  return Math.min(c.MAX_MULT, mult);
+}
+
 export class EnemyManager {
   constructor() {
     this.enemies = [];
@@ -166,7 +176,7 @@ export class EnemyManager {
             sy,
             chapter.enemyHpMult * courseEnemyMult,
             chapter.enemyAtkMult * courseEnemyMult,
-            chapter.enemySpeedMult
+            chapter.enemySpeedMult * getQuestionSpeedMult(questionNumber)
           );
         }
       }

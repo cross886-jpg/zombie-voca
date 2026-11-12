@@ -3,7 +3,7 @@
  * 4개 입체 홀로그램 비석(4사분면 스폰, 220px 최소 거리, 0.4초 점령 게이지·즉시 소멸) + 보카 젬·간식 드롭
  */
 
-import { BALANCE } from '../config/balance.js';
+import { BALANCE, rollGemTier } from '../config/balance.js';
 
 export class MonolithManager {
   constructor() {
@@ -21,7 +21,7 @@ export class MonolithManager {
   }
 
   /**
-   * 플레이어 주변 4사분면에 가로 260~420px, 세로 320~520px 범위로 4개 비석 스폰
+   * 플레이어 주변 4사분면에 가로 364~588px, 세로 448~728px 범위로 4개 비석 스폰
    * @param {Array<{ wordId: number, meaning: string, isCorrect: boolean }>} choices
    * @param {number} arenaWidth
    * @param {number} arenaHeight
@@ -48,19 +48,19 @@ export class MonolithManager {
       const clampX = (val) => Math.max(margin, Math.min(arenaWidth - margin, val));
       const clampY = (val) => Math.max(margin, Math.min(arenaHeight - margin, val));
 
-      // 사분면별 기본 오프셋: 가로 반경 130~210px(전체 260~420px), 세로 반경 160~260px(전체 320~520px)
-      let px = clampX(playerX + dir.sx * 165);
-      let py = clampY(playerY + dir.sy * 205);
+      // 사분면별 기본 오프셋(기존 대비 1.4배 확대): 가로 반경 182~294px, 세로 반경 224~364px
+      let px = clampX(playerX + dir.sx * 230);
+      let py = clampY(playerY + dir.sy * 285);
 
       for (let attempt = 0; attempt < 25; attempt++) {
-        const offsetX = 130 + Math.random() * 80;
-        const offsetY = 160 + Math.random() * 100;
+        const offsetX = 182 + Math.random() * 112;
+        const offsetY = 224 + Math.random() * 140;
         const cx = clampX(playerX + dir.sx * offsetX);
         const cy = clampY(playerY + dir.sy * offsetY);
 
-        const farFromPlayer = Math.hypot(cx - playerX, cy - playerY) >= 135;
+        const farFromPlayer = Math.hypot(cx - playerX, cy - playerY) >= 190;
         const farFromOthers = placed.every(
-          (p) => Math.hypot(cx - p.x, cy - p.y) >= 180
+          (p) => Math.hypot(cx - p.x, cy - p.y) >= 252
         );
         const farFromObstacles = obstacles.every(
           (o) => Math.hypot(cx - o.x, cy - o.y) >= o.radius + 95
@@ -93,12 +93,14 @@ export class MonolithManager {
   }
 
   spawnDrop(type, x, y, value = BALANCE.COMBAT.GEM_XP_VALUE) {
+    const tier = type === 'gem' ? rollGemTier() : null;
     this.drops.push({
       type, // 'gem' | 'snack'
       x,
       y,
       value,
-      radius: 10,
+      tier,
+      radius: tier ? Math.round(10 * tier.scale) : 10,
       bobPhase: Math.random() * Math.PI * 2,
     });
   }
@@ -145,6 +147,8 @@ export class MonolithManager {
 
     // 보카 젬 & 간식 자석 흡수
     let pickedGems = 0;
+    let pickedGemCharge = 0;
+    const pickedHighTiers = [];
     let pickedSnacks = 0;
 
     for (let i = this.drops.length - 1; i >= 0; i--) {
@@ -165,7 +169,12 @@ export class MonolithManager {
 
       if (dist <= player.radius + d.radius + 6) {
         if (d.type === 'gem') {
+          const tier = d.tier || BALANCE.GEM_TIERS[0];
           pickedGems += d.value;
+          pickedGemCharge += tier.charge;
+          if (tier.id === 'purple' || tier.id === 'gold') {
+            pickedHighTiers.push(tier);
+          }
         } else if (d.type === 'snack') {
           pickedSnacks += 1;
         }
@@ -173,7 +182,7 @@ export class MonolithManager {
       }
     }
 
-    return { resolvedMonolith, pickedGems, pickedSnacks, captureTicking };
+    return { resolvedMonolith, pickedGems, pickedGemCharge, pickedHighTiers, pickedSnacks, captureTicking };
   }
 
   render(ctx, time) {
@@ -184,14 +193,16 @@ export class MonolithManager {
       ctx.translate(d.x, d.y + bobY);
 
       if (d.type === 'gem') {
-        ctx.fillStyle = '#38bdf8';
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 8;
+        const tier = d.tier || BALANCE.GEM_TIERS[0];
+        const s = tier.scale;
+        ctx.fillStyle = tier.color;
+        ctx.shadowColor = tier.glow;
+        ctx.shadowBlur = tier.blur;
         ctx.beginPath();
-        ctx.moveTo(0, -8);
-        ctx.lineTo(7, 0);
-        ctx.lineTo(0, 8);
-        ctx.lineTo(-7, 0);
+        ctx.moveTo(0, -8 * s);
+        ctx.lineTo(7 * s, 0);
+        ctx.lineTo(0, 8 * s);
+        ctx.lineTo(-7 * s, 0);
         ctx.closePath();
         ctx.fill();
       } else {

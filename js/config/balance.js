@@ -6,6 +6,8 @@
 
 import { COMPANIONS } from '../data/catalog.js';
 
+export const MAX_EQUIPPED_COMPANIONS = 2;
+
 export const BALANCE = Object.freeze({
   ENGINE: {
     LOGICAL_WIDTH: 480,
@@ -15,7 +17,7 @@ export const BALANCE = Object.freeze({
   },
 
   ARENA: {
-    SCALE_MULTIPLIER: 3.5, // 화면 크기 대비 약 3.5 x 3.5배 네온 방화벽 광장
+    SCALE_MULTIPLIER: 5.25, // 화면 크기 대비 5.25 x 5.25배 네온 방화벽 광장 (기존 3.5배 대비 1.5배 확장)
     FIREWALL_MARGIN: 48,   // 방화벽 외곽 안전 여백
     MONOLITH_SAFE_MARGIN: 140, // 비석 스폰 시 방화벽 안쪽 안전 여백
     MONOLITH_MIN_DIST: 220,    // 비석 간 최소 거리 (px)
@@ -84,16 +86,31 @@ export const BALANCE = Object.freeze({
     SNACK_DROP_CHANCE: 0.06,
   },
 
+  GEM_TIERS: [
+    { id: 'blue',   chance: 0.75, charge: 2,   scale: 1.0,  color: '#38bdf8', glow: '#38bdf8', blur: 8 },
+    { id: 'green',  chance: 0.18, charge: 10,  scale: 1.2,  color: '#4ade80', glow: '#22c55e', blur: 11 },
+    { id: 'purple', chance: 0.06, charge: 35,  scale: 1.4,  color: '#c084fc', glow: '#a855f7', blur: 15 },
+    { id: 'gold',   chance: 0.01, charge: 100, scale: 1.65, color: '#facc15', glow: '#f59e0b', blur: 20 },
+  ],
+
   ENEMIES: {
     MAX_ACTIVE: 48,
     SPAWN_INTERVAL_BASE: 1.35,
     SPAWN_INTERVAL_MIN: 0.45,
+    SPEED_CURVE: {
+      EARLY_END_Q: 10,
+      EARLY_STEP: 0.003,
+      MID_END_Q: 20,
+      MID_STEP: 0.008,
+      LATE_STEP: 0.02,
+      MAX_MULT: 1.35,
+    },
     TYPES: {
-      walker:  { hp: 28,  speed: 86,  dmg: 8,  radius: 17, xp: 10, color: '#6ee7b7' },
-      runner:  { hp: 20,  speed: 142, dmg: 10, radius: 15, xp: 12, color: '#fca5a5' },
-      brute:   { hp: 82,  speed: 62,  dmg: 16, radius: 24, xp: 24, color: '#c4b5fd' },
-      spitter: { hp: 32,  speed: 78,  dmg: 12, radius: 17, xp: 16, color: '#fde047' },
-      armored: { hp: 125, speed: 58,  dmg: 18, radius: 23, xp: 30, color: '#93c5fd' },
+      walker:  { hp: 28,  speed: 58, dmg: 8,  radius: 17, xp: 10, color: '#6ee7b7' },
+      runner:  { hp: 20,  speed: 95, dmg: 10, radius: 15, xp: 12, color: '#fca5a5' },
+      brute:   { hp: 82,  speed: 42, dmg: 16, radius: 24, xp: 24, color: '#c4b5fd' },
+      spitter: { hp: 32,  speed: 52, dmg: 12, radius: 17, xp: 16, color: '#fde047' },
+      armored: { hp: 125, speed: 39, dmg: 18, radius: 23, xp: 30, color: '#93c5fd' },
     },
   },
 
@@ -110,7 +127,7 @@ export const BALANCE = Object.freeze({
   },
 
   COMPANIONS: {
-    MAX_ACTIVE: 2,
+    MAX_ACTIVE: MAX_EQUIPPED_COMPANIONS,
     BASE_UPGRADE_GOLD: 120,
     UPGRADE_GOLD_GROWTH: 1.45,
     ATK_PER_LEVEL: 0.14,
@@ -145,6 +162,34 @@ export const BALANCE = Object.freeze({
     MINI_REVIEW_REWARD_GOLD: 120,
     MINI_REVIEW_REWARD_SNACKS: 2,
     REVIVE_HP_RATIO: 0.7,
+    BOXES: {
+      normal: {
+        id: 'normal',
+        isPremium: false,
+        icon: '📦',
+        nameKey: 'lobby.normalBox',
+        cost: 150,
+        summary: '일반~희귀 코스튬 및 간식 획득',
+        rewardsInfo: '• 코스튬(60%) 또는 간식 x2(40%)\n• 등급 확률: 일반 62% · 희귀 28% · 영웅 8% · 전설 2%\n• 중복 코스튬은 간식 +1🦴으로 자동 변환',
+        rarityWeights: { common: 0.62, rare: 0.28, epic: 0.08, legend: 0.02 },
+        costumeChance: 0.6,
+        refundSnacks: 1,
+        snackQty: 2,
+      },
+      premium: {
+        id: 'premium',
+        isPremium: true,
+        icon: '🧳',
+        nameKey: 'lobby.premiumSuitcase',
+        cost: 450,
+        summary: '희귀~전설 코스튬 고확률 & 대량 간식',
+        rewardsInfo: '• 코스튬(80%) 또는 간식 x4(20%)\n• 등급 확률: 일반 25% · 희귀 38% · 영웅 25% · 전설 12%\n• 중복 코스튬은 간식 +3🦴으로 자동 변환',
+        rarityWeights: { common: 0.25, rare: 0.38, epic: 0.25, legend: 0.12 },
+        costumeChance: 0.8,
+        refundSnacks: 3,
+        snackQty: 4,
+      },
+    },
   },
 
   TUTORIAL: {
@@ -167,11 +212,18 @@ export function getTrainingBonusValue(key, currentLv = 0) {
   return clampedLv * cfg.perLv;
 }
 
+const COMPANION_UNLOCK_CHECKERS = {
+  chapter: (cond, s) => (s?.unlockedChapter || 1) > cond.chapter,
+  trainingSum: (cond, s) =>
+    Object.values(s?.training || {}).reduce((sum, lv) => sum + (Number(lv) || 0), 0) >= cond.target,
+  masteredWords: (cond, s) =>
+    Object.values(s?.wordStats || {}).filter((st) => st?.mastered).length >= cond.target,
+  course: (cond, s) => cond.courseIds.includes(s?.selectedCourse || 'lv1'),
+};
+
 /**
- * 동료 순차 해금 가능 여부 판별
+ * 동료 순차 해금 가능 여부 판별 (챕터 클리어 & 성장 마일스톤 데이터 기반)
  * - 이미 해금된 동료(기존 세이브 포함)는 항상 true
- * - unlockReq가 null이면 기본 해금 가능
- * - 선행 동료가 해금되어 있고 목표 레벨 이상일 때 true
  */
 export function isCompanionUnlockable(companionId, saveState) {
   const comp = COMPANIONS.find((c) => c.id === companionId);
@@ -180,11 +232,22 @@ export function isCompanionUnlockable(companionId, saveState) {
   const unlocked = saveState?.companions?.unlocked || [];
   if (unlocked.includes(companionId)) return true;
 
-  if (!comp.unlockReq) return true;
-  const { prevId, prevLv } = comp.unlockReq;
-  if (!unlocked.includes(prevId)) return false;
+  const cond = comp.unlockCond || { type: 'chapter', chapter: comp.unlockChapter || 1 };
+  const checker = COMPANION_UNLOCK_CHECKERS[cond.type];
+  return checker ? checker(cond, saveState) : false;
+}
 
-  const currentPrevLv = saveState?.companions?.levels?.[prevId] || 1;
-  return currentPrevLv >= prevLv;
+/**
+ * GEM_TIERS 확률 테이블에 따라 보석 등급 1종 추출
+ */
+export function rollGemTier() {
+  const tiers = BALANCE.GEM_TIERS;
+  const r = Math.random();
+  let acc = 0;
+  for (const tier of tiers) {
+    acc += tier.chance;
+    if (r < acc) return tier;
+  }
+  return tiers[0];
 }
 

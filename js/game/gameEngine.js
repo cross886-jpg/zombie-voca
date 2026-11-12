@@ -543,8 +543,12 @@ export class GameEngine {
     }
     if (monoRes.pickedGems > 0) {
       const ultChargeBonus = getTrainingBonusValue('ultChargeLv', getSave().training?.ultChargeLv || 0);
-      const baseGemUlt = Math.max(1, Math.round(monoRes.pickedGems * 0.5));
-      this.player.addUltGauge(Math.round(baseGemUlt * (1 + ultChargeBonus)));
+      this.player.addUltGauge(Math.round(monoRes.pickedGemCharge * (1 + ultChargeBonus)));
+      for (const tier of monoRes.pickedHighTiers) {
+        const label = tier.id === 'gold' ? '⚡ MAX!' : `+${tier.charge}%`;
+        const scale = tier.id === 'gold' ? 1.35 : 1.15;
+        this.combat.spawnDamageText(this.player.x, this.player.y - 42, label, tier.color, scale);
+      }
       updateSave((s) => {
         s.gold += monoRes.pickedGems;
       });

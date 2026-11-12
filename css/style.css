@@ -37,19 +37,19 @@ body {
 }
 #lobby-content::-webkit-scrollbar-thumb,
 #modal-card::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
+  background: rgba(180, 160, 130, 0.45);
   border-radius: 9999px;
 }
 
-/* 상단 네온 LED 전광판 */
+/* 상단 포레스트 그린 LED 전광판 */
 .led-board {
   background:
-    radial-gradient(circle at 50% 0%, rgba(34, 211, 238, 0.16), transparent 70%),
-    linear-gradient(180deg, rgba(8, 15, 32, 0.94) 0%, rgba(15, 23, 42, 0.92) 100%);
-  border: 1.5px solid rgba(34, 211, 238, 0.55);
+    radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(18, 40, 29, 0.96) 0%, rgba(27, 59, 43, 0.94) 100%);
+  border: 1.5px solid rgba(52, 211, 153, 0.5);
   box-shadow:
-    0 0 18px rgba(6, 182, 212, 0.25),
-    inset 0 0 12px rgba(34, 211, 238, 0.12);
+    0 0 18px rgba(45, 106, 79, 0.35),
+    inset 0 0 12px rgba(52, 211, 153, 0.12);
   position: relative;
   overflow: hidden;
 }
@@ -73,12 +73,12 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1.5px solid rgba(34, 211, 238, 0.8);
-  color: #67e8f9;
+  background: rgba(27, 59, 43, 0.88);
+  border: 1.5px solid rgba(52, 211, 153, 0.8);
+  color: #a7f3d0;
   font-size: 13px;
   font-weight: 800;
-  box-shadow: 0 0 12px rgba(34, 211, 238, 0.5);
+  box-shadow: 0 0 12px rgba(45, 106, 79, 0.55);
   animation: arrowPulse 1.1s ease-in-out infinite;
   transform: translate(-50%, -50%);
 }
