@@ -25,6 +25,7 @@ export const BALANCE = Object.freeze({
   },
 
   VOCA: {
+    WORDS_PER_UNIT: 7,      // 1유닛(스테이지)당 7단어 (총 약 700~714개 스테이지)
     DECK_SIZE: 30,          // 한 판 고정 30문제
     NEW_WORDS_COUNT: 20,    // 신규 단어 20문제
     REVIEW_WORDS_COUNT: 10, // 오답/복습 단어 10문제
@@ -51,19 +52,20 @@ export const BALANCE = Object.freeze({
     BASE_HP: 120,
     BASE_SPEED: 160,
     BASE_ATK: 18,
-    RADIUS: 20,
-    PICKUP_RADIUS: 78,
+    RADIUS: 15,
+    RENDER_SCALE: 1.05,
+    PICKUP_RADIUS: 72,
     INVULN_DURATION: 0.45,
     LEVEL_UP_BASE_XP: 30,
     LEVEL_UP_XP_STEP: 22,
   },
 
-  // 누적 진화 XP 기반 4단계 외형 진화
+  // 누적 스테이지 진행도 기반 4단계 외형 진화
   EVOLUTION_STAGES: [
-    { stage: 0, key: 'evo.stage0', minXp: 0,     hpMult: 1.0,  atkMult: 1.0,  scale: 1.0,  icon: '🐶' },
-    { stage: 1, key: 'evo.stage1', minXp: 1500,  hpMult: 1.15, atkMult: 1.15, scale: 1.08, icon: '🐕' },
-    { stage: 2, key: 'evo.stage2', minXp: 5000,  hpMult: 1.35, atkMult: 1.35, scale: 1.16, icon: '⚔️' },
-    { stage: 3, key: 'evo.stage3', minXp: 12000, hpMult: 1.6,  atkMult: 1.65, scale: 1.25, icon: '🦸' },
+    { stage: 0, minStage: 1,  key: 'evo.stage0', minXp: 0,     hpMult: 1.0,  atkMult: 1.0,  scale: 1.0,  icon: '🐶' },
+    { stage: 1, minStage: 10, key: 'evo.stage1', minXp: 1500,  hpMult: 1.15, atkMult: 1.15, scale: 1.08, icon: '🐕' },
+    { stage: 2, minStage: 30, key: 'evo.stage2', minXp: 5000,  hpMult: 1.35, atkMult: 1.35, scale: 1.16, icon: '⚔️' },
+    { stage: 3, minStage: 70, key: 'evo.stage3', minXp: 12000, hpMult: 1.6,  atkMult: 1.65, scale: 1.25, icon: '🦸' },
   ],
 
   // 챕터와 독립적으로 작동하는 4개 난이도 코스 (단어 출제 풀 및 보상 배율)
@@ -98,6 +100,7 @@ export const BALANCE = Object.freeze({
     MAX_ACTIVE: 48,
     SPAWN_INTERVAL_BASE: 1.35,
     SPAWN_INTERVAL_MIN: 0.45,
+    RENDER_SCALE: 1.05,
     SPEED_CURVE: {
       EARLY_END_Q: 10,
       EARLY_STEP: 0.003,
@@ -107,11 +110,11 @@ export const BALANCE = Object.freeze({
       MAX_MULT: 1.35,
     },
     TYPES: {
-      walker:  { hp: 28,  speed: 42, dmg: 8,  radius: 17, xp: 10, color: '#6ee7b7' },
-      runner:  { hp: 20,  speed: 68, dmg: 10, radius: 15, xp: 12, color: '#fca5a5' },
-      brute:   { hp: 82,  speed: 30, dmg: 16, radius: 24, xp: 24, color: '#c4b5fd' },
-      spitter: { hp: 32,  speed: 38, dmg: 12, radius: 17, xp: 16, color: '#fde047' },
-      armored: { hp: 125, speed: 28, dmg: 18, radius: 23, xp: 30, color: '#93c5fd' },
+      walker:  { hp: 28,  speed: 42, dmg: 8,  radius: 13, xp: 10, color: '#6ee7b7' },
+      runner:  { hp: 20,  speed: 68, dmg: 10, radius: 11, xp: 12, color: '#fca5a5' },
+      brute:   { hp: 82,  speed: 30, dmg: 16, radius: 18, xp: 24, color: '#c4b5fd' },
+      spitter: { hp: 32,  speed: 38, dmg: 12, radius: 13, xp: 16, color: '#fde047' },
+      armored: { hp: 125, speed: 28, dmg: 18, radius: 17, xp: 30, color: '#93c5fd' },
     },
   },
 
@@ -122,20 +125,21 @@ export const BALANCE = Object.freeze({
     BASE_HP: 1200,
     BASE_SPEED: 54,
     BASE_DMG: 22,
-    RADIUS: 42,
+    RADIUS: 31,
+    RENDER_SCALE: 1.05,
     ENRAGE_SPEED_MULT: 1.38,
     ENRAGE_DMG_MULT: 1.35,
   },
 
   COMPANIONS: {
     MAX_ACTIVE: MAX_EQUIPPED_COMPANIONS,
-    BASE_UPGRADE_GOLD: 120,
-    UPGRADE_GOLD_GROWTH: 1.45,
+    BASE_UPGRADE_GOLD: 35,
+    UPGRADE_GOLD_GROWTH: 1.35,
     ATK_PER_LEVEL: 0.14,
   },
 
   TRAINING: {
-    BASE_COST_GOLD: 80,
+    BASE_COST_GOLD: 20,
     COST_GROWTH: 1.35,
     ATK_BONUS_PER_LV: 4,
     HP_BONUS_PER_LV: 20,
@@ -148,49 +152,20 @@ export const BALANCE = Object.freeze({
     SHIELD_BONUS_PER_LV: 0.04,
     SHIELD_MAX_LV: 15,
     ITEMS: {
-      atkLevel:    { baseCost: 80,  growth: 1.35, maxLv: 99, perLv: 4 },
-      hpLevel:     { baseCost: 80,  growth: 1.35, maxLv: 99, perLv: 20 },
-      speedLv:     { baseCost: 90,  growth: 1.32, maxLv: 20, perLv: 0.025 },
-      magnetLv:    { baseCost: 85,  growth: 1.30, maxLv: 20, perLv: 12 },
-      ultChargeLv: { baseCost: 100, growth: 1.35, maxLv: 20, perLv: 0.05 },
-      shieldLv:    { baseCost: 110, growth: 1.38, maxLv: 15, perLv: 0.04 },
+      atkLevel:    { baseCost: 20, growth: 1.35, maxLv: 99, perLv: 4 },
+      hpLevel:     { baseCost: 20, growth: 1.35, maxLv: 99, perLv: 20 },
+      speedLv:     { baseCost: 25, growth: 1.35, maxLv: 20, perLv: 0.025 },
+      magnetLv:    { baseCost: 25, growth: 1.35, maxLv: 20, perLv: 12 },
+      ultChargeLv: { baseCost: 30, growth: 1.35, maxLv: 20, perLv: 0.05 },
+      shieldLv:    { baseCost: 30, growth: 1.35, maxLv: 15, perLv: 0.04 },
     },
   },
 
   SHOP: {
-    NORMAL_BOX_GOLD: 150,
-    PREMIUM_SUITCASE_GOLD: 450,
-    MINI_REVIEW_REWARD_GOLD: 120,
+    SUPPLY_BOX_GEM_COST: 50,
+    MINI_REVIEW_REWARD_GOLD: 25,
     MINI_REVIEW_REWARD_SNACKS: 2,
     REVIVE_HP_RATIO: 0.7,
-    BOXES: {
-      normal: {
-        id: 'normal',
-        isPremium: false,
-        icon: '📦',
-        nameKey: 'lobby.normalBox',
-        cost: 150,
-        summary: '일반~희귀 코스튬 및 간식 획득',
-        rewardsInfo: '• 코스튬(60%) 또는 간식 x2(40%)\n• 등급 확률: 일반 62% · 희귀 28% · 영웅 8% · 전설 2%\n• 중복 코스튬은 간식 +1🦴으로 자동 변환',
-        rarityWeights: { common: 0.62, rare: 0.28, epic: 0.08, legend: 0.02 },
-        costumeChance: 0.6,
-        refundSnacks: 1,
-        snackQty: 2,
-      },
-      premium: {
-        id: 'premium',
-        isPremium: true,
-        icon: '🧳',
-        nameKey: 'lobby.premiumSuitcase',
-        cost: 450,
-        summary: '희귀~전설 코스튬 고확률 & 대량 간식',
-        rewardsInfo: '• 코스튬(80%) 또는 간식 x4(20%)\n• 등급 확률: 일반 25% · 희귀 38% · 영웅 25% · 전설 12%\n• 중복 코스튬은 간식 +3🦴으로 자동 변환',
-        rarityWeights: { common: 0.25, rare: 0.38, epic: 0.25, legend: 0.12 },
-        costumeChance: 0.8,
-        refundSnacks: 3,
-        snackQty: 4,
-      },
-    },
   },
 
   TUTORIAL: {
@@ -233,6 +208,10 @@ export function isCompanionUnlockable(companionId, saveState) {
   const unlocked = saveState?.companions?.unlocked || [];
   if (unlocked.includes(companionId)) return true;
 
+  if (comp.unlockStage && (saveState?.maxUnlockedUnit || 1) >= comp.unlockStage) {
+    return true;
+  }
+
   const cond = comp.unlockCond || { type: 'chapter', chapter: comp.unlockChapter || 1 };
   const checker = COMPANION_UNLOCK_CHECKERS[cond.type];
   return checker ? checker(cond, saveState) : false;
@@ -250,5 +229,131 @@ export function rollGemTier() {
     if (r < acc) return tier;
   }
   return tiers[0];
+}
+
+/**
+ * 스테이지 클리어 및 결과 보상 단일 진실 공급원 (Single Source of Truth)
+ * @param {object} params
+ * @param {boolean} params.cleared 클리어 여부
+ * @param {boolean} params.isTutorial 튜토리얼 여부
+ * @param {boolean} params.isPlacement 월반 도전 여부
+ * @param {boolean} params.isPromotion 승급전 여부
+ * @param {boolean} params.promoPassed 승급전 합격 여부
+ * @param {number} params.stageNumber 현재 유닛/스테이지 번호 (1-based)
+ * @param {number} params.maxUnlockedUnit 유저 최고 해금 유닛 번호 (기본 1)
+ * @param {number} params.chapterNumber 챕터 번호
+ * @param {number} params.correctCount 맞힌 문제 수
+ * @param {number} params.wrongCount 틀린 문제 수
+ * @param {number} params.podGoldEarned 인게임 전술 캡슐 개방 획득 금화
+ * @param {number} params.baseChapterGold 챕터 기본 금화
+ * @param {number} params.courseMult 코스 배율 (기본 1.0)
+ * @param {boolean} params.hasBoss 챕터 보스 스테이지 여부
+ * @param {number} params.earnedEvoXp 인게임 획득 진화 경험치
+ * @param {number} params.chapterEvoBonus 챕터 클리어 진화 경험치 보너스
+ * @param {number} params.kills 처치 좀비 수
+ * @returns {{
+ *   earnedGold: number,
+ *   earnedSnacks: number,
+ *   earnedEvoXp: number,
+ *   earnedGems: number,
+ *   stageScore: number,
+ *   isFirstClear: boolean,
+ *   isRepeatFarm: boolean,
+ *   firstClearGoldBonus: number,
+ *   bossGoldBonus: number
+ * }}
+ */
+export function calcStageReward({
+  cleared = false,
+  isTutorial = false,
+  isPlacement = false,
+  isPromotion = false,
+  promoPassed = false,
+  stageNumber = 1,
+  maxUnlockedUnit = 1,
+  chapterNumber = 1,
+  correctCount = 0,
+  wrongCount = 0,
+  podGoldEarned = 0,
+  baseChapterGold = 35,
+  courseMult = 1.0,
+  hasBoss = false,
+  earnedEvoXp = 0,
+  chapterEvoBonus = 0,
+  kills = 0,
+} = {}) {
+  if (isTutorial) {
+    return {
+      earnedGold: 100,
+      earnedSnacks: 0,
+      earnedEvoXp: earnedEvoXp + (cleared ? 50 : 0),
+      earnedGems: 0,
+      stageScore: (correctCount * 100) + (kills * 15) + (cleared ? 500 : 100),
+      isFirstClear: true,
+      isRepeatFarm: false,
+      firstClearGoldBonus: 0,
+      bossGoldBonus: 0,
+    };
+  }
+
+  // 1. 반복 파밍 감쇠 및 최초 돌파 판정
+  // 이미 클리어한 낮은 스테이지(stageNumber < maxUnlockedUnit)를 반복 플레이할 때는 스테이지 클리어 금화 보상을 50% 수준으로 감쇠
+  const isRepeatFarm = cleared && (stageNumber < maxUnlockedUnit);
+  const isFirstClear = cleared && (stageNumber >= maxUnlockedUnit);
+
+  // 2. 기본 클리어 금화 + 정답당 금화
+  const baseGold = cleared ? baseChapterGold : Math.round(baseChapterGold * 0.25);
+  const wordGold = correctCount * 4;
+
+  // 3. 챕터 보스 스테이지 클리어 굵직한 보너스
+  let bossGoldBonus = 0;
+  if (cleared && hasBoss) {
+    bossGoldBonus = 60 + chapterNumber * 20;
+  }
+
+  // 4. 최초 스테이지 돌파 굵직한 보너스
+  let firstClearGoldBonus = 0;
+  if (isFirstClear) {
+    firstClearGoldBonus = 40 + Math.min(80, stageNumber * 3);
+  }
+
+  // 5. 반복 파밍 감쇠 적용 (50% 수준)
+  let stageClearSum = baseGold + wordGold;
+  if (isRepeatFarm) {
+    stageClearSum = Math.round(stageClearSum * 0.5);
+  }
+
+  // 6. 전술 구조 캡슐 개방 획득 금화는 파밍 감쇠 없이 온전히 보장
+  const totalRawGold = (stageClearSum + bossGoldBonus + firstClearGoldBonus + podGoldEarned) * courseMult;
+  const earnedGold = Math.max(1, Math.round(totalRawGold));
+
+  // 7. 뼈다귀(간식) 보상
+  let earnedSnacks = 0;
+  if (isPromotion) {
+    earnedSnacks = promoPassed ? 3 : 0;
+  } else {
+    earnedSnacks = cleared ? (wrongCount === 0 && correctCount > 0 ? 2 : 1) : 0;
+  }
+
+  // 8. 진화 경험치
+  const evoBonus = cleared ? chapterEvoBonus : 0;
+  const totalEvoXp = earnedEvoXp + evoBonus;
+
+  // 9. 주간 리그 점수
+  const baseScore = (correctCount * 100) + (kills * 15);
+  const clearBonus = cleared ? 500 : 100;
+  const stageScore = baseScore + clearBonus;
+
+  return {
+    earnedGold,
+    earnedSnacks,
+    earnedEvoXp: totalEvoXp,
+    earnedGems: 0,
+    stageScore,
+    isFirstClear,
+    isRepeatFarm,
+    firstClearGoldBonus,
+    bossGoldBonus,
+  };
 }
 

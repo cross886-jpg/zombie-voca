@@ -13,6 +13,8 @@ const PROJECTILE_STYLES = {
   flame:     { speed: 320, radius: 10, aoeRadius: 48, pierce: 1, count: 1, spread: 0,    slowDuration: 0 },
   sonic:     { speed: 400, radius: 11, aoeRadius: 0,  pierce: 3, count: 1, spread: 0,    slowDuration: 0 },
   lightning: { speed: 460, radius: 12, aoeRadius: 62, pierce: 1, count: 1, spread: 0,    slowDuration: 0.9 },
+  frost:     { speed: 350, radius: 9,  aoeRadius: 42, pierce: 1, count: 1, spread: 0,    slowDuration: 2.0 },
+  carrot:    { speed: 380, radius: 8,  aoeRadius: 0,  pierce: 2, count: 1, spread: 0,    slowDuration: 0 },
 };
 
 export class CompanionManager {
@@ -53,9 +55,43 @@ export class CompanionManager {
     return false;
   }
 
+  addTemporaryCompanion(companionDef, player, duration = 16) {
+    if (!companionDef) return null;
+    const existing = this.activeCompanions.find((c) => c.id === companionDef.id);
+    if (existing) {
+      existing.runLv += 1;
+      existing.tempTimer = Math.max(existing.tempTimer || 0, duration);
+      return existing;
+    }
+    const idx = this.activeCompanions.length;
+    const sideAngle = (player?.facingAngle || 0) + (idx % 2 === 0 ? 1 : -1) * 1.8;
+    const comp = {
+      id: companionDef.id,
+      def: companionDef,
+      x: (player?.x || 0) + Math.cos(sideAngle) * 44,
+      y: (player?.y || 0) + Math.sin(sideAngle) * 44,
+      orbitAngle: sideAngle,
+      lobbyLv: 1,
+      runLv: 2,
+      cooldownTimer: 0.1,
+      attackFlash: 0,
+      isTemporary: true,
+      tempTimer: duration,
+    };
+    this.activeCompanions.push(comp);
+    return comp;
+  }
+
   update(dt, player, enemies, boss, combatSystem) {
-    for (let i = 0; i < this.activeCompanions.length; i++) {
+    for (let i = this.activeCompanions.length - 1; i >= 0; i--) {
       const comp = this.activeCompanions[i];
+      if (comp.isTemporary) {
+        comp.tempTimer -= dt;
+        if (comp.tempTimer <= 0) {
+          this.activeCompanions.splice(i, 1);
+          continue;
+        }
+      }
       if (comp.attackFlash > 0) comp.attackFlash = Math.max(0, comp.attackFlash - dt);
 
       // 우유 주변 좌/우 추종 목표 위치 계산 (동행 인원 확장 대응)

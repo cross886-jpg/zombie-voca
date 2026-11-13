@@ -4,6 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
+import { getTotalUnits } from './data_en.js?v=2';
 
 export const CHAPTERS = Object.freeze([
   {
@@ -15,7 +16,7 @@ export const CHAPTERS = Object.freeze([
     enemyHpMult: 1.0,
     enemyAtkMult: 1.0,
     enemySpeedMult: 1.0,
-    goldReward: 250,
+    goldReward: 30,
     evoXpBonus: 300,
     unlockCompanionId: 'rookie',
     theme: {
@@ -47,7 +48,7 @@ export const CHAPTERS = Object.freeze([
     enemyHpMult: 1.35,
     enemyAtkMult: 1.2,
     enemySpeedMult: 1.05,
-    goldReward: 380,
+    goldReward: 45,
     evoXpBonus: 450,
     unlockCompanionId: 'nuts',
     theme: {
@@ -79,7 +80,7 @@ export const CHAPTERS = Object.freeze([
     enemyHpMult: 1.75,
     enemyAtkMult: 1.45,
     enemySpeedMult: 1.1,
-    goldReward: 520,
+    goldReward: 55,
     evoXpBonus: 650,
     unlockCompanionId: 'max',
     theme: {
@@ -111,7 +112,7 @@ export const CHAPTERS = Object.freeze([
     enemyHpMult: 2.25,
     enemyAtkMult: 1.7,
     enemySpeedMult: 1.15,
-    goldReward: 700,
+    goldReward: 70,
     evoXpBonus: 900,
     unlockCompanionId: 'piji',
     theme: {
@@ -143,7 +144,7 @@ export const CHAPTERS = Object.freeze([
     enemyHpMult: 2.85,
     enemyAtkMult: 2.0,
     enemySpeedMult: 1.2,
-    goldReward: 1000,
+    goldReward: 85,
     evoXpBonus: 1300,
     unlockCompanionId: null,
     theme: {
@@ -192,5 +193,45 @@ export function getWaveForQuestion(chapter, questionNumber) {
     table.find((w) => questionNumber >= w.fromQ && questionNumber <= w.toQ) ||
     table[table.length - 1]
   );
+}
+
+/**
+ * 전체 유닛 수를 5개 챕터(CH.1 ~ CH.5)에 균등하게 동적 분할 매핑
+ * @param {number} [totalUnits]
+ * @returns {Array<{ chapter: number, start: number, end: number }>}
+ */
+export function getChapterUnitRanges(totalUnits) {
+  const count = typeof totalUnits === 'number' && totalUnits > 0
+    ? totalUnits
+    : getTotalUnits();
+  const numChapters = CHAPTERS.length; // 5
+  const baseSize = Math.floor(count / numChapters);
+  const remainder = count % numChapters;
+
+  const ranges = [];
+  let currentStart = 1;
+  for (let i = 0; i < numChapters; i++) {
+    const size = baseSize + (i < remainder ? 1 : 0);
+    const end = Math.min(count, currentStart + size - 1);
+    ranges.push({
+      chapter: CHAPTERS[i].number,
+      start: currentStart,
+      end,
+    });
+    currentStart = end + 1;
+  }
+  return ranges;
+}
+
+/**
+ * 특정 유닛 번호가 속한 챕터 번호 반환 (1~5)
+ * @param {number} unitNum
+ * @param {number} [totalUnits]
+ * @returns {number}
+ */
+export function getChapterNumberForUnit(unitNum, totalUnits) {
+  const ranges = getChapterUnitRanges(totalUnits);
+  const found = ranges.find((r) => unitNum >= r.start && unitNum <= r.end);
+  return found ? found.chapter : (unitNum < 1 ? 1 : CHAPTERS[CHAPTERS.length - 1].number);
 }
 

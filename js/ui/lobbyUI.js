@@ -6,13 +6,11 @@
 
 import { BALANCE } from '../config/balance.js';
 import { BREEDS, COMPANIONS, COSTUMES } from '../data/catalog.js';
-import { CHAPTERS } from '../data/chapters.js';
-import { SUPPORTED_LANGUAGES, applyI18nToDOM, getLanguage, setLanguage, t } from '../data/i18n.js';
-import { getUnits, getWords } from '../data/data_en.js?v=2';
+import { CHAPTERS, getChapter, getChapterNumberForUnit } from '../data/chapters.js';
+import { SUPPORTED_LANGUAGES, applyI18nToDOM, detectDeviceLanguage, getLanguage, setLanguage, t } from '../data/i18n.js';
+import { getWords, getTotalUnits } from '../data/data_en.js?v=2';
 import {
-  exportSaveBase64,
   getSave,
-  importSaveBase64,
   updateSave,
 } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
@@ -112,23 +110,46 @@ export function createLobbyUI({
     modalCard.innerHTML = '';
   }
 
+  function renderHeroPreview() {
+    const canvas = document.getElementById('lobby-hero-canvas');
+    if (!canvas) return;
+    const save = getSave();
+    const curBreedId = save.selectedBreed || 'pomeranian';
+    const evo = getEvolutionStage(save);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
+    drawDogCharacter(ctx, {
+      breedId: curBreedId,
+      scale: 1.45,
+      bodyY: 0,
+      lookX: 0,
+      isBipedal: evo.stage >= 2,
+    });
+    if (save.equippedSkin) {
+      drawDogSkin(ctx, save.equippedSkin, 1.45, 0);
+    }
+    ctx.restore();
+  }
+
   function refreshHeader() {
     const save = getSave();
-    const evo = getEvolutionStage(save.evoXp || 0);
+    const evo = getEvolutionStage(save);
     evoBadge.textContent = evo.icon;
     playerTitle.textContent = save.dogName || t('app.playerDefaultName');
-    evoStageName.textContent = t(evo.key);
-    const certBadge = document.getElementById('lobby-cert-badge');
-    if (certBadge) {
-      certBadge.textContent = `🏅 ${save.certifiedLevel || 'A1'}`;
-    }
+    const certLevel = save.certifiedLevel || 'A1';
+    evoStageName.textContent = `${t(evo.key)} · ${certLevel}`;
     resGold.textContent = String(save.gold || 0);
     resSnacks.textContent = String(save.snacks || 0);
     if (resGems) resGems.textContent = String(save.gems ?? 300);
     const shopDot = document.getElementById('supply-shop-dot');
     if (shopDot) {
-      shopDot.classList.toggle('hidden', (save.gold || 0) < BALANCE.SHOP.NORMAL_BOX_GOLD);
+      const today = getTodayKey();
+      const hasFreeSupply = save.lastFreeSupplyDate !== today;
+      shopDot.classList.toggle('hidden', !hasFreeSupply);
     }
+    renderHeroPreview();
   }
 
   const battleCtaBar = document.getElementById('battle-cta-bar');
@@ -149,23 +170,28 @@ export function createLobbyUI({
 
     tabButtons.forEach((btn) => {
       const btnTab = btn.getAttribute('data-lobby-tab');
-      const isCenter = btnTab === 'battle';
       const isActive = btnTab === tabKey;
+      const isBattle = btnTab === 'battle';
 
       btn.classList.toggle('active', isActive);
-      if (isCenter) {
-        btn.classList.toggle('border-emerald-400/60', isActive);
-        btn.classList.toggle('from-[#2d6a4f]', isActive);
-        btn.classList.toggle('to-[#1b4332]', isActive);
-        btn.classList.toggle('text-[#f8f5ec]', isActive);
-        btn.classList.toggle('shadow-[0_6px_18px_rgba(45,106,79,0.45)]', isActive);
-        btn.classList.toggle('border-[#2d5a43]', !isActive);
-        btn.classList.toggle('bg-[#234735]', !isActive);
-        btn.classList.toggle('text-[#a3b899]', !isActive);
-      } else {
-        btn.classList.toggle('text-[#f8f5ec]', isActive);
+
+      if (isBattle) {
         btn.classList.toggle('bg-[#234735]', isActive);
+        btn.classList.toggle('bg-[#1e3f2e]', !isActive);
+        btn.classList.toggle('border-emerald-400/60', isActive);
+        btn.classList.toggle('border-emerald-700/40', !isActive);
+        btn.classList.toggle('text-[#f8f5ec]', isActive);
         btn.classList.toggle('text-[#a3b899]', !isActive);
+        btn.classList.toggle('shadow-[0_4px_12px_rgba(0,0,0,0.35)]', isActive);
+        btn.classList.toggle('shadow-sm', !isActive);
+      } else {
+        btn.classList.toggle('bg-[#234735]', isActive);
+        btn.classList.toggle('text-[#f8f5ec]', isActive);
+        btn.classList.toggle('border-emerald-400/50', isActive);
+        btn.classList.toggle('shadow-sm', isActive);
+
+        btn.classList.toggle('text-[#a3b899]', !isActive);
+        btn.classList.toggle('border-transparent', !isActive);
       }
     });
 
@@ -203,56 +229,33 @@ export function createLobbyUI({
     ).length;
 
     const stats = computePlayerStats(save);
-    const equippedIds = Object.values(save.costumes?.equipped || {}).filter(Boolean);
-    const equippedItems = equippedIds
-      .map((id) => COSTUMES.find((c) => c.id === id))
-      .filter(Boolean);
-    const unlockedCompSet = new Set(save.companions?.unlocked || []);
-    const activeCompanions = (save.companions?.active || [])
-      .filter((id) => unlockedCompSet.has(id))
-      .map((id) => COMPANIONS.find((c) => c.id === id))
-      .filter(Boolean);
+    const curUnitNum = parseInt((save.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+    const maxUnlocked = save.maxUnlockedUnit || 1;
+    const totalUnits = getTotalUnits();
+    const curChapterNum = getChapterNumberForUnit(curUnitNum, totalUnits);
+    const ch = getChapter(curChapterNum);
 
-    const companionSlotBadges = Array.from({ length: BALANCE.COMPANIONS.MAX_ACTIVE }, (_, idx) => {
-      const comp = activeCompanions[idx];
-      return comp
-        ? `<span title="${comp.name}" class="w-6 h-6 rounded-lg bg-[#f0ebe0] border border-emerald-600/40 flex items-center justify-center text-xs">${comp.icon}</span>`
-        : `<span title="빈 동료 슬롯" class="w-6 h-6 rounded-lg bg-[#efe9dc] border border-dashed border-[#d2c8b4] flex items-center justify-center text-[10px] font-bold text-[#4a584e]">?</span>`;
-    });
-
-    const visualBadgesHtml = [
-      ...equippedItems.map((item) => `<span title="${item.name}" class="w-6 h-6 rounded-lg bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-center text-xs">${item.icon}</span>`),
-      ...companionSlotBadges,
-    ].join('');
-
-    const currentCourse = BALANCE.COURSES.find((c) => c.id === save.selectedCourse) || BALANCE.COURSES[0];
-    const curUnitId = save.selectedUnit || 'unit_001';
-    const unitNum = parseInt(curUnitId.replace(/\D/g, ''), 10) || 1;
     const allWords = getWords();
+    const curUnitId = `unit_${String(curUnitNum).padStart(3, '0')}`;
     const curUnitWords = allWords.filter((w) => w.unit === curUnitId);
-    const curUnitLevel = curUnitWords[0]?.level || currentCourse.id.toUpperCase();
+    const sample = curUnitWords.slice(0, 3).map((w) => w.word).join(', ');
+    const level = curUnitWords[0]?.level || 'A1';
+    const categoryName = level === 'A1' ? '기초 필수' : level === 'A2' ? '초급 실용' : level === 'B1' ? '중급 핵심' : level === 'B2' ? '중고급 도약' : '고급 심화';
 
-    const currentChNum = viewedChapter ?? (save.selectedChapter || 1);
-    const chIndex = Math.max(0, CHAPTERS.findIndex((c) => c.number === currentChNum));
-    const ch = CHAPTERS[chIndex] || CHAPTERS[0];
-    const chUnlocked = ch.number <= (save.unlockedChapter || 1);
-    const hasPrevCh = chIndex > 0;
-    const hasNextCh = chIndex < CHAPTERS.length - 1;
+    const canGoPrev = curUnitNum > 1;
+    const canGoNext = curUnitNum < totalUnits;
+    const isLockedCurrent = curUnitNum > maxUnlocked;
 
     const curBreedId = save.selectedBreed || 'pomeranian';
     const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
     const dogName = save.dogName || '우유';
 
-    let heroIcon = stats.evoStage.icon;
     let heroName = dogName;
     if (save.equippedSkin === 'skin_crown') {
-      heroIcon = '👑';
       heroName = `👑 황금 왕관 ${dogName}`;
     } else if (save.equippedSkin === 'skin_astronaut') {
-      heroIcon = '🧑‍🚀';
       heroName = `🧑‍🚀 우주비행사 ${dogName}`;
     } else if (save.equippedSkin === 'skin_detective') {
-      heroIcon = '🕵️';
       heroName = `🕵️ 탐정 ${dogName}`;
     }
 
@@ -271,11 +274,12 @@ export function createLobbyUI({
             <button id="btn-open-supply-shop" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition">
               <span class="text-lg leading-none">🎁</span>
               <span class="text-[10px] font-bold text-amber-700 leading-tight text-center">${t('lobby.shopTitle')}</span>
-              <span id="supply-shop-dot" class="${(save.gold || 0) >= BALANCE.SHOP.NORMAL_BOX_GOLD ? '' : 'hidden'} absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span id="supply-shop-dot" class="${save.lastFreeSupplyDate !== today ? '' : 'hidden'} absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              ${save.lastFreeSupplyDate !== today ? '<span class="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-emerald-600 text-white text-[9px] font-black shadow">무료</span>' : ''}
             </button>
           </div>
 
-          <!-- 정중앙: 강아지 오픈 스테이지 프리뷰 & 이름표 & 견종 전환 & 핵심 스탯 -->
+          <!-- 정중앙: 강아지 오픈 스테이지 프리뷰 & 견종명 배지 & 순수 이름표 & 핵심 스탯 -->
           <div class="flex-1 min-w-0 flex flex-col items-center text-center pt-1">
             <!-- 캐릭터 프리뷰 원형 및 좌우 견종 전환 화살표 -->
             <div class="flex items-center justify-center gap-2">
@@ -292,39 +296,27 @@ export function createLobbyUI({
               </button>
             </div>
 
-            <!-- 강아지 이름표 (클릭 시 이름 편집) & 전투력 -->
-            <div class="flex items-center justify-center gap-1.5 mt-2">
-              <button id="btn-edit-dog-name" type="button" class="group inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#faf6ee] hover:bg-[#efe9dc] border border-[#d2c8b4] shadow-xs active:scale-95 transition" title="강아지 이름 변경">
-                <span class="text-xs">🐾</span>
-                <span class="text-sm font-black text-[#1f2d24] group-hover:text-emerald-800">${heroName}</span>
-                <span class="text-[11px] text-[#4a584e] group-hover:text-emerald-700">✏️</span>
-              </button>
-              <span class="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-600/35 text-[10px] font-black text-amber-800">전투력 ${stats.combatPower}</span>
-            </div>
-
             <!-- 현재 선택된 견종명 배지 & 진화 단계 -->
-            <div class="flex items-center justify-center gap-1.5 mt-1">
-              <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">
-                🐶 ${curBreed.name}
+            <div class="flex items-center justify-center gap-1.5 mt-2">
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">
+                🐾 ${curBreed.name} · ${t(stats.evoStage.key)}
               </span>
-              <span class="text-[10px] text-[#a3b899]">·</span>
-              <span class="text-[10px] font-bold text-emerald-800 truncate">${t(stats.evoStage.key)}</span>
             </div>
 
-            <button id="btn-select-unit" type="button" class="inline-flex items-center gap-1.5 px-3 py-1 mt-1 rounded-full bg-[#faf6ee] shadow-sm border border-emerald-600/40 text-[10px] font-extrabold text-emerald-900 hover:bg-emerald-50 active:scale-95 transition">
-              <span>📚</span>
-              <span>Unit ${unitNum}</span>
-              <span class="text-[9px] px-1 rounded bg-emerald-100 text-emerald-800 font-bold">${curUnitLevel}</span>
-              <span class="text-[8px] text-[#4a584e]">▾</span>
-            </button>
-            ${visualBadgesHtml ? `<div class="flex flex-wrap justify-center gap-1 mt-1.5">${visualBadgesHtml}</div>` : ''}
+            <!-- 순수 강아지 이름표 (수정은 프로필 & 설정 모달에서 전담) -->
+            <div class="text-base font-black text-[#1f2d24] mt-1 tracking-tight">
+              ${heroName}
+            </div>
 
-            <div class="flex items-center justify-center gap-3 mt-3 text-xs font-extrabold">
+            <!-- 핵심 4종 스탯 (전투력 · 공격력 · 체력 · 이동속도) -->
+            <div class="flex items-center justify-center gap-2 mt-2 text-xs font-extrabold">
+              <span class="text-amber-800">⚡ ${stats.combatPower}</span>
+              <span class="text-[#a3b899]">·</span>
               <span class="text-emerald-800">⚔️ ${stats.atk}</span>
               <span class="text-[#a3b899]">·</span>
               <span class="text-rose-600">❤️ ${stats.maxHp}</span>
               <span class="text-[#a3b899]">·</span>
-              <span class="text-amber-800">👟 ${Math.round(stats.speed)}</span>
+              <span class="text-teal-800">👟 ${Math.round(stats.speed)}</span>
             </div>
           </div>
 
@@ -337,53 +329,60 @@ export function createLobbyUI({
         </div>
       </div>
 
-      <!-- 심플 챕터 선택 (테두리 없는 미니멀 바) -->
-      <div class="flex items-center justify-between gap-2 px-1 pt-2 ${chUnlocked ? '' : 'opacity-65'}">
-        <button id="btn-chapter-prev" type="button" ${hasPrevCh ? '' : 'disabled'} class="w-9 h-9 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[#1f2d24] font-black text-sm flex items-center justify-center disabled:opacity-25 active:scale-95 transition shrink-0">◀</button>
-        <div class="flex-1 min-w-0 text-center">
-          <div class="flex items-center justify-center gap-1.5">
-            <span class="text-[11px] font-black" style="color:${ch.theme.accentColor}">CH.${ch.number}</span>
-            <span class="font-extrabold text-sm text-[#1f2d24] truncate">${ch.title}</span>
+      <!-- 로비 하단 2단 스테이지 선택기 & 좌우 화살표/스와이프 제어 -->
+      <div id="lobby-stage-selector" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-2xl bg-[#faf6ee] border border-[#d2c8b4] shadow-xs select-none touch-pan-y cursor-grab active:cursor-grabbing">
+        <button id="btn-stage-prev" type="button" ${canGoPrev ? '' : 'disabled'} class="w-10 h-10 rounded-xl bg-[#efe9dc] shadow-2xs border border-[#d2c8b4] text-[#1f2d24] font-black text-sm flex items-center justify-center disabled:opacity-25 active:scale-95 transition shrink-0" title="이전 스테이지">◀</button>
+
+        <div class="flex-1 min-w-0 text-center select-none py-0.5">
+          <!-- 위쪽 작은 글씨: 큰 카테고리/챕터 표기 -->
+          <div class="text-[11px] font-bold text-[#4a584e] truncate flex items-center justify-center gap-1.5">
+            <span class="font-black" style="color:${ch.theme.accentColor}">CH.${ch.number} ${ch.title}</span>
+            <span class="text-[#a3b899]">·</span>
+            <span class="text-emerald-800 font-extrabold">${categoryName}</span>
           </div>
-          <div class="text-[10px] text-[#4a584e] truncate mt-0.5">
-            ${chUnlocked ? `${ch.subtitle} · +${ch.goldReward} 🪙` : `🔒 ${t('lobby.chapterLocked')}`}
+
+          <!-- 가운데 큰 글씨: 현재 선택된 스테이지(유닛) 표기 및 대표 단어 미리보기 -->
+          <div class="flex items-center justify-center gap-1.5 mt-0.5 min-w-0">
+            <span class="text-sm font-black text-[#1f2d24] tracking-tight shrink-0">STAGE ${curUnitNum}</span>
+            ${isLockedCurrent ? `<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-600/30 text-[10px] font-black shrink-0">🔒 미해금</span>` : ''}
+            ${sample ? `<span class="text-[11px] text-[#4a584e] truncate font-medium">(${sample})</span>` : ''}
           </div>
         </div>
-        <button id="btn-chapter-next" type="button" ${hasNextCh ? '' : 'disabled'} class="w-9 h-9 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[#1f2d24] font-black text-sm flex items-center justify-center disabled:opacity-25 active:scale-95 transition shrink-0">▶</button>
+
+        <button id="btn-stage-next" type="button" ${canGoNext ? '' : 'disabled'} class="w-10 h-10 rounded-xl bg-[#efe9dc] shadow-2xs border border-[#d2c8b4] text-[#1f2d24] font-black text-sm flex items-center justify-center disabled:opacity-25 active:scale-95 transition shrink-0" title="다음 스테이지">
+          ▶
+        </button>
       </div>
     `;
 
-    const drawLobbyPreview = () => {
-      const canvas = document.getElementById('lobby-hero-canvas');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
-      drawDogCharacter(ctx, {
-        breedId: curBreedId,
-        scale: 1.45,
-        bodyY: 0,
-        lookX: 0,
-        isBipedal: false,
+    renderHeroPreview();
+
+    const moveStage = (delta) => {
+      const cur = getSave();
+      const curNum = parseInt((cur.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+      const tot = getTotalUnits();
+      const nextNum = curNum + delta;
+
+      if (nextNum < 1 || nextNum > tot) {
+        return;
+      }
+
+      const nextUnitId = `unit_${String(nextNum).padStart(3, '0')}`;
+      const nextCh = getChapterNumberForUnit(nextNum, tot);
+      const allW = getWords();
+      const uW = allW.filter((w) => w.unit === nextUnitId);
+      const lvl = uW[0]?.level || 'A1';
+
+      updateSave((s) => {
+        s.selectedUnit = nextUnitId;
+        s.selectedChapter = nextCh;
+        if (lvl === 'A1') s.selectedCourse = 'lv1';
+        else if (lvl === 'A2') s.selectedCourse = 'lv2';
+        else if (lvl === 'B1' || lvl === 'B2') s.selectedCourse = 'lv3';
+        else s.selectedCourse = 'lv4';
       });
-      if (save.equippedSkin) {
-        drawDogSkin(ctx, save.equippedSkin, 1.45, 0);
-      }
-      ctx.restore();
-    };
-
-    drawLobbyPreview();
-
-    const moveChapter = (delta) => {
-      const nextIdx = Math.max(0, Math.min(CHAPTERS.length - 1, chIndex + delta));
-      const targetCh = CHAPTERS[nextIdx];
-      viewedChapter = targetCh.number;
-      if (targetCh.number <= (save.unlockedChapter || 1)) {
-        updateSave((s) => {
-          s.selectedChapter = targetCh.number;
-        });
-      }
+      viewedChapter = nextCh;
+      audioEngine.playCaptureTick();
       renderBattleTab();
     };
 
@@ -401,15 +400,78 @@ export function createLobbyUI({
 
     document.getElementById('btn-breed-prev')?.addEventListener('click', () => switchBreed(-1));
     document.getElementById('btn-breed-next')?.addEventListener('click', () => switchBreed(1));
-    document.getElementById('btn-edit-dog-name')?.addEventListener('click', openEditDogNameModal);
+    document.getElementById('btn-stage-prev')?.addEventListener('click', () => moveStage(-1));
+    document.getElementById('btn-stage-next')?.addEventListener('click', () => moveStage(1));
 
-    document.getElementById('btn-select-unit')?.addEventListener('click', openUnitSelectModal);
-    document.getElementById('btn-chapter-prev')?.addEventListener('click', () => moveChapter(-1));
-    document.getElementById('btn-chapter-next')?.addEventListener('click', () => moveChapter(1));
+    // 터치/마우스 좌우 스와이프(드래그) 지원
+    const stageSelectorEl = document.getElementById('lobby-stage-selector');
+    if (stageSelectorEl) {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      stageSelectorEl.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches[0]) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      stageSelectorEl.addEventListener('touchend', (e) => {
+        if (e.changedTouches && e.changedTouches[0]) {
+          const dx = e.changedTouches[0].clientX - touchStartX;
+          const dy = e.changedTouches[0].clientY - touchStartY;
+          if (Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy)) {
+            if (dx < 0) moveStage(1);
+            else moveStage(-1);
+          }
+        }
+      });
+
+      let mouseStartX = 0;
+      let isMouseDown = false;
+      stageSelectorEl.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button')) return;
+        isMouseDown = true;
+        mouseStartX = e.clientX;
+      });
+      stageSelectorEl.addEventListener('mouseup', (e) => {
+        if (!isMouseDown) return;
+        isMouseDown = false;
+        const dx = e.clientX - mouseStartX;
+        if (Math.abs(dx) > 35) {
+          if (dx < 0) moveStage(1);
+          else moveStage(-1);
+        }
+      });
+      stageSelectorEl.addEventListener('mouseleave', () => {
+        isMouseDown = false;
+      });
+    }
 
     document.getElementById('btn-open-missions')?.addEventListener('click', openDailyMissionsModal);
     document.getElementById('btn-open-supply-shop')?.addEventListener('click', () => onOpenSupplyShop?.());
     document.getElementById('btn-open-attendance')?.addEventListener('click', openAttendanceModal);
+    updateBattleCtaButton();
+  }
+
+  function updateBattleCtaButton() {
+    const btn = document.getElementById('btn-start-battle');
+    if (!btn) return;
+    const save = getSave();
+    const curUnitNum = parseInt((save.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+    const maxUnlocked = save.maxUnlockedUnit || 1;
+    const isLockedCurrent = curUnitNum > maxUnlocked;
+    const isTutorialNeeded = !save.tutorialCompleted && !save.tutorialDone;
+
+    if (isLockedCurrent) {
+      btn.innerHTML = `🎓 <span>월반 도전 (STAGE ${curUnitNum})</span>`;
+      btn.className = 'w-[220px] mx-auto block py-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 text-white font-black text-sm shadow-[0_6px_20px_rgba(79,70,229,0.35)] active:scale-95 transition';
+    } else if (isTutorialNeeded) {
+      btn.innerHTML = `🎓 <span data-i18n="lobby.startTutorial">${t('lobby.startTutorial')}</span>`;
+      btn.className = 'w-[190px] mx-auto block py-3 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 text-white font-black text-sm shadow-[0_6px_20px_rgba(217,119,6,0.4)] active:scale-95 transition animate-pulse';
+    } else {
+      btn.innerHTML = `⚔️ <span data-i18n="lobby.startBattle">${t('lobby.startBattle')}</span>`;
+      btn.className = 'w-[180px] mx-auto block py-3 rounded-2xl bg-gradient-to-r from-[#2d6a4f] via-[#245840] to-[#1b4332] text-[#f8f5ec] font-black text-sm shadow-[0_6px_20px_rgba(45,106,79,0.35)] active:scale-95 transition';
+    }
   }
 
   function openEditDogNameModal(options = {}) {
@@ -482,73 +544,41 @@ export function createLobbyUI({
     document.getElementById('btn-save-dog-name')?.addEventListener('click', doSave);
   }
 
-  function openUnitSelectModal() {
-    const save = getSave();
-    const curUnit = save.selectedUnit || 'unit_001';
-    const allWords = getWords();
-    const units = getUnits();
-
-    const unitItems = units.slice(0, 40).map((u) => {
-      const uWords = allWords.filter((w) => w.unit === u);
-      const level = uWords[0]?.level || 'A1';
-      const preview = uWords.slice(0, 3).map((w) => w.word).join(', ');
-      const isSelected = u === curUnit;
-      const num = parseInt(u.replace(/\D/g, ''), 10) || 1;
-      return `
-        <button type="button" data-unit="${u}" class="btn-pick-unit w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between ${
-          isSelected
-            ? 'bg-emerald-700 text-white border-emerald-500 shadow-md'
-            : 'bg-[#faf6ee] text-[#1f2d24] border-[#d2c8b4] hover:bg-emerald-50'
-        }">
-          <div>
-            <div class="text-xs font-black flex items-center gap-1.5">
-              <span>Unit ${num}</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? 'bg-emerald-900 text-emerald-200' : 'bg-emerald-100 text-emerald-800'} font-bold">${level}</span>
-            </div>
-            <div class="text-[10px] ${isSelected ? 'text-emerald-100' : 'text-[#4a584e]'} mt-0.5">${preview}... (${uWords.length}단어)</div>
-          </div>
-          ${isSelected ? '<span class="text-xs">✔</span>' : ''}
-        </button>
-      `;
-    }).join('');
-
-    openModal(`
-      <div class="space-y-3">
-        <div class="flex items-center justify-between border-b border-[#d2c8b4] pb-2">
-          <h3 class="text-sm font-black text-emerald-800">📚 학습 유닛 선택</h3>
-          <span class="text-xs text-[#4a584e] font-bold">초급(Unit 1~26)</span>
-        </div>
-        <div class="max-h-[360px] overflow-y-auto space-y-1.5 pr-1">
-          ${unitItems}
-        </div>
-      </div>
-    `);
-
-    modalCard.querySelectorAll('.btn-pick-unit').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const picked = btn.dataset.unit;
-        updateSave((s) => {
-          s.selectedUnit = picked;
-          const uWords = allWords.filter((w) => w.unit === picked);
-          const lvl = uWords[0]?.level || 'A1';
-          if (lvl === 'A1') s.selectedCourse = 'lv1';
-          else if (lvl === 'A2') s.selectedCourse = 'lv2';
-          else if (lvl === 'B1' || lvl === 'B2') s.selectedCourse = 'lv3';
-          else s.selectedCourse = 'lv4';
-        });
-        closeModal();
-        renderBattleTab();
-      });
-    });
-  }
-
   document.getElementById('btn-start-battle')?.addEventListener('click', () => {
-    console.log('[Lobby] Start Battle clicked');
+    console.log('[Lobby] Start Battle / Placement clicked');
     const cur = getSave();
+    const curUnitNum = parseInt((cur.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+    const maxUnlocked = cur.maxUnlockedUnit || 1;
+
+    // 미해금 상위 스테이지인 경우 -> 실제 인게임 월반 전투 모드로 즉시 출격
+    if (curUnitNum > maxUnlocked) {
+      onStartBattle?.({
+        chapterNumber: cur.selectedChapter,
+        courseId: cur.selectedCourse,
+        unitId: cur.selectedUnit,
+        isPlacement: true,
+        targetUnitNum: curUnitNum,
+      });
+      return;
+    }
+
+    if (!cur.tutorialCompleted && !cur.tutorialDone) {
+      onStartTutorial?.();
+      return;
+    }
+    const totalUnits = getTotalUnits();
+    let unitToPlay = cur.selectedUnit || 'unit_001';
+    if (curUnitNum > maxUnlocked || curUnitNum > totalUnits) {
+      const safeUnit = Math.min(maxUnlocked, totalUnits);
+      unitToPlay = `unit_${String(safeUnit).padStart(3, '0')}`;
+      updateSave((s) => {
+        s.selectedUnit = unitToPlay;
+      });
+    }
     onStartBattle?.({
       chapterNumber: cur.selectedChapter,
       courseId: cur.selectedCourse,
-      unitId: cur.selectedUnit || 'unit_001',
+      unitId: unitToPlay,
     });
   });
 
@@ -674,24 +704,15 @@ export function createLobbyUI({
     const curLang = getLanguage();
     const curBreedId = save.selectedBreed || 'pomeranian';
     const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
-    const evo = getEvolutionStage(save.evoXp || 0);
+    const evo = getEvolutionStage(save);
     const certLevel = save.certifiedLevel || 'A1';
     const dogName = save.dogName || '우유';
 
-    const langBtns = SUPPORTED_LANGUAGES.map(
-      (l) => `
-      <button type="button" data-lang="${l.code}" class="lang-btn px-3 py-1.5 rounded-lg text-xs font-bold border ${
-        curLang === l.code
-          ? 'bg-[#2d6a4f] border-[#2d6a4f] text-[#f8f5ec]'
-          : 'bg-[#f0ebe0] border-[#d2c8b4] text-[#4a584e]'
-      }">${l.label}</button>
-    `
-    ).join('');
-
-    const isRight = (save.dominantHand || 'right') === 'right';
+    const hapticOn = save.haptic !== false;
+    const lowFxOn = Boolean(save.lowFx);
 
     openModal(`
-      <div class="space-y-4">
+      <div class="space-y-3.5">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-black text-[#1f2d24]">⚙️ ${t('modal.settingsTitle')}</h2>
           <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold">✕</button>
@@ -720,51 +741,80 @@ export function createLobbyUI({
           </div>
         </div>
 
-        <div class="space-y-1.5">
-          <div class="text-xs font-bold text-[#4a584e]">${t('modal.languageLabel')}</div>
-          <div class="flex gap-2">${langBtns}</div>
+        <!-- 1. 언어 선택 (1줄 컴팩트 드롭다운) -->
+        <div class="p-2.5 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-between gap-2">
+          <div class="text-xs font-bold text-[#1f2d24] flex items-center gap-1.5">
+            <span>🌐</span>
+            <span>${t('modal.languageLabel')}</span>
+          </div>
+          <select id="select-settings-lang" class="py-1 px-2.5 rounded-lg bg-[#faf6ee] border border-[#d2c8b4] text-xs font-bold text-[#1f2d24] focus:outline-none focus:ring-1 focus:ring-[#2d6a4f] cursor-pointer">
+            ${SUPPORTED_LANGUAGES.map((l) => `<option value="${l.code}" ${curLang === l.code ? 'selected' : ''}>${l.label}</option>`).join('')}
+          </select>
         </div>
 
+        <!-- 2. 사운드 조절 -->
         <div class="space-y-1.5">
-          <div class="text-xs font-bold text-[#4a584e] flex items-center justify-between">
-            <span>🖐️ 조작 손 설정</span>
-            <span class="text-[11px] font-semibold text-emerald-800">${isRight ? '필살기: 왼쪽 하단' : '필살기: 오른쪽 하단'}</span>
+          <div class="text-xs font-bold text-[#4a584e] flex items-center gap-1">
+            <span>🔊</span>
+            <span>${t('modal.sfxLabel')} & ${t('modal.bgmLabel')}</span>
           </div>
           <div class="grid grid-cols-2 gap-2">
-            <button type="button" class="hand-btn py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 ${isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#f0ebe0] text-[#4a584e] border-[#d2c8b4]'}" data-hand="right">
-              👉 오른손잡이
+            <button id="btn-toggle-bgm" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
+              save.audio.bgmEnabled
+                ? 'bg-[#f0ebe0] border-[#2d6a4f] text-[#1f2d24]'
+                : 'bg-[#e6dec8] border-[#d2c8b4] text-[#7d8c80]'
+            }">
+              <span>${t('modal.bgmLabel')}</span>
+              <span class="font-black ${save.audio.bgmEnabled ? 'text-[#2d6a4f]' : 'text-stone-500'}">${save.audio.bgmEnabled ? '🔊 ON' : '🔇 OFF'}</span>
             </button>
-            <button type="button" class="hand-btn py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 ${!isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#f0ebe0] text-[#4a584e] border-[#d2c8b4]'}" data-hand="left">
-              👈 왼손잡이
+            <button id="btn-toggle-sfx" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
+              save.audio.sfxEnabled
+                ? 'bg-[#f0ebe0] border-[#2d6a4f] text-[#1f2d24]'
+                : 'bg-[#e6dec8] border-[#d2c8b4] text-[#7d8c80]'
+            }">
+              <span>${t('modal.sfxLabel')}</span>
+              <span class="font-black ${save.audio.sfxEnabled ? 'text-[#2d6a4f]' : 'text-stone-500'}">${save.audio.sfxEnabled ? '🔊 ON' : '🔇 OFF'}</span>
             </button>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <button id="btn-toggle-bgm" type="button" class="p-2.5 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] text-xs font-bold text-[#1f2d24] flex items-center justify-between">
-            <span>${t('modal.bgmLabel')}</span>
-            <span>${save.audio.bgmEnabled ? '🔊 ON' : '🔇 OFF'}</span>
-          </button>
-          <button id="btn-toggle-sfx" type="button" class="p-2.5 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] text-xs font-bold text-[#1f2d24] flex items-center justify-between">
-            <span>${t('modal.sfxLabel')}</span>
-            <span>${save.audio.sfxEnabled ? '🔊 ON' : '🔇 OFF'}</span>
-          </button>
+        <!-- 3. 진동 & 저사양 모드 -->
+        <div class="space-y-1.5">
+          <div class="text-xs font-bold text-[#4a584e] flex items-center gap-1">
+            <span>📳</span>
+            <span>디바이스 & 그래픽</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="btn-toggle-haptic" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
+              hapticOn
+                ? 'bg-[#f0ebe0] border-[#2d6a4f] text-[#1f2d24]'
+                : 'bg-[#e6dec8] border-[#d2c8b4] text-[#7d8c80]'
+            }">
+              <span>${t('modal.hapticLabel')}</span>
+              <span class="font-black ${hapticOn ? 'text-[#2d6a4f]' : 'text-stone-500'}">${hapticOn ? '📳 ON' : 'OFF'}</span>
+            </button>
+            <button id="btn-toggle-lowfx" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
+              lowFxOn
+                ? 'bg-amber-100 border-amber-600/50 text-amber-900'
+                : 'bg-[#f0ebe0] border-[#d2c8b4] text-[#1f2d24]'
+            }">
+              <span>${t('modal.lowFxLabel')}</span>
+              <span class="font-black ${lowFxOn ? 'text-amber-700' : 'text-stone-500'}">${lowFxOn ? '⚡ ON' : 'OFF'}</span>
+            </button>
+          </div>
         </div>
 
-        <div class="space-y-2 pt-1 border-t border-[#d2c8b4]">
-          <button id="btn-export-save" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-bold text-xs">
-            📋 ${t('modal.exportSave')}
-          </button>
-          <textarea id="input-import-save" rows="2" placeholder="${t('modal.importPlaceholder')}" class="w-full p-2.5 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] text-xs text-[#1f2d24] font-mono"></textarea>
-          <button id="btn-import-save" type="button" class="w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-600/40 text-amber-800 font-bold text-xs">
-            📥 ${t('modal.importSave')}
-          </button>
-          <div id="settings-feedback" class="text-center text-[11px] font-bold text-emerald-700 min-h-[16px]"></div>
-        </div>
+        <!-- 4. 계정 연동 & 피드백 -->
+        <div class="space-y-2 pt-2 border-t border-[#d2c8b4]">
+          <div class="p-2.5 rounded-xl bg-[#ece5d8] border border-[#d2c8b4] flex items-center justify-between text-xs font-bold text-[#4a584e]">
+            <span class="flex items-center gap-1.5">☁️ ${t('modal.accountLabel')}</span>
+            <span class="px-2 py-0.5 rounded-full bg-[#ded4c1] text-[#606d62] text-[10px] font-extrabold">${t('modal.accountComingSoon')}</span>
+          </div>
 
-        <button id="btn-replay-tutorial" type="button" class="w-full py-2.5 rounded-xl bg-[#efe9dc] hover:bg-[#e6dec8] border border-[#d2c8b4] text-[#1f2d24] font-bold text-xs">
-          🐾 튜토리얼 다시보기
-        </button>
+          <button id="btn-feedback" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition shadow-xs">
+            <span>${t('modal.sendFeedback')}</span>
+          </button>
+        </div>
       </div>
     `);
 
@@ -799,28 +849,21 @@ export function createLobbyUI({
 
     document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
 
-    modalCard.querySelectorAll('.lang-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const lang = btn.getAttribute('data-lang');
+    document.getElementById('select-settings-lang')?.addEventListener('change', (e) => {
+      const lang = e.target.value;
+      if (lang && lang !== getLanguage()) {
+        audioEngine.playCorrect?.();
         setLanguage(lang);
         updateSave((s) => {
           s.language = lang;
+          s.lang = lang;
+          s.langConfirmed = true;
         });
         applyI18nToDOM();
         refreshHeader();
         renderActiveTab();
         openSettingsModal();
-      });
-    });
-
-    modalCard.querySelectorAll('.hand-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const hand = btn.getAttribute('data-hand');
-        updateSave((s) => {
-          s.dominantHand = hand;
-        });
-        openSettingsModal();
-      });
+      }
     });
 
     document.getElementById('btn-toggle-bgm')?.addEventListener('click', () => {
@@ -839,43 +882,157 @@ export function createLobbyUI({
       openSettingsModal();
     });
 
-    document.getElementById('btn-export-save')?.addEventListener('click', async () => {
-      const code = exportSaveBase64();
-      const input = document.getElementById('input-import-save');
-      const fb = document.getElementById('settings-feedback');
-      if (input) input.value = code;
-      try {
-        await navigator.clipboard.writeText(code);
-        if (fb) fb.textContent = t('modal.backupSuccess');
-      } catch {
-        if (fb) fb.textContent = t('modal.backupSuccess');
-      }
+    document.getElementById('btn-toggle-haptic')?.addEventListener('click', () => {
+      updateSave((s) => {
+        s.haptic = s.haptic === false ? true : false;
+      });
+      audioEngine.triggerHaptic?.(25);
+      openSettingsModal();
     });
 
-    document.getElementById('btn-import-save')?.addEventListener('click', () => {
-      const input = document.getElementById('input-import-save');
-      const fb = document.getElementById('settings-feedback');
-      const res = importSaveBase64(input?.value || '');
-      if (res.ok) {
-        const restored = getSave();
-        setLanguage(restored.language || 'ko');
+    document.getElementById('btn-toggle-lowfx')?.addEventListener('click', () => {
+      updateSave((s) => {
+        s.lowFx = !s.lowFx;
+      });
+      openSettingsModal();
+    });
+
+    document.getElementById('btn-feedback')?.addEventListener('click', () => {
+      const email = 'support@zombievoca.com';
+      const subject = encodeURIComponent(`[Zombie Voca Feedback] ${save.dogName} (Lv.${save.certifiedLevel})`);
+      window.open(`mailto:${email}?subject=${subject}`, '_blank');
+    });
+  }
+
+  function openInitialLanguageModal(onConfirm) {
+    const save = getSave();
+    let selectedLang = save.language || save.lang || detectDeviceLanguage();
+    if (!['ko', 'en', 'es'].includes(selectedLang)) {
+      selectedLang = 'en';
+    }
+
+    const LANG_OPTIONS = [
+      {
+        code: 'ko',
+        flag: '🇰🇷',
+        nativeName: '한국어',
+        subName: 'Korean',
+        desc: '모든 미션과 인터페이스를 한국어로 진행합니다.',
+      },
+      {
+        code: 'en',
+        flag: '🇺🇸',
+        nativeName: 'English',
+        subName: '영어',
+        desc: 'Play missions and interface in English.',
+      },
+      {
+        code: 'es',
+        flag: '🇪🇸',
+        nativeName: 'Español',
+        subName: '스페인어',
+        desc: 'Juega todas las misiones y la interfaz en español.',
+      },
+    ];
+
+    const CONFIRM_TEXTS = {
+      ko: '시작하기 ➜',
+      en: 'Start Game ➜',
+      es: 'Comenzar ➜',
+    };
+
+    function renderContent() {
+      const detected = detectDeviceLanguage();
+      const cardsHtml = LANG_OPTIONS.map((opt) => {
+        const isSelected = opt.code === selectedLang;
+        const isDetected = opt.code === detected;
+        return `
+          <button type="button" data-lang-code="${opt.code}" class="initial-lang-btn w-full p-3.5 rounded-2xl border text-left transition-all duration-150 flex items-center justify-between group ${
+            isSelected
+              ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#52b788] shadow-md ring-2 ring-[#52b788]/60'
+              : 'bg-[#f0ebe0] text-[#1f2d24] border-[#d2c8b4] hover:bg-[#e6dfd1]'
+          }">
+            <div class="flex items-center gap-3">
+              <span class="text-3xl">${opt.flag}</span>
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-base font-black ${isSelected ? 'text-white' : 'text-[#1f2d24]'}">${opt.nativeName}</span>
+                  <span class="text-xs font-semibold ${isSelected ? 'text-emerald-200' : 'text-[#5f6c62]'}">(${opt.subName})</span>
+                  ${
+                    isDetected
+                      ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-black ${
+                          isSelected ? 'bg-amber-400 text-stone-900' : 'bg-emerald-700 text-white'
+                        }">★ Device</span>`
+                      : ''
+                  }
+                </div>
+                <div class="text-xs mt-0.5 ${isSelected ? 'text-emerald-100' : 'text-[#5f6c62]'}">${opt.desc}</div>
+              </div>
+            </div>
+            <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-sm ${
+              isSelected ? 'bg-white text-[#2d6a4f]' : 'border-2 border-[#b8ae9c] text-transparent'
+            }">
+              ✓
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      openModal(`
+        <div class="space-y-4 py-1">
+          <div class="text-center space-y-1">
+            <div class="text-3xl animate-bounce">🌐</div>
+            <h2 class="text-xl font-black text-[#1f2d24] tracking-tight">언어 선택 · Language</h2>
+            <p class="text-xs text-[#5f6c62]">원하시는 언어를 선택해 주세요.<br><span class="text-[11px] text-[#7d8c80]">(게임 내 프로필/설정에서 언제든 변경할 수 있습니다)</span></p>
+          </div>
+
+          <div class="space-y-2.5">
+            ${cardsHtml}
+          </div>
+
+          <div class="pt-2">
+            <button id="btn-confirm-initial-lang" type="button" class="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#2d6a4f] to-[#1b4332] text-white font-black text-base shadow-lg shadow-[#2d6a4f]/30 active:scale-[0.98] transition hover:brightness-110 flex items-center justify-center gap-2">
+              <span>${CONFIRM_TEXTS[selectedLang] || CONFIRM_TEXTS.en}</span>
+            </button>
+          </div>
+        </div>
+      `);
+
+      // 언어 카드 선택 이벤트 바인딩
+      modalCard.querySelectorAll('.initial-lang-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const code = btn.getAttribute('data-lang-code');
+          if (code && code !== selectedLang) {
+            audioEngine.playCaptureTick?.();
+            selectedLang = code;
+            renderContent();
+          }
+        });
+      });
+
+      // 시작하기 버튼 바인딩
+      document.getElementById('btn-confirm-initial-lang')?.addEventListener('click', () => {
+        audioEngine.playCorrect?.();
+        setLanguage(selectedLang);
+        updateSave((s) => {
+          s.language = selectedLang;
+          s.lang = selectedLang;
+          s.langConfirmed = true;
+          if (!s.dogName || s.dogName === '우유' || s.dogName === 'Milk' || s.dogName === 'Leche') {
+            s.dogName = selectedLang === 'es' ? 'Leche' : selectedLang === 'en' ? 'Milk' : '우유';
+          }
+        });
         applyI18nToDOM();
         refreshHeader();
         renderActiveTab();
-        if (fb) {
-          fb.className = 'text-center text-[11px] font-bold text-emerald-400 min-h-[16px]';
-          fb.textContent = t('modal.restoreSuccess');
+        closeModal();
+        if (typeof onConfirm === 'function') {
+          onConfirm(selectedLang);
         }
-      } else if (fb) {
-        fb.className = 'text-center text-[11px] font-bold text-rose-400 min-h-[16px]';
-        fb.textContent = t('modal.restoreError');
-      }
-    });
+      });
+    }
 
-    document.getElementById('btn-replay-tutorial')?.addEventListener('click', () => {
-      closeModal();
-      onStartTutorial?.();
-    });
+    renderContent();
   }
 
   // 탭 버튼 이벤트 바인딩
@@ -886,6 +1043,11 @@ export function createLobbyUI({
     });
   });
 
+  // 상단 헤더 프로필 & 재화 바로가기 바인딩
+  document.getElementById('btn-header-profile')?.addEventListener('click', openSettingsModal);
+  document.getElementById('btn-header-gold')?.addEventListener('click', () => switchTab('training'));
+  document.getElementById('btn-header-snacks')?.addEventListener('click', () => switchTab('training'));
+  document.getElementById('btn-header-gems')?.addEventListener('click', () => switchTab('shop'));
   btnOpenSettings?.addEventListener('click', openSettingsModal);
 
   return {
@@ -896,6 +1058,7 @@ export function createLobbyUI({
     renderActiveTab,
     openModal,
     closeModal,
+    openInitialLanguageModal,
   };
 }
 

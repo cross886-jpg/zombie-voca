@@ -12,11 +12,19 @@ import {
   getTrainingUpgradeCost,
   isCompanionUnlockable,
 } from '../config/balance.js';
-import { COMPANIONS, COSTUMES, SNACKS, getCostumeCollectionBonus } from '../data/catalog.js';
+import {
+  BREEDS,
+  COMPANIONS,
+  COSTUMES,
+  SNACKS,
+  getCostumeCollectionBonus,
+  isBreedUnlocked,
+  isCompanionUnlocked,
+} from '../data/catalog.js';
 import { t } from '../data/i18n.js';
 import { getSave, updateSave } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
-import { computePlayerStats } from '../entities/player.js';
+import { computePlayerStats, drawDogCharacter, drawDogSkin, getEvolutionStage } from '../entities/player.js';
 
 const TRAINING_UI_DEFS = [
   {
@@ -108,40 +116,42 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
   const trainingPanel = document.getElementById('tab-panel-training');
   let selectedCompId = COMPANIONS[0]?.id || 'rookie';
   let trainingSubTab = 'hero'; // 'hero' | 'companion'
-  let statBoostFlash = { key: null, timer: null };
+  let statBoostFlash = { key: null, isLevelUp: false, timer: null };
   let gearSubTab = 'costume'; // 'costume' | 'companion'
   let inventoryFilter = 'all'; // 'all' | 'weapon' | 'hat' | 'top' | 'acc'
+  let friendFilter = 'all'; // 'all' | 'breed' | 'support'
+  let selectedFriendId = 'pomeranian';
 
-  function rollSupplyBox(box) {
+  function rollSupplyBox({ isFree, gemCost } = {}) {
     const save = getSave();
-    const cost = box.cost;
-    if (save.gold < cost) return;
+    const today = new Date().toISOString().slice(0, 10);
 
+    // 확률: 35% 희귀 강아지 코스튬, 35% 장비 강화 조각(뼈다귀), 30% 훈련용 금화
     const roll = Math.random();
-    let targetRarity = 'common';
-    let acc = 0;
-    for (const [r, w] of Object.entries(box.rarityWeights)) {
-      acc += w;
-      if (roll <= acc) {
-        targetRarity = r;
-        break;
-      }
-    }
-
-    const isCostume = Math.random() < box.costumeChance;
     let resultHtml = '';
 
-    if (isCostume) {
+    if (roll < 0.35) {
+      // 1. 희귀 강아지 코스튬
+      const rRoll = Math.random();
+      let targetRarity = 'common';
+      if (rRoll > 0.97) targetRarity = 'legend';
+      else if (rRoll > 0.88) targetRarity = 'epic';
+      else if (rRoll > 0.60) targetRarity = 'rare';
+
       let pool = COSTUMES.filter((c) => c.rarity === targetRarity);
       if (pool.length === 0) pool = COSTUMES;
       const picked = pool[Math.floor(Math.random() * pool.length)];
       const alreadyOwned = save.costumes.owned.includes(picked.id);
-      const refundSnacks = box.refundSnacks;
+      const refundSnacks = targetRarity === 'legend' ? 4 : targetRarity === 'epic' ? 3 : 2;
 
       updateSave((s) => {
-        s.gold -= cost;
+        if (isFree) {
+          s.lastFreeSupplyDate = today;
+        } else {
+          s.gems = Math.max(0, (s.gems ?? 300) - gemCost);
+        }
         if (alreadyOwned) {
-          s.snacks += refundSnacks;
+          s.snacks = (s.snacks || 0) + refundSnacks;
         } else {
           s.costumes.owned.push(picked.id);
         }
@@ -159,23 +169,47 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
                 : `새 코스튬 획득! 도감 보너스 (+${picked.atkBonus} ATK / +${picked.hpBonus} HP)`
             }
           </p>
-          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-[#f8f5ec] font-black text-sm active:scale-95 transition">${t('modal.confirm')}</button>
+          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-[#f8f5ec] font-black text-sm active:scale-95 transition">확인</button>
         </div>
       `;
-    } else {
-      const snack = SNACKS[Math.floor(Math.random() * SNACKS.length)];
-      const qty = box.snackQty;
+    } else if (roll < 0.70) {
+      // 2. 장비 강화 조각 (뼈다귀 🦴 2~3개)
+      const qty = Math.random() < 0.6 ? 2 : 3;
       updateSave((s) => {
-        s.gold -= cost;
-        s.snacks += qty;
+        if (isFree) {
+          s.lastFreeSupplyDate = today;
+        } else {
+          s.gems = Math.max(0, (s.gems ?? 300) - gemCost);
+        }
+        s.snacks = (s.snacks || 0) + qty;
       });
 
       resultHtml = `
         <div class="text-center space-y-3">
-          <div class="text-5xl">${snack.icon}</div>
-          <h3 class="text-lg font-black text-amber-700">${snack.name} x${qty}</h3>
-          <p class="text-xs text-[#4a584e]">동물 친구 해금에 사용할 수 있는 간식 +${qty}🦴 획득!</p>
-          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#d97706] text-white font-black text-sm active:scale-95 transition">${t('modal.confirm')}</button>
+          <div class="text-5xl">🦴</div>
+          <h3 class="text-lg font-black text-amber-700">장비 강화 조각 (뼈다귀 +${qty}개)</h3>
+          <p class="text-xs text-[#4a584e]">동물 친구 해금 및 승급전에 사용할 수 있는 뼈다귀를 획득했습니다!</p>
+          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#d97706] text-white font-black text-sm active:scale-95 transition">확인</button>
+        </div>
+      `;
+    } else {
+      // 3. 훈련용 금화 (🪙 60~100개)
+      const goldAmt = Math.floor(Math.random() * 5 + 6) * 10; // 60, 70, 80, 90, 100
+      updateSave((s) => {
+        if (isFree) {
+          s.lastFreeSupplyDate = today;
+        } else {
+          s.gems = Math.max(0, (s.gems ?? 300) - gemCost);
+        }
+        s.gold = (s.gold || 0) + goldAmt;
+      });
+
+      resultHtml = `
+        <div class="text-center space-y-3">
+          <div class="text-5xl">🪙</div>
+          <h3 class="text-lg font-black text-amber-800">훈련용 금화 (+${goldAmt} 🪙)</h3>
+          <p class="text-xs text-[#4a584e]">훈련소에서 강아지 기초 스탯 강화에 사용하세요!</p>
+          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-[#f8f5ec] font-black text-sm active:scale-95 transition">확인</button>
         </div>
       `;
     }
@@ -190,60 +224,14 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
     }
   }
 
-  function openSupplyBoxConfirmModal(box) {
-    if (!openModal) {
-      rollSupplyBox(box);
-      return;
-    }
-
-    const canAfford = getSave().gold >= box.cost;
-    openModal(`
-      <div class="space-y-4">
-        <div class="text-center space-y-1.5">
-          <div class="text-4xl">${box.icon}</div>
-          <h3 class="text-lg font-black text-[#1f2d24]">${t(box.nameKey)}</h3>
-          <p class="text-xs font-semibold text-emerald-800">${box.summary}</p>
-        </div>
-        <div class="rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] p-3 text-xs text-[#4a584e] leading-relaxed whitespace-pre-line">${box.rewardsInfo}</div>
-        <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] text-xs">
-          <span class="text-[#4a584e] font-semibold">필요 비용</span>
-          <span class="font-black text-amber-700">${box.cost} 🪙</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <button id="btn-box-confirm-cancel" type="button" class="py-2.5 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] border border-[#d2c8b4] text-[#1f2d24] font-bold text-sm active:scale-95 transition">취소</button>
-          <button id="btn-box-confirm-open" type="button" ${canAfford ? '' : 'disabled'} class="py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] disabled:opacity-50 text-[#f8f5ec] font-black text-sm active:scale-95 transition">열기</button>
-        </div>
-      </div>
-    `);
-
-    const modalLayer = document.getElementById('modal-layer');
-    const cleanup = () => modalLayer?.removeEventListener('click', onBackdropClick);
-    const onBackdropClick = (e) => {
-      if (e.target === modalLayer) {
-        cleanup();
-        closeModal?.();
-      }
-    };
-    modalLayer?.addEventListener('click', onBackdropClick);
-
-    document.getElementById('btn-box-confirm-cancel')?.addEventListener('click', () => {
-      cleanup();
-      closeModal?.();
-    });
-
-    document.getElementById('btn-box-confirm-open')?.addEventListener('click', () => {
-      cleanup();
-      rollSupplyBox(box);
-    });
-  }
-
   function renderGearTab() {
     const save = getSave();
     const dogName = save.dogName || '우유';
     const stats = computePlayerStats(save);
+    const maxUnlocked = save.maxUnlockedUnit || 1;
     const ownedSet = new Set(save.costumes?.owned || []);
     const equipped = save.costumes?.equipped || {};
-    const collectionBonus = getCostumeCollectionBonus(save.costumes?.owned || []);
+    const collectionBonus = getCostumeCollectionBonus(save.costumes?.owned || [], maxUnlocked);
     const activeCompIds = save.companions?.active || [];
     const unlockedCompSet = new Set(save.companions?.unlocked || []);
 
@@ -339,8 +327,18 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
       return true;
     });
 
-    const inventoryGridHtml = filteredCostumes.map((item) => {
-      const isOwned = ownedSet.has(item.id);
+    const ownedItems = [];
+    const unownedItems = [];
+    for (const item of filteredCostumes) {
+      const isUnlockedByStage = Boolean(item.unlockStage && maxUnlocked >= item.unlockStage);
+      if (ownedSet.has(item.id) || isUnlockedByStage) {
+        ownedItems.push(item);
+      } else {
+        unownedItems.push(item);
+      }
+    }
+
+    const ownedGridHtml = ownedItems.map((item) => {
       const isEquipped = Object.values(equipped).includes(item.id);
       const slotIcon = item.slot === 'weapon' ? '⚔️' : item.slot === 'hat' ? '🧢' : item.slot === 'outfit' ? '👕' : '💍';
 
@@ -356,9 +354,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
       const cardBase = `aspect-square rounded-xl border p-1.5 flex flex-col items-center justify-between text-center relative transition select-none ${
         isEquipped
           ? 'bg-emerald-600/15 border-emerald-600 ring-2 ring-emerald-500/40 shadow-[0_0_10px_rgba(45,106,79,0.25)]'
-          : isOwned
-            ? `bg-[#faf6ee] shadow-sm ${rarityBorder} active:scale-95 hover:border-emerald-600/50 cursor-pointer`
-            : 'bg-[#efe9dc] border-dashed border-[#d2c8b4] opacity-55'
+          : `bg-[#faf6ee] shadow-sm ${rarityBorder} active:scale-95 hover:border-emerald-600/50 cursor-pointer`
       }`;
 
       const innerHtml = `
@@ -371,90 +367,155 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
         </div>
       `;
 
-      return isOwned
-        ? `<button type="button" data-costume-equip="${item.id}" class="costume-equip-btn ${cardBase}">${innerHtml}</button>`
-        : `<div class="${cardBase}">${innerHtml}</div>`;
+      return `<button type="button" data-costume-equip="${item.id}" class="costume-equip-btn ${cardBase}">${innerHtml}</button>`;
     }).join('');
 
+    // 미획득 장비 스포일러 방지: 빈 점선 잠금 슬롯 1~2줄(4~8칸)만 은은하게 노출
+    const unownedCount = unownedItems.length;
+    const remainderInRow = (4 - (ownedItems.length % 4)) % 4;
+    const emptyCount = Math.min(unownedCount, Math.max(4, remainderInRow + 4));
+
+    const emptySlotsHtml = Array.from({ length: emptyCount }, () => `
+      <div class="aspect-square rounded-xl border border-dashed border-[#d2c8b4] bg-[#efe9dc]/50 flex items-center justify-center text-center select-none">
+        <span class="text-lg opacity-25">🔒</span>
+      </div>
+    `).join('');
+
+    const inventoryGridHtml = ownedGridHtml + emptySlotsHtml;
+
     // 3. 동물 친구 슬롯 & 상세 카드
-    const companionSlots = COMPANIONS.map((comp) => {
-      const isUnlocked = unlockedCompSet.has(comp.id);
-      const isActive = activeCompIds.includes(comp.id);
-      const unlockable = isCompanionUnlockable(comp.id, save);
-      const isLockedSeq = !isUnlocked && !unlockable;
-      const isSelected = selectedCompId === comp.id;
+    const curBreedId = save.selectedBreed || 'pomeranian';
+    const allFriends = [
+      ...BREEDS.map((b) => ({
+        id: b.id,
+        type: 'breed',
+        name: b.name,
+        icon: b.icon,
+        role: '플레이어블 수호견',
+        trait: b.trait || '고유 특성',
+        desc: b.desc || '',
+        unlockStage: b.unlockStage || 1,
+        isUnlocked: isBreedUnlocked(b.id, save),
+        isSelected: curBreedId === b.id,
+      })),
+      ...COMPANIONS.map((c) => ({
+        id: c.id,
+        type: 'companion',
+        name: c.name,
+        icon: c.icon,
+        role: c.role || '전투 서포터',
+        trait: c.buffText || c.role || '',
+        desc: c.desc || '',
+        unlockStage: c.unlockStage || 1,
+        isUnlocked: isCompanionUnlocked(c.id, save) || (save.companions?.unlocked || []).includes(c.id),
+        isActive: activeCompIds.includes(c.id),
+      })),
+    ];
+
+    const totalJoinedFriends = allFriends.filter((f) => f.isUnlocked).length;
+
+    const friendFilterDefs = [
+      { key: 'all', label: '전체' },
+      { key: 'breed', label: '🐶 수호견' },
+      { key: 'support', label: '🐾 서포터' },
+    ];
+
+    const currentFilteredFriends = allFriends.filter((f) => {
+      if (friendFilter === 'breed') return f.type === 'breed';
+      if (friendFilter === 'support') return f.type === 'companion';
+      return true;
+    });
+
+    const joinedFriends = currentFilteredFriends.filter((f) => f.isUnlocked);
+    const unjoinedFriends = currentFilteredFriends.filter((f) => !f.isUnlocked);
+
+    const joinedSlotsHtml = joinedFriends.map((f) => {
+      const isBreed = f.type === 'breed';
+      const isSelectedBreed = isBreed && f.isSelected;
+      const isActiveComp = !isBreed && f.isActive;
+      const isViewing = selectedFriendId === f.id;
+
+      const badgeHtml = isSelectedBreed
+        ? `<span class="absolute top-1 right-1 px-1 py-0.2 rounded-full bg-[#2d6a4f] text-[#f8f5ec] text-[8px] font-black leading-tight">대표</span>`
+        : isActiveComp
+          ? `<span class="absolute top-1 right-1 px-1 py-0.2 rounded-full bg-amber-600 text-white text-[8px] font-black leading-tight">동행</span>`
+          : '';
+
+      const activeStyle = isSelectedBreed || isActiveComp
+        ? 'bg-emerald-600/15 border-emerald-600 ring-2 ring-emerald-500/40'
+        : 'bg-[#faf6ee] shadow-sm border border-[#d2c8b4]';
+
+      const viewRing = isViewing ? 'ring-2 ring-amber-500' : '';
 
       return `
-        <button type="button" data-comp-select="${comp.id}" class="comp-slot-btn aspect-square rounded-xl p-1.5 flex flex-col items-center justify-center relative transition active:scale-95 ${
-          isLockedSeq
-            ? 'bg-[#efe9dc] border border-dashed border-[#d2c8b4] opacity-75'
-            : isActive
-              ? 'bg-emerald-600/15 border border-emerald-600'
-              : 'bg-[#faf6ee] shadow-sm border border-[#d2c8b4]'
-        } ${isSelected ? 'ring-2 ring-emerald-600' : ''}">
-          ${
-            isLockedSeq
-              ? `<span class="text-xl leading-none text-[#4a584e]">❓</span>
-                 <span class="text-[9px] font-bold text-[#4a584e] mt-1 truncate max-w-full">${comp.shortHint}</span>`
-              : `<span class="text-2xl leading-none">${comp.icon}</span>
-                 <span class="text-[9px] font-extrabold text-[#1f2d24] mt-1 truncate max-w-full">${comp.name.split(' ').pop()}</span>
-                 ${
-                   isActive
-                     ? `<span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-600"></span>`
-                     : !isUnlocked
-                       ? `<span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>`
-                       : ''
-                 }`
-          }
+        <button type="button" data-friend-select="${f.id}" data-friend-type="${f.type}" class="friend-slot-btn aspect-square rounded-xl p-1.5 flex flex-col items-center justify-between text-center relative transition active:scale-95 cursor-pointer ${activeStyle} ${viewRing}">
+          <span class="absolute top-1 left-1 text-[10px] leading-none opacity-80">${isBreed ? '🐶' : '🐾'}</span>
+          ${badgeHtml}
+          <span class="text-2xl leading-none mt-2">${f.icon}</span>
+          <div class="w-full min-w-0">
+            <div class="text-[10px] font-extrabold text-[#1f2d24] truncate">${f.name.split(' ').pop()}</div>
+            <div class="text-[9px] text-[#4a584e] truncate leading-tight">${isBreed ? '수호견' : f.role.split(' ')[0]}</div>
+          </div>
         </button>
       `;
     }).join('');
 
-    const selComp = COMPANIONS.find((c) => c.id === selectedCompId) || COMPANIONS[0];
-    const selUnlocked = unlockedCompSet.has(selComp.id);
-    const selActive = activeCompIds.includes(selComp.id);
-    const selUnlockable = isCompanionUnlockable(selComp.id, save);
-    const selLockedSeq = !selUnlocked && !selUnlockable;
-    const selCanUnlock = !selUnlocked && selUnlockable && save.snacks >= selComp.unlockSnacks;
+    // 미스터리 발자국 슬롯 (🐾) 1~2줄 (4~8칸)
+    const remainder = (4 - (joinedFriends.length % 4)) % 4;
+    const mysteryCount = Math.min(unjoinedFriends.length, Math.max(4, remainder + 4));
 
-    const companionDetailHtml = selLockedSeq
-      ? `
-        <div class="p-3 rounded-xl bg-[#f0ebe0] border border-dashed border-[#d2c8b4] flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2.5 min-w-0">
-            <div class="w-10 h-10 rounded-xl bg-[#faf6ee] shadow-sm border border-dashed border-[#d2c8b4] flex items-center justify-center text-xl shrink-0">❓</div>
-            <div class="min-w-0">
-              <div class="text-xs font-extrabold text-[#4a584e]">❓ 미확인 동료</div>
-              <div class="text-[11px] text-[#4a584e] mt-0.5">🔒 ${selComp.unlockDesc}</div>
-            </div>
+    const mysterySlotsHtml = Array.from({ length: mysteryCount }, () => `
+      <div class="aspect-square rounded-xl border border-dashed border-[#d2c8b4] bg-[#efe9dc]/50 flex flex-col items-center justify-center text-center select-none shadow-2xs">
+        <span class="text-xl opacity-25">🐾</span>
+      </div>
+    `).join('');
+
+    const friendsGridHtml = joinedSlotsHtml + mysterySlotsHtml;
+
+    // 선택된 친구 상세 정보 카드
+    const selFriend = allFriends.find((f) => f.id === selectedFriendId) || joinedFriends[0] || allFriends[0];
+    let detailActionBtnHtml = '';
+    if (selFriend.type === 'breed') {
+      const isCur = curBreedId === selFriend.id;
+      detailActionBtnHtml = isCur
+        ? `<button type="button" disabled class="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-700/20 text-emerald-800 border border-emerald-600/40 cursor-default">✓ 대표 수호견</button>`
+        : `<button type="button" data-breed-switch="${selFriend.id}" class="breed-switch-btn px-3 py-1.5 rounded-lg text-xs font-black bg-[#2d6a4f] hover:bg-[#245840] text-white active:scale-95 transition shadow-xs">🐶 대표 지정</button>`;
+    } else {
+      const isAct = activeCompIds.includes(selFriend.id);
+      detailActionBtnHtml = isAct
+        ? `<button type="button" data-comp-toggle="${selFriend.id}" class="comp-toggle-btn px-3 py-1.5 rounded-lg text-xs font-black bg-[#d97706] hover:bg-[#b45309] text-white active:scale-95 transition shadow-xs">휴식하기</button>`
+        : `<button type="button" data-comp-toggle="${selFriend.id}" class="comp-toggle-btn px-3 py-1.5 rounded-lg text-xs font-black bg-[#2d6a4f] hover:bg-[#245840] text-white active:scale-95 transition shadow-xs">🐾 동행하기</button>`;
+    }
+
+    const friendDetailHtml = `
+      <div class="p-3 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-12 h-12 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-center text-3xl shrink-0">
+            ${selFriend.icon}
           </div>
-          <span class="px-2.5 py-1.5 rounded-lg bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[11px] font-bold text-[#4a584e] shrink-0">잠금</span>
-        </div>
-      `
-      : `
-        <div class="p-3 rounded-xl bg-[#faf6ee] shadow-sm border ${selActive ? 'border-emerald-600' : 'border-[#d2c8b4]'} flex items-center justify-between gap-2">
-          <div class="flex items-center gap-2.5 min-w-0">
-            <div class="w-10 h-10 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0">${selComp.icon}</div>
-            <div class="min-w-0">
-              <div class="text-xs font-extrabold text-[#1f2d24] truncate">${selComp.name} <span class="text-[10px] font-bold text-emerald-800">· ${selComp.role}</span></div>
-              <div class="text-[10px] text-[#4a584e] truncate mt-0.5">${selComp.desc}</div>
-              <div class="text-[10px] text-[#4a584e] mt-0.5">조건: ${selComp.unlockDesc}</div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-xs font-black text-[#1f2d24] truncate">${selFriend.name}</span>
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-bold ${selFriend.type === 'breed' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}">${selFriend.type === 'breed' ? '수호견' : '서포터'}</span>
             </div>
+            <div class="text-[11px] font-bold text-emerald-800 truncate mt-0.5">${selFriend.trait}</div>
+            <div class="text-[10px] text-[#4a584e] truncate mt-0.5">${selFriend.desc}</div>
           </div>
-          ${
-            selUnlocked
-              ? `<button type="button" data-comp-toggle="${selComp.id}" class="comp-toggle-btn px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
-                  selActive
-                    ? 'bg-[#2d6a4f] text-[#f8f5ec]'
-                    : 'bg-[#e6dec8] border border-[#d2c8b4] text-[#1f2d24]'
-                }">${selActive ? t('lobby.companionDeploy') : t('lobby.companionSelect')}</button>`
-              : `<button type="button" data-comp-unlock="${selComp.id}" ${selCanUnlock ? '' : 'disabled'} class="comp-unlock-btn px-2.5 py-1.5 rounded-lg text-[11px] font-bold shrink-0 ${
-                  selCanUnlock
-                    ? 'bg-[#d97706] text-white active:scale-95'
-                    : 'bg-[#e6dec8] text-[#4a584e] opacity-60'
-                }">${t('lobby.companionLocked', { cost: selComp.unlockSnacks })}</button>`
-          }
         </div>
-      `;
+        <div class="shrink-0">
+          ${detailActionBtnHtml}
+        </div>
+      </div>
+    `;
+
+    const friendBannerHtml = `
+      <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-emerald-600/30 text-center space-y-1">
+        <div class="text-xs font-black text-[#2d6a4f] flex items-center justify-center gap-1">
+          <span>🐾</span> 새로운 모험 지역에서 더 많은 동물 친구들이 합류를 기다리고 있어요!
+        </div>
+        <div class="text-[10px] text-[#5f6c62]">스테이지를 클리어하고 월반에 도전하여 갇혀 있는 동물 친구들을 구출하세요.</div>
+      </div>
+    `;
 
     // 4. 서브 탭 분리 HTML 구조
     const subTabHtml = `
@@ -482,7 +543,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <h3 class="text-xs font-extrabold text-emerald-800">📦 보유 인벤토리</h3>
-                <span class="text-[10px] font-bold text-[#4a584e]">${ownedSet.size} / ${COSTUMES.length} 보유</span>
+                <span class="text-[10px] font-bold text-[#4a584e]">보유 ${COSTUMES.filter((c) => ownedSet.has(c.id) || (c.unlockStage && maxUnlocked >= c.unlockStage)).length}개</span>
               </div>
               <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
                 ${filterDefs.map((f) => `
@@ -501,11 +562,23 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
           : `
             <div class="space-y-2">
               <div class="flex items-center justify-between">
-                <h3 class="text-xs font-extrabold text-emerald-800">🐾 ${t('lobby.companionsTitle')}</h3>
-                <span class="text-[11px] text-[#4a584e]">${activeCompIds.length} / ${MAX_EQUIPPED_COMPANIONS}</span>
+                <h3 class="text-xs font-extrabold text-emerald-800">🐾 동물 친구</h3>
+                <span class="text-[10px] font-bold text-[#4a584e]">함께하는 친구 ${totalJoinedFriends}마리</span>
               </div>
-              <div class="grid grid-cols-4 gap-2">${companionSlots}</div>
-              ${companionDetailHtml}
+              <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
+                ${friendFilterDefs.map((f) => `
+                  <button type="button" data-friend-filter="${f.key}" class="px-2.5 py-1 rounded-lg transition-all ${
+                    friendFilter === f.key
+                      ? 'bg-[#2d6a4f] text-[#f8f5ec] font-black shadow-xs'
+                      : 'bg-[#e6dec8] text-[#4a584e] hover:text-[#1f2d24]'
+                  }">
+                    ${f.label}
+                  </button>
+                `).join('')}
+              </div>
+              <div class="grid grid-cols-4 gap-2">${friendsGridHtml}</div>
+              ${friendDetailHtml}
+              ${friendBannerHtml}
             </div>
           `
       }
@@ -538,39 +611,55 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
           const id = btn.getAttribute('data-costume-equip');
           const item = COSTUMES.find((c) => c.id === id);
           if (!item) return;
+          const slotKey = item.slot === 'aura' ? 'acc' : item.slot;
           updateSave((s) => {
-            if (s.costumes.equipped[item.slot] === item.id) {
-              s.costumes.equipped[item.slot] = null;
+            if (!s.costumes) s.costumes = { owned: ['weapon_boomerang'], equipped: {} };
+            if (!s.costumes.owned.includes(item.id)) {
+              s.costumes.owned.push(item.id);
+            }
+            if (s.costumes.equipped[slotKey] === item.id) {
+              s.costumes.equipped[slotKey] = null;
             } else {
-              s.costumes.equipped[item.slot] = item.id;
+              s.costumes.equipped[slotKey] = item.id;
             }
           });
           renderGearTab();
         });
       });
     } else {
-      gearPanel.querySelectorAll('.comp-slot-btn').forEach((btn) => {
+      gearPanel.querySelectorAll('[data-friend-filter]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          selectedCompId = btn.getAttribute('data-comp-select');
+          const filter = btn.getAttribute('data-friend-filter');
+          if (filter && filter !== friendFilter) {
+            friendFilter = filter;
+            renderGearTab();
+          }
+        });
+      });
+
+      gearPanel.querySelectorAll('.friend-slot-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-friend-select');
+          const type = btn.getAttribute('data-friend-type');
+          selectedFriendId = id;
+          if (type === 'breed') {
+            updateSave((s) => {
+              s.selectedBreed = id;
+            });
+            audioEngine.playBark?.();
+            onResourcesChanged?.();
+          }
           renderGearTab();
         });
       });
 
-      gearPanel.querySelectorAll('.comp-unlock-btn').forEach((btn) => {
+      gearPanel.querySelectorAll('.breed-switch-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const id = btn.getAttribute('data-comp-unlock');
-          const def = COMPANIONS.find((c) => c.id === id);
-          if (!def) return;
+          const id = btn.getAttribute('data-breed-switch');
           updateSave((s) => {
-            if (!isCompanionUnlockable(id, s)) return;
-            if (s.snacks < def.unlockSnacks || s.companions.unlocked.includes(id)) return;
-            s.snacks -= def.unlockSnacks;
-            s.companions.unlocked.push(id);
-            s.companions.levels[id] = 1;
-            if (s.companions.active.length < BALANCE.COMPANIONS.MAX_ACTIVE) {
-              s.companions.active.push(id);
-            }
+            s.selectedBreed = id;
           });
+          audioEngine.playBark?.();
           onResourcesChanged?.();
           renderGearTab();
         });
@@ -580,16 +669,24 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-comp-toggle');
           updateSave((s) => {
-            const idx = s.companions.active.indexOf(id);
-            if (idx >= 0) {
-              s.companions.active.splice(idx, 1);
-            } else {
-              if (s.companions.active.length >= BALANCE.COMPANIONS.MAX_ACTIVE) {
-                s.companions.active.shift();
-              }
-              s.companions.active.push(id);
+            if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
+            if (!s.companions.unlocked.includes(id)) {
+              s.companions.unlocked.push(id);
             }
+            const active = s.companions.active || [];
+            const idx = active.indexOf(id);
+            if (idx >= 0) {
+              active.splice(idx, 1);
+            } else {
+              if (active.length >= (BALANCE.COMPANIONS?.MAX_ACTIVE || 2)) {
+                active.shift();
+              }
+              active.push(id);
+            }
+            s.companions.active = active;
           });
+          audioEngine.playCorrect?.();
+          onResourcesChanged?.();
           renderGearTab();
         });
       });
@@ -599,52 +696,115 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
   function openSupplyShopModal() {
     if (!openModal) return;
     const save = getSave();
-    const boxesHtml = Object.values(BALANCE.SHOP.BOXES).map((box) => `
-      <button type="button" data-supply-box="${box.id}" ${save.gold >= box.cost ? '' : 'disabled'} class="modal-supply-box-btn p-3 rounded-xl border ${
-        box.isPremium ? 'border-amber-600/50 bg-amber-500/15' : 'border-[#d2c8b4] bg-[#f0ebe0]'
-      } text-left disabled:opacity-50 active:scale-95 transition flex flex-col justify-between">
-        <div>
-          <div class="text-2xl mb-1">${box.icon}</div>
-          <div class="text-xs font-extrabold ${box.isPremium ? 'text-amber-800' : 'text-[#1f2d24]'}">${t(box.nameKey)}</div>
-          <div class="text-[10px] text-[#4a584e] mt-0.5 leading-snug">${box.summary}</div>
-        </div>
-        <div class="text-[11px] font-bold text-amber-700 mt-2">${box.cost} 🪙</div>
-      </button>
-    `).join('');
+    const today = new Date().toISOString().slice(0, 10);
+    const isFree = save.lastFreeSupplyDate !== today;
+    const gemCost = BALANCE.SHOP.SUPPLY_BOX_GEM_COST || 50;
 
     openModal(`
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-base font-black text-emerald-800">🎁 ${t('lobby.shopTitle')}</h3>
-          <span class="text-xs font-extrabold text-amber-700">🪙 ${save.gold || 0}</span>
+      <div class="space-y-3.5">
+        <div class="flex items-center justify-between border-b border-[#d2c8b4] pb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🎁</span>
+            <div>
+              <h3 class="text-sm font-black text-emerald-800">일일 보급 상자</h3>
+              <div class="text-[10px] text-[#4a584e]">매일 1회 무료 지급되는 특별 보급품</div>
+            </div>
+          </div>
+          <button id="btn-close-supply-modal" type="button" class="w-7 h-7 rounded-full bg-[#f0ebe0] hover:bg-[#e6dec8] text-[#1f2d24] flex items-center justify-center text-xs font-black transition" title="닫기">✕</button>
         </div>
-        <div class="grid grid-cols-2 gap-2.5">${boxesHtml}</div>
-        <button id="btn-close-supply-shop" type="button" class="w-full py-2.5 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] border border-[#d2c8b4] text-[#1f2d24] font-bold text-xs active:scale-95 transition">${t('modal.close')}</button>
+
+        <!-- 일일 무료 상태 배너 -->
+        <div class="p-3 rounded-2xl ${isFree ? 'bg-gradient-to-r from-emerald-600/15 via-teal-600/15 to-emerald-600/10 border border-emerald-500/50' : 'bg-[#f0ebe0] border border-[#d2c8b4]'} flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl ${isFree ? 'bg-emerald-600 text-white' : 'bg-[#e6dec8] text-[#4a584e]'} flex items-center justify-center text-xl shadow-xs">
+              📦
+            </div>
+            <div>
+              <div class="text-xs font-black ${isFree ? 'text-emerald-900' : 'text-[#1f2d24]'}">
+                ${isFree ? '🎉 오늘 무료 오픈 가능!' : '오늘 무료 오픈 완료'}
+              </div>
+              <div class="text-[10px] ${isFree ? 'text-emerald-800' : 'text-[#4a584e]'}">
+                ${isFree ? '매일 0시 초기화 · 무료 보급을 받아가세요' : '보석을 사용하여 추가 오픈할 수 있습니다'}
+              </div>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${isFree ? 'bg-emerald-600 text-white shadow-xs animate-pulse' : 'bg-[#d2c8b4] text-[#4a584e]'}">
+            ${isFree ? '무료' : `💎 ${gemCost}`}
+          </span>
+        </div>
+
+        <!-- 획득 가능한 보상 목록 -->
+        <div class="rounded-2xl bg-[#f0ebe0] border border-[#d2c8b4] p-3 space-y-2">
+          <div class="text-xs font-black text-[#1f2d24] flex items-center gap-1.5">
+            <span>📋</span>
+            <span>획득 가능한 보상 목록</span>
+          </div>
+          <div class="space-y-1.5 text-[11px]">
+            <div class="flex items-center justify-between p-2 rounded-xl bg-[#faf6ee] border border-[#d2c8b4]">
+              <div class="flex items-center gap-2">
+                <span class="text-base">👔</span>
+                <div>
+                  <div class="font-black text-[#1f2d24]">희귀 강아지 코스튬</div>
+                  <div class="text-[10px] text-[#4a584e]">일반~전설 코스튬 (중복 시 뼈다귀 변환)</div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">35%</span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-[#faf6ee] border border-[#d2c8b4]">
+              <div class="flex items-center gap-2">
+                <span class="text-base">🦴</span>
+                <div>
+                  <div class="font-black text-[#1f2d24]">장비 강화 조각</div>
+                  <div class="text-[10px] text-[#4a584e]">뼈다귀 +2~3개 (동료 해금 & 승급전)</div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">35%</span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-[#faf6ee] border border-[#d2c8b4]">
+              <div class="flex items-center gap-2">
+                <span class="text-base">🪙</span>
+                <div>
+                  <div class="font-black text-[#1f2d24]">훈련용 금화</div>
+                  <div class="text-[10px] text-[#4a584e]">금화 +60~100개 (스탯 기초 훈련)</div>
+                </div>
+              </div>
+              <span class="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 text-[10px] font-black">30%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 오픈 액션 버튼 -->
+        <button id="btn-open-supply-box" type="button" class="w-full py-3 rounded-2xl ${
+          isFree
+            ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-md'
+            : 'bg-gradient-to-r from-cyan-600 to-teal-700 hover:from-cyan-500 hover:to-teal-600 text-white shadow-md'
+        } font-black text-sm active:scale-95 transition flex items-center justify-center gap-1.5">
+          <span>${isFree ? '🎁 오늘 무료 오픈!' : `💎 ${gemCost} 보석으로 오픈`}</span>
+        </button>
       </div>
     `);
 
-    const modalLayer = document.getElementById('modal-layer');
-    const cleanup = () => modalLayer?.removeEventListener('click', onBackdropClick);
-    const onBackdropClick = (e) => {
-      if (e.target === modalLayer) {
-        cleanup();
-        closeModal?.();
+    document.getElementById('btn-close-supply-modal')?.addEventListener('click', () => closeModal?.());
+
+    document.getElementById('btn-open-supply-box')?.addEventListener('click', () => {
+      const cur = getSave();
+      const freeNow = cur.lastFreeSupplyDate !== today;
+      const curGems = cur.gems ?? 300;
+
+      if (!freeNow && curGems < gemCost) {
+        openModal(`
+          <div class="text-center space-y-3">
+            <div class="text-3xl">💎</div>
+            <h3 class="text-sm font-black text-rose-600">보석이 부족합니다</h3>
+            <p class="text-xs text-[#4a584e]">추가 오픈에 필요한 보석 ${gemCost - curGems}개가 부족해요.<br/>내일 무료 오픈을 기다리거나 상점에서 충전해 주세요.</p>
+            <button id="btn-supply-gem-fail" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-white font-bold text-xs active:scale-95 transition">확인</button>
+          </div>
+        `);
+        document.getElementById('btn-supply-gem-fail')?.addEventListener('click', () => closeModal?.());
+        return;
       }
-    };
-    modalLayer?.addEventListener('click', onBackdropClick);
 
-    document.getElementById('btn-close-supply-shop')?.addEventListener('click', () => {
-      cleanup();
-      closeModal?.();
-    });
-
-    document.querySelectorAll('.modal-supply-box-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        cleanup();
-        const boxId = btn.getAttribute('data-supply-box');
-        const box = BALANCE.SHOP.BOXES[boxId];
-        if (box) openSupplyBoxConfirmModal(box);
-      });
+      rollSupplyBox({ isFree: freeNow, gemCost });
     });
   }
 
@@ -655,41 +815,66 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
     const stats = computePlayerStats(save);
     const totalTrainLv = Object.values(training).reduce((sum, v) => sum + (Number(v) || 0), 0);
 
-    const statMap = [
-      { key: 'atkLevel', label: '공격력', icon: '⚔️', val: Math.round(stats.atk) },
-      { key: 'hpLevel', label: '체력', icon: '❤️', val: Math.round(stats.maxHp) },
-      { key: 'speedLv', label: '이동속도', icon: '👟', val: Math.round(stats.speed) },
-      { key: 'magnetLv', label: '흡수반경', icon: '🧲', val: Math.round(stats.pickupRadius) },
-    ];
+    const isLevelUp = !!statBoostFlash.isLevelUp;
+
+    function renderStatBox(s) {
+      const isFlashed = statBoostFlash.key === s.key;
+      return `
+        <div class="relative w-full max-w-[68px] aspect-square rounded-2xl bg-[#f0ebe0] border border-[#d2c8b4] flex flex-col items-center justify-center text-center p-1 shadow-2xs transition-all ${
+          isFlashed ? 'ring-2 ring-emerald-600 bg-emerald-500/20' : ''
+        }">
+          <span class="text-base leading-none">${s.icon}</span>
+          <span class="text-[10px] text-[#4a584e] font-bold mt-1 leading-none whitespace-nowrap">${s.label}</span>
+          <span class="text-xs font-black text-[#1f2d24] mt-1 leading-none whitespace-nowrap">${s.val}</span>
+          ${isFlashed ? '<span class="absolute top-1 right-1.5 text-emerald-700 font-black text-[9px] animate-pulse">▲</span>' : ''}
+        </div>
+      `;
+    }
 
     const statSummaryHtml = `
       <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
-        <div class="flex items-center justify-between pb-2 mb-2 border-b border-[#e6dec8]">
-          <div class="flex items-center gap-2">
-            <span class="text-2xl">${stats.evoStage.icon || '🐶'}</span>
-            <div>
-              <div class="text-xs font-black text-[#1f2d24]">${dogName} 실시간 상태</div>
-              <div class="text-[11px] font-bold text-emerald-800">총 훈련 Lv.${totalTrainLv}</div>
+        <!-- 상단 헤더: 가운데 정렬 -->
+        <div class="flex flex-wrap items-center justify-center gap-2 pb-2 mb-2.5 border-b border-[#e6dec8] text-center">
+          <span class="text-xs font-black text-[#1f2d24]">${dogName} 실시간 상태</span>
+          <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">총 훈련 Lv.${totalTrainLv}</span>
+          <span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 border border-amber-600/35 text-[10px] font-black">⚡ 전투력 ${stats.combatPower.toLocaleString()}</span>
+        </div>
+
+        <!-- 3단 좌우 대칭 그리드: 좌(공격력/이속) · 중(강아지 아바타 프리뷰) · 우(체력/흡수반경) -->
+        <div class="grid grid-cols-[1fr_auto_1fr] items-center justify-items-center gap-2">
+          <!-- 좌측 열: 공격력, 이동속도 -->
+          <div class="flex flex-col items-center gap-2 w-full">
+            ${renderStatBox({ key: 'atkLevel', label: '공격력', icon: '⚔️', val: Math.round(stats.atk) })}
+            ${renderStatBox({ key: 'speedLv', label: '이동속도', icon: '👟', val: Math.round(stats.speed) })}
+          </div>
+
+          <!-- 중앙 열: 캐릭터 캔버스 및 레벨업 이펙트 -->
+          <div class="relative flex flex-col items-center justify-center px-1">
+            <div class="relative w-20 h-20 rounded-full flex items-center justify-center">
+              ${
+                isLevelUp
+                  ? `
+                  <div class="absolute -inset-1 rounded-full border-2 border-amber-400 animate-ping opacity-75 pointer-events-none"></div>
+                  <div class="absolute -inset-2 rounded-full bg-gradient-to-tr from-amber-400/30 via-yellow-300/40 to-amber-500/20 blur-sm animate-pulse pointer-events-none"></div>
+                  <div class="absolute -top-3.5 z-20 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white font-black text-[9px] shadow-md animate-bounce whitespace-nowrap pointer-events-none">
+                    ⚡ LEVEL UP!
+                  </div>
+                  `
+                  : ''
+              }
+              <canvas id="training-hero-canvas" width="76" height="76" class="w-18 h-18 rounded-full bg-[#faf6ee] border ${
+                isLevelUp
+                  ? 'border-amber-400 ring-2 ring-amber-300/60 shadow-[0_0_16px_rgba(251,191,36,0.6)]'
+                  : 'border-emerald-600/40 shadow-sm'
+              } transition-all duration-300 block"></canvas>
             </div>
           </div>
-          <div class="text-right">
-            <span class="text-[11px] font-bold text-[#4a584e]">전투력</span>
-            <span class="text-xs font-black text-amber-700 ml-1">⚡ ${stats.combatPower.toLocaleString()}</span>
+
+          <!-- 우측 열: 체력, 흡수반경 -->
+          <div class="flex flex-col items-center gap-2 w-full">
+            ${renderStatBox({ key: 'hpLevel', label: '체력', icon: '❤️', val: Math.round(stats.maxHp) })}
+            ${renderStatBox({ key: 'magnetLv', label: '흡수반경', icon: '🧲', val: Math.round(stats.pickupRadius) })}
           </div>
-        </div>
-        <div class="grid grid-cols-2 gap-1.5">
-          ${statMap.map((s) => {
-            const isFlashed = statBoostFlash.key === s.key;
-            return `
-              <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#f0ebe0] border border-[#d2c8b4] ${isFlashed ? 'ring-2 ring-emerald-600 bg-emerald-500/15 transition-all' : ''}">
-                <span class="text-[11px] text-[#4a584e] font-medium">${s.icon} ${s.label}</span>
-                <span class="text-xs font-extrabold text-[#1f2d24]">
-                  ${s.val}
-                  ${isFlashed ? '<span class="text-emerald-700 font-black ml-0.5 animate-pulse">▲</span>' : ''}
-                </span>
-              </div>
-            `;
-          }).join('')}
         </div>
       </div>
     `;
@@ -751,9 +936,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
       `;
     }).join('');
 
-    const unlockedComps = (save.companions.unlocked || [])
-      .map((id) => COMPANIONS.find((c) => c.id === id))
-      .filter(Boolean);
+    const unlockedComps = COMPANIONS.filter((c) => isCompanionUnlocked(c.id, save) || (save.companions?.unlocked || []).includes(c.id));
 
     const compTrainHtml =
       unlockedComps.length === 0
@@ -792,6 +975,27 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
           : `<div class="space-y-2">${compTrainHtml}</div>`
       }
     `;
+
+    const canvas = document.getElementById('training-hero-canvas');
+    if (canvas) {
+      const curBreedId = save.selectedBreed || 'pomeranian';
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2 + 4);
+      const evo = getEvolutionStage(save);
+      drawDogCharacter(ctx, {
+        breedId: curBreedId,
+        scale: 1.25,
+        bodyY: 0,
+        lookX: 0,
+        isBipedal: evo.stage >= 2,
+      });
+      if (save.equippedSkin) {
+        drawDogSkin(ctx, save.equippedSkin, 1.25, 0);
+      }
+      ctx.restore();
+    }
   }
 
   // 훈련소 단일 이벤트 위임 핸들러
@@ -823,13 +1027,16 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
         }
       });
       if (upgraded) {
+        audioEngine.playLevelUp();
         if (statBoostFlash.timer) clearTimeout(statBoostFlash.timer);
         statBoostFlash.key = key;
+        statBoostFlash.isLevelUp = true;
         statBoostFlash.timer = setTimeout(() => {
           statBoostFlash.key = null;
+          statBoostFlash.isLevelUp = false;
           statBoostFlash.timer = null;
           renderTrainingTab();
-        }, 900);
+        }, 1000);
       }
       onResourcesChanged?.();
       renderTrainingTab();

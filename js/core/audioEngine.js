@@ -339,6 +339,18 @@ export const audioEngine = {
     }
   },
 
+  triggerHaptic(pattern = 15) {
+    if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+    try {
+      const raw = localStorage.getItem('zombie_voca_save_v1');
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s.haptic === false) return;
+      }
+      navigator.vibrate(pattern);
+    } catch (_) {}
+  },
+
   // === 게임 효과음 (SFX) ===
   playBark() {
     playTone(520, 0.08, 'triangle', 0.1);
@@ -347,22 +359,26 @@ export const audioEngine = {
 
   playCaptureTick() {
     playTone(740, 0.05, 'sine', 0.07);
+    this.triggerHaptic(12);
   },
 
   playCorrect() {
     playTone(523.25, 0.1, 'sine', 0.16);
     setTimeout(() => playTone(659.25, 0.1, 'sine', 0.16), 70);
     setTimeout(() => playTone(783.99, 0.18, 'sine', 0.18), 140);
+    this.triggerHaptic(20);
   },
 
   playWrong() {
     playTone(210, 0.16, 'sawtooth', 0.12);
     setTimeout(() => playTone(165, 0.22, 'sawtooth', 0.12), 110);
+    this.triggerHaptic([30, 40, 30]);
   },
 
   playUlt() {
     playTone(140, 0.35, 'sawtooth', 0.22);
     setTimeout(() => playTone(880, 0.25, 'triangle', 0.18), 80);
+    this.triggerHaptic([40, 30, 60]);
   },
 
   playLaser() {

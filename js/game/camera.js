@@ -34,7 +34,14 @@ export class Camera {
   }
 
   shake(intensity = 8, duration = 0.22) {
-    this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
+    let effectiveIntensity = intensity;
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('zombie_voca_save_v1') : null;
+      if (raw && JSON.parse(raw).lowFx) {
+        effectiveIntensity = intensity * 0.4;
+      }
+    } catch (_) {}
+    this.shakeIntensity = Math.max(this.shakeIntensity, effectiveIntensity);
     this.shakeDuration = duration;
     this.shakeTimer = duration;
   }

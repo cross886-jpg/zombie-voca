@@ -7,10 +7,18 @@ import { BALANCE, getTrainingBonusValue } from '../config/balance.js';
 import { COSTUMES, SKILLS, getCostumeCollectionBonus } from '../data/catalog.js';
 import { resolveCircleCollisions } from '../game/obstacles.js';
 
-export function getEvolutionStage(evoXp) {
+export function getEvolutionStage(target) {
+  let stageNum = 1;
+  if (target && typeof target === 'object') {
+    const selNum = parseInt((target.selectedUnit || '1').replace(/\D/g, ''), 10) || 1;
+    stageNum = Math.max(target.maxUnlockedUnit || 1, selNum);
+  } else if (typeof target === 'number') {
+    stageNum = target;
+  }
+
   let current = BALANCE.EVOLUTION_STAGES[0];
   for (const st of BALANCE.EVOLUTION_STAGES) {
-    if (evoXp >= st.minXp) {
+    if (stageNum >= (st.minStage || 1)) {
       current = st;
     }
   }
@@ -22,8 +30,8 @@ export function getEvolutionStage(evoXp) {
  */
 export function computePlayerStats(saveData, skills = {}) {
   const safeSave = saveData || { training: { atkLevel: 0, hpLevel: 0 }, costumes: { owned: [] } };
-  const evoStage = getEvolutionStage(safeSave.evoXp || 0);
-  const collectionBonus = getCostumeCollectionBonus(safeSave.costumes?.owned || []);
+  const evoStage = getEvolutionStage(safeSave);
+  const collectionBonus = getCostumeCollectionBonus(safeSave.costumes?.owned || [], safeSave.maxUnlockedUnit || 1);
 
   const trainAtk = getTrainingBonusValue('atkLevel', safeSave.training?.atkLevel || 0);
   const trainHp = getTrainingBonusValue('hpLevel', safeSave.training?.hpLevel || 0);
@@ -44,7 +52,8 @@ export function computePlayerStats(saveData, skills = {}) {
   const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus + skinAtk) * evoStage.atkMult * passiveAtkMult);
   const speed = BALANCE.PLAYER.BASE_SPEED * (1 + trainSpeedBonus) * passiveSpeedMult;
   const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus + shopMagnet) * passivePickupMult;
-  const radius = BALANCE.PLAYER.RADIUS * evoStage.scale;
+  // 인게임 회피 조작감 및 시야 확장을 위한 히트박스 약 18% 축소 (0.82배율)
+  const radius = BALANCE.PLAYER.RADIUS * evoStage.scale * 0.82;
   const combatPower = Math.round(atk * 5 + maxHp * 0.8 + speed * 0.5);
 
   return { maxHp, atk, speed, pickupRadius, radius, evoStage, combatPower };
@@ -57,7 +66,7 @@ export class Player {
     this.vx = 0;
     this.vy = 0;
     this.facingAngle = 0;
-    this.radius = BALANCE.PLAYER.RADIUS;
+    this.radius = BALANCE.PLAYER.RADIUS * 0.82;
 
     this.hp = BALANCE.PLAYER.BASE_HP;
     this.maxHp = BALANCE.PLAYER.BASE_HP;
@@ -105,7 +114,7 @@ export class Player {
     }
     this.equippedSkin = saveData?.equippedSkin || null;
     this.selectedBreed = saveData?.selectedBreed || 'pomeranian';
-    this.evoStage = getEvolutionStage(saveData.evoXp || 0);
+    this.evoStage = getEvolutionStage(saveData);
     this.equipped = { ...(saveData.costumes?.equipped || {}) };
 
     this.recalcStats(true);
@@ -223,7 +232,9 @@ export class Player {
       ctx.globalAlpha = 0.45;
     }
 
-    const s = this.evoStage.scale * 1.4;
+    // 인게임 전투 화면 캐릭터 크기 약 18% 축소 (0.82 배율)
+    const INGAME_CHAR_SCALE = 0.82;
+    const s = this.evoStage.scale * (BALANCE.PLAYER.RENDER_SCALE || 1.05) * INGAME_CHAR_SCALE;
     const bob = Math.sin(this.walkPhase) * 2.5;
 
     // 2.5D 바닥 그림자
@@ -239,6 +250,30 @@ export class Player {
       ctx.beginPath();
       ctx.arc(0, 0, 26 * s, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    // [대폭발 100% 충전 황금빛 회전 준비 링]
+    if (this.ultGauge >= BALANCE.COMBAT.ULT_MAX_GAUGE) {
+      ctx.save();
+      const rot = time * 4;
+      ctx.rotate(rot);
+      ctx.strokeStyle = '#facc15';
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = 12;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([12 * s, 6 * s]);
+      ctx.beginPath();
+      ctx.arc(0, 0, 28 * s, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 바깥 펄스 링
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.arc(0, 0, (32 + Math.sin(time * 8) * 3) * s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
 
     // [레이어 1] 오라 코스튬 또는 슈퍼 가디언 후광
@@ -265,7 +300,7 @@ export class Player {
     }
 
     // [레이어 3] 선택된 견종 강아지 본체
-    const isBipedal = this.evoStage.stage >= 1;
+    const isBipedal = this.evoStage.stage >= 2;
     const bodyY = (isBipedal ? -2 : 2) + bob;
     const lookX = Math.cos(this.facingAngle) * 2.5;
 
@@ -293,16 +328,77 @@ export class Player {
     // [레이어 5] 모자 코스튬 파츠
     const hatItem = this._getCostumeItem('hat');
     if (hatItem) {
-      ctx.fillStyle = hatItem.color;
-      ctx.beginPath();
-      ctx.roundRect(-9 * s, (bodyY - 23) * s, 18 * s, 7 * s, 3 * s);
-      ctx.fill();
+      ctx.save();
+      if (hatItem.icon) {
+        ctx.font = `${Math.round(15 * s)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(hatItem.icon, 0, (bodyY - 21) * s);
+      } else {
+        ctx.fillStyle = hatItem.color || '#38bdf8';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-9 * s, (bodyY - 23) * s, 18 * s, 7 * s, 3 * s);
+        } else {
+          ctx.rect(-9 * s, (bodyY - 23) * s, 18 * s, 7 * s);
+        }
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
     // [레이어 6] 상점 프리미엄 우유 스킨 시각 효과 (모든 견종 호환)
     if (this.equippedSkin) {
       drawDogSkin(ctx, this.equippedSkin, s, bodyY);
     }
+
+    // [레이어 7] 탕탕특공대 스타일 캐릭터 발밑 컴팩트 미니 체력바 (HP Bar)
+    ctx.save();
+    ctx.globalAlpha = 1.0; // 캐릭터 피격 깜빡임과 무관하게 상시 선명
+    const barW = 40;
+    const barH = 5;
+    const barR = 2.5;
+    const barX = -barW / 2;
+    const barY = 16 * s + 7;
+
+    const hpRatio = Math.max(0, Math.min(1, this.hp / Math.max(1, this.maxHp)));
+    const fillW = Math.max(0, barW * hpRatio);
+
+    // 어두운 반투명 외곽 프레임
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(barX, barY, barW, barH, barR);
+    } else {
+      ctx.rect(barX, barY, barW, barH);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // 체력 상태별 색상 채움 & 위험 시 은은한 점멸
+    if (fillW > 0) {
+      let barColor = '#10b981'; // 50% 초과: 선명한 민트/초록색
+      if (hpRatio <= 0.25) {
+        barColor = '#ef4444'; // 25% 이하: 위험 빨간색
+        ctx.globalAlpha = 0.6 + Math.sin(time * 12) * 0.4;
+      } else if (hpRatio <= 0.5) {
+        barColor = '#f59e0b'; // 25% ~ 50%: 주의 노랑/주황색
+      }
+
+      ctx.fillStyle = barColor;
+      ctx.shadowColor = barColor;
+      ctx.shadowBlur = hpRatio <= 0.25 ? 6 : 2;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(barX, barY, fillW, barH, barR);
+      } else {
+        ctx.rect(barX, barY, fillW, barH);
+      }
+      ctx.fill();
+    }
+    ctx.restore();
 
     ctx.restore();
   }
@@ -561,6 +657,221 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       ctx.moveTo(9 * s, (bodyY - 13) * s);
       ctx.bezierCurveTo(16 * s, (bodyY - 7) * s, 17 * s, (bodyY + 1) * s, 11 * s, (bodyY + 3) * s);
       ctx.bezierCurveTo(9 * s, (bodyY) * s, 8 * s, (bodyY - 6) * s, 7 * s, (bodyY - 11) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'border_collie': {
+      // 보더콜리: 칠흑 같은 블랙 & 화이트 지능형 목양견, 날렵한 귀
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 화이트 가슴 칼라 & 넥카라
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(0, (bodyY + 6) * s, 8 * s, 9 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 머리 (블랙)
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 얼굴 중앙 흰색 블레이즈 & 주둥이
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 5) * s, 5.5 * s, 4.5 * s, 0, 0, Math.PI * 2);
+      ctx.moveTo((-1.5 + lookX) * s, (bodyY - 15) * s);
+      ctx.lineTo((1.5 + lookX) * s, (bodyY - 15) * s);
+      ctx.lineTo((2 + lookX) * s, (bodyY - 6) * s);
+      ctx.lineTo((-2 + lookX) * s, (bodyY - 6) * s);
+      ctx.fill();
+
+      // 반쯤 접힌 총명한 세모 귀
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.moveTo(-10 * s, (bodyY - 14) * s);
+      ctx.lineTo(-7 * s, (bodyY - 23) * s);
+      ctx.lineTo(-3 * s, (bodyY - 16) * s);
+      ctx.moveTo(10 * s, (bodyY - 14) * s);
+      ctx.lineTo(7 * s, (bodyY - 23) * s);
+      ctx.lineTo(3 * s, (bodyY - 16) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'husky': {
+      // 시베리안 허스키: 은회색 & 화이트 마스크, 늑대형 직립 귀
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.ellipse(0, (bodyY + 6) * s, 8 * s, 8 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 머리 (은회색)
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 허스키 고유 화이트 마스크 & 눈가 무늬
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 5) * s, 6 * s, 5 * s, 0, 0, Math.PI * 2);
+      ctx.arc((-5 + lookX) * s, (bodyY - 9) * s, 3.5 * s, 0, Math.PI * 2);
+      ctx.arc((5 + lookX) * s, (bodyY - 9) * s, 3.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 늑대형 직립 귀
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.moveTo(-10 * s, (bodyY - 15) * s);
+      ctx.lineTo(-7 * s, (bodyY - 25) * s);
+      ctx.lineTo(-2 * s, (bodyY - 17) * s);
+      ctx.moveTo(10 * s, (bodyY - 15) * s);
+      ctx.lineTo(7 * s, (bodyY - 25) * s);
+      ctx.lineTo(2 * s, (bodyY - 17) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'dalmatian': {
+      // 달마시안: 순백색 털에 검정 스팟 점박이 무늬
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 몸통 블랙 점박이들
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(-4 * s, (bodyY + 2) * s, 2 * s, 0, Math.PI * 2);
+      ctx.arc(5 * s, (bodyY + 6) * s, 2.2 * s, 0, Math.PI * 2);
+      ctx.arc(-1 * s, (bodyY + 9) * s, 1.8 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 머리
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 머리 점박이
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc((-6 + lookX) * s, (bodyY - 11) * s, 1.8 * s, 0, Math.PI * 2);
+      ctx.arc((6 + lookX) * s, (bodyY - 6) * s, 1.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 점박이 처진 귀
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.moveTo(-9 * s, (bodyY - 13) * s);
+      ctx.bezierCurveTo(-15 * s, (bodyY - 7) * s, -16 * s, (bodyY + 1) * s, -10 * s, (bodyY + 3) * s);
+      ctx.moveTo(9 * s, (bodyY - 13) * s);
+      ctx.bezierCurveTo(15 * s, (bodyY - 7) * s, 16 * s, (bodyY + 1) * s, 10 * s, (bodyY + 3) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'french_bulldog': {
+      // 프렌치 불독: 다부진 체구, 둥근 박쥐 모양 큰 귀
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 14 * s, 13 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 머리 (넓적한 사각 라운드)
+      ctx.fillStyle = '#475569';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 7) * s, 13.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 짧은 주둥이 & 머즐
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 4) * s, 6.5 * s, 4.5 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 시그니처: 거대한 박쥐 귀 (Bat ears)
+      ctx.fillStyle = '#334155';
+      ctx.beginPath();
+      ctx.ellipse(-9 * s, (bodyY - 18) * s, 5 * s, 9 * s, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(9 * s, (bodyY - 18) * s, 5 * s, 9 * s, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fecdd3';
+      ctx.beginPath();
+      ctx.ellipse(-9 * s, (bodyY - 18) * s, 3 * s, 6.5 * s, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(9 * s, (bodyY - 18) * s, 3 * s, 6.5 * s, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case 'doberman': {
+      // 도베르만: 날렵한 블랙 & 탄, 날카로운 직립 귀
+      ctx.fillStyle = '#18181b';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 15 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 황갈색(탄) 가슴 무늬
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.ellipse(-4 * s, (bodyY + 7) * s, 3.5 * s, 5 * s, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(4 * s, (bodyY + 7) * s, 3.5 * s, 5 * s, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 머리 (블랙)
+      ctx.fillStyle = '#18181b';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 탄 주둥이 & 눈썹 점 2개
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 4.5) * s, 6 * s, 4.5 * s, 0, 0, Math.PI * 2);
+      ctx.arc((-4.5 + lookX) * s, (bodyY - 13) * s, 1.6 * s, 0, Math.PI * 2);
+      ctx.arc((4.5 + lookX) * s, (bodyY - 13) * s, 1.6 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 날렵하고 뾰족한 직립 귀
+      ctx.fillStyle = '#09090b';
+      ctx.beginPath();
+      ctx.moveTo(-9 * s, (bodyY - 15) * s);
+      ctx.lineTo(-7 * s, (bodyY - 27) * s);
+      ctx.lineTo(-3 * s, (bodyY - 17) * s);
+      ctx.moveTo(9 * s, (bodyY - 15) * s);
+      ctx.lineTo(7 * s, (bodyY - 27) * s);
+      ctx.lineTo(3 * s, (bodyY - 17) * s);
       ctx.fill();
       break;
     }

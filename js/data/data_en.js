@@ -1,9 +1,13 @@
 /**
  * js/data/data_en.js
- * 4,998단어(167유닛) 마스터 CSV 로더 및 표준 단어 스키마 변환기
+ * 4,998단어 마스터 CSV 로더 및 표준 단어 스키마 변환기 (1유닛당 7단어 동적 분할)
  */
 
 import { BALANCE } from '../config/balance.js';
+
+export const WORDS_PER_UNIT = BALANCE.VOCA?.WORDS_PER_UNIT || 7;
+export const ESTIMATED_TOTAL_WORDS = 4998;
+export const DEFAULT_TOTAL_UNITS = Math.ceil(ESTIMATED_TOTAL_WORDS / WORDS_PER_UNIT); // 약 714유닛
 
 let cachedWords = null;
 let cachedUnits = null;
@@ -125,10 +129,8 @@ function parseMasterCsv(csvText) {
     const meaning = sanitizeMeaning(rawMeaning);
     if (!meaning) continue;
 
-    unitSet.add(unit);
     words.push({
       id: rank,
-      unit,
       word,
       meaning,
       pos: inferPos(rawMeaning),
@@ -136,6 +138,14 @@ function parseMasterCsv(csvText) {
       phonetic,
       rawMeaning,
     });
+  }
+
+  // 1유닛(스테이지)당 WORDS_PER_UNIT(7) 단어씩 동적 유닛 매핑
+  for (let i = 0; i < words.length; i++) {
+    const unitNum = Math.floor(i / WORDS_PER_UNIT) + 1;
+    const unitId = `unit_${String(unitNum).padStart(3, '0')}`;
+    words[i].unit = unitId;
+    unitSet.add(unitId);
   }
 
   cachedUnits = Array.from(unitSet).sort();
@@ -187,11 +197,13 @@ const FALLBACK_WORDS = [
 
 function buildFallbackWords() {
   const unitSet = new Set();
-  const words = FALLBACK_WORDS.map((item) => {
-    unitSet.add(item.unit);
+  const words = FALLBACK_WORDS.map((item, idx) => {
+    const unitNum = Math.floor(idx / WORDS_PER_UNIT) + 1;
+    const unit = `unit_${String(unitNum).padStart(3, '0')}`;
+    unitSet.add(unit);
     return {
       id: item.id,
-      unit: item.unit,
+      unit,
       word: item.word,
       meaning: sanitizeMeaning(item.rawMeaning),
       pos: inferPos(item.rawMeaning),
@@ -246,12 +258,21 @@ export function getWords() {
 }
 
 /**
- * 로드 완료된 전체 유닛 ID 목록 반환 (167유닛)
+ * 로드 완료된 전체 유닛 ID 목록 반환
  * @returns {string[]}
  */
 export function getUnits() {
   if (cachedUnits && cachedUnits.length > 0) return cachedUnits;
   buildFallbackWords();
   return cachedUnits || [];
+}
+
+/**
+ * 전체 유닛(스테이지) 수 반환 (CSV 미로드 시 기본 추정값 DEFAULT_TOTAL_UNITS 반환)
+ * @returns {number}
+ */
+export function getTotalUnits() {
+  if (cachedUnits && cachedUnits.length > 0) return cachedUnits.length;
+  return DEFAULT_TOTAL_UNITS;
 }
 

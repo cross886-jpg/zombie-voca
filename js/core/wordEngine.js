@@ -4,7 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { getWords } from '../data/data_en.js?v=2';
+import { getWords, getTotalUnits } from '../data/data_en.js?v=2';
 import { getSave, getWordStat, recordWordResult } from './saveStore.js';
 
 function shuffleArray(arr) {
@@ -135,7 +135,7 @@ export const wordEngine = {
       ...shuffleArray(masteredCandidates),
     ];
 
-    const TARGET_WORD_COUNT = 8;
+    const TARGET_WORD_COUNT = BALANCE.VOCA?.WORDS_PER_UNIT || 7;
     const targetWords = orderedCandidates.slice(0, Math.min(TARGET_WORD_COUNT, orderedCandidates.length));
     const deck = [];
 
@@ -175,6 +175,32 @@ export const wordEngine = {
       }
     }
     return deck;
+  },
+
+  /**
+   * 월반 전투 도전용 10문제 덱 (목표 유닛 및 직전 유닛들의 핵심 단어 10개)
+   * @param {number} targetUnitNum
+   * @returns {Array<object>}
+   */
+  buildPlacementDeck(targetUnitNum) {
+    const all = getWords();
+    const tot = typeof getTotalUnits === 'function' ? getTotalUnits() : 714;
+    const safeTarget = Math.min(Math.max(1, targetUnitNum || 1), tot);
+    const targetUnitId = `unit_${String(safeTarget).padStart(3, '0')}`;
+    let candidateWords = all.filter((w) => w.unit === targetUnitId);
+
+    for (let u = safeTarget - 1; u >= 1 && candidateWords.length < 15; u--) {
+      const prevId = `unit_${String(u).padStart(3, '0')}`;
+      const prevWords = all.filter((w) => w.unit === prevId);
+      candidateWords = candidateWords.concat(prevWords);
+    }
+
+    if (candidateWords.length < 10) {
+      candidateWords = all.slice();
+    }
+
+    const shuffled = shuffleArray(candidateWords);
+    return shuffled.slice(0, 10);
   },
 
   /**

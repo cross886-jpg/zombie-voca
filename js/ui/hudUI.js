@@ -37,8 +37,9 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const skillSparksWrap = document.getElementById('hud-skill-sparks');
 
   const edgeArrowsWrap = document.getElementById('edge-arrows');
-  const btnUlt = document.getElementById('btn-ult');
-  const btnUltLabel = document.getElementById('btn-ult-label');
+  const hudUltReadyBadge = document.getElementById('hud-ult-ready-badge');
+  const hudPlacementBadge = document.getElementById('hud-placement-badge');
+  const hudPlacementText = document.getElementById('hud-placement-text');
 
   const joystickEl = document.getElementById('virtual-joystick');
   const joystickKnob = document.getElementById('joystick-knob');
@@ -58,25 +59,10 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
   const keysDown = new Set();
 
-  function updateUltButtonPosition() {
-    if (!btnUlt) return;
-    const hand = getSave().dominantHand || 'right';
-    if (hand === 'left') {
-      btnUlt.style.left = '';
-      btnUlt.style.right = '20px';
-      btnUlt.style.bottom = 'max(20px, env(safe-area-inset-bottom))';
-    } else {
-      btnUlt.style.right = '';
-      btnUlt.style.left = '20px';
-      btnUlt.style.bottom = 'max(20px, env(safe-area-inset-bottom))';
-    }
-  }
-
   function showHud() {
     closeModal();
     resetJoystick();
     prevSkillStep = -1;
-    updateUltButtonPosition();
     hudLayer.classList.remove('hidden');
   }
 
@@ -90,16 +76,11 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     bossWrap.classList.add('hidden');
     wrongReviewOverlay?.classList.add('hidden');
     btnSkipTutorial?.classList.add('hidden');
+    hudUltReadyBadge?.classList.add('hidden');
+    hudPlacementBadge?.classList.add('hidden');
     skillSparks.forEach((el) => {
       if (el) el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95';
     });
-    if (btnUlt) {
-      btnUlt.disabled = true;
-      btnUlt.style.opacity = '0.5';
-      btnUlt.style.boxShadow = 'none';
-      btnUlt.className = 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-[#1b3b2b]/85 border-2 border-emerald-500/70 text-emerald-100 opacity-50 transition-all z-20';
-    }
-    if (btnUltLabel) btnUltLabel.textContent = '0%';
   }
 
   function openModal(html) {
@@ -137,12 +118,27 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     engine.setInputVector(0, 0);
   }
 
+  let lastTapTime = 0;
+
   function handlePointerDown(e) {
     if (engine.state !== GAME_STATES.PLAYING) return;
     if (e.target.closest('button') || e.target.closest('#led-scoreboard')) return;
-    if (activePointerId !== null) return;
 
     audioEngine.unlock();
+
+    const now = performance.now();
+    const timeDiff = now - lastTapTime;
+    const isUltReady = engine.player && engine.player.ultGauge >= BALANCE.COMBAT.ULT_MAX_GAUGE;
+
+    if (isUltReady && timeDiff < 300 && timeDiff > 40) {
+      lastTapTime = 0;
+      resetJoystick();
+      engine.useUltimate();
+      return;
+    }
+    lastTapTime = now;
+
+    if (activePointerId !== null) return;
     activePointerId = e.pointerId;
     joyOrigin = { x: e.clientX, y: e.clientY };
 
@@ -215,10 +211,6 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     onReturnToLobby?.();
   });
 
-  btnUlt?.addEventListener('click', () => {
-    engine.useUltimate();
-  });
-
   ledScoreboard?.addEventListener('click', () => {
     if (currentWordText) {
       audioEngine.unlock();
@@ -237,11 +229,11 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       ? engine.camera.worldToScreen(engine.player.x, engine.player.y, viewW, viewH)
       : { x: viewW / 2, y: viewH / 2 };
 
-    const minX = 40;
-    const maxXBound = viewW - 40;
-    const topPadding = 136; // 전광판 하단(약 105px) + 31px 여유 간격
+    const minX = 46;
+    const maxXBound = viewW - 46;
+    const topPadding = 138; // 전광판 하단(약 105px) + 33px 여유 간격
     const minY = topPadding;
-    const maxYBound = viewH - 74;
+    const maxYBound = viewH - 78;
 
     // 레이-박스 교차 기준점(우유 화면 좌표)을 안전 영역 내로 클램프
     const ox = Math.max(minX + 1, Math.min(maxXBound - 1, playerScr.x));
@@ -266,17 +258,17 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       const hand = getSave().dominantHand || 'right';
       const { x: ax, y: ay } = clampIndicatorToThumbSafeZone(rawAx, rawAy, viewW, viewH, hand);
       const deg = (angle * 180) / Math.PI + 90;
-      const ptrX = cos * 22;
-      const ptrY = sin * 16;
+      const ptrX = cos * 28;
+      const ptrY = sin * 20;
       const meaningText = item.meaning || '';
 
       htmlParts.push(`
         <div class="absolute pointer-events-none" style="left:${ax.toFixed(1)}px;top:${ay.toFixed(1)}px;transform:translate(-50%,-50%);">
-          <div class="relative flex items-center justify-center px-2.5 py-1 rounded-full bg-[#1b3b2b]/95 border border-emerald-400/85 shadow-[0_0_12px_rgba(45,106,79,0.55)]">
-            <svg width="14" height="14" viewBox="0 0 14 14" style="position:absolute;left:50%;top:50%;transform:translate(calc(-50% + ${ptrX.toFixed(1)}px),calc(-50% + ${ptrY.toFixed(1)}px)) rotate(${deg.toFixed(1)}deg);filter:drop-shadow(0 0 4px rgba(52,211,153,0.9));">
-              <polygon points="7,0 13,12 7,9 1,12" fill="#34d399" />
+          <div class="relative flex items-center justify-center px-3.5 py-1.5 rounded-full bg-[#08150f]/98 border-2 border-[#10b981] shadow-[0_0_14px_rgba(16,185,129,0.7),0_2px_8px_rgba(0,0,0,0.85)]">
+            <svg width="16" height="16" viewBox="0 0 16 16" style="position:absolute;left:50%;top:50%;transform:translate(calc(-50% + ${ptrX.toFixed(1)}px),calc(-50% + ${ptrY.toFixed(1)}px)) rotate(${deg.toFixed(1)}deg);filter:drop-shadow(0 0 4px #34d399) drop-shadow(0 1px 2px rgba(0,0,0,0.9));">
+              <polygon points="8,0 15,14 8,11 1,14" fill="#34d399" stroke="#042f1a" stroke-width="1.2" />
             </svg>
-            ${meaningText ? `<span class="text-[11px] font-extrabold text-[#f8f5ec] whitespace-nowrap leading-none">${meaningText}</span>` : ''}
+            ${meaningText ? `<span class="text-[14px] font-bold text-[#f8f5ec] whitespace-nowrap leading-none tracking-tight drop-shadow-sm">${meaningText}</span>` : ''}
           </div>
         </div>
       `);
@@ -436,6 +428,49 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   }
 
   function showStageResultModal(res) {
+    if (res.isPlacement) {
+      const passed = Boolean(res.placementPassed);
+      const targetUnit = res.targetUnitNum || 1;
+      const lives = Math.max(0, res.lives ?? 0);
+      const hearts = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 3 - lives));
+      openModal(`
+        <div class="text-center space-y-4">
+          <div class="text-4xl">${passed ? '🎉🎓' : '💦💀'}</div>
+          <h2 class="text-xl font-black ${passed ? 'text-amber-600' : 'text-rose-600'}">
+            ${passed ? `월반 성공! STAGE ${targetUnit} 해금!` : '월반 도전 실패'}
+          </h2>
+          <p class="text-xs text-[#4a584e] leading-relaxed">
+            ${passed
+              ? `뛰어난 실력으로 10문제를 모두 돌파했습니다!<br/><b>STAGE ${targetUnit}</b>까지 즉시 일괄 해금되었습니다.`
+              : `목숨 3개를 모두 소진하거나 쓰러졌습니다.<br/>현재 스테이지를 조금 더 학습한 뒤 다시 도전해 보세요!`
+            }
+          </p>
+          <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs">
+            <div class="text-[#4a584e]">도전 스테이지</div>
+            <div class="text-right font-extrabold text-[#1f2d24]">STAGE ${targetUnit}</div>
+            <div class="text-[#4a584e]">정답 비석</div>
+            <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount || 0} / 10</div>
+            <div class="text-[#4a584e]">남은 기회</div>
+            <div class="text-right font-extrabold text-[#1f2d24]">${hearts}</div>
+            <div class="text-[#4a584e]">판정 결과</div>
+            <div class="text-right font-extrabold ${passed ? 'text-emerald-700 font-black' : 'text-rose-600'}">${passed ? '합격 (해금 완료)' : '불합격'}</div>
+            <div class="text-[#4a584e]">처치 좀비</div>
+            <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
+          </div>
+          <button id="btn-result-confirm" type="button" class="w-full py-3 rounded-xl ${passed ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#2d6a4f] hover:bg-[#245840]'} text-[#f8f5ec] font-black text-sm active:scale-95 transition">
+            ${passed ? `⚔️ STAGE ${targetUnit} 로비로 이동` : '로비로 돌아가기'}
+          </button>
+        </div>
+      `);
+
+      document.getElementById('btn-result-confirm')?.addEventListener('click', () => {
+        closeModal();
+        hideHud();
+        onReturnToLobby?.();
+      });
+      return;
+    }
+
     if (res.isPromotion) {
       const passed = Boolean(res.promoPassed);
       openModal(`
@@ -489,7 +524,10 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
           <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount}</div>
           <div class="text-[#4a584e]">${t('modal.resultEvoXp')}</div>
           <div class="text-right font-extrabold text-emerald-800">+${res.earnedEvoXp}</div>
-          <div class="text-[#4a584e]">${t('modal.resultGold')}</div>
+          <div class="text-[#4a584e] flex items-center gap-1">
+            <span>${t('modal.resultGold')}</span>
+            ${res.isFirstClear ? `<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-800 text-[9px] font-black">최초 돌파</span>` : res.isRepeatFarm ? `<span class="px-1.5 py-0.5 rounded bg-stone-200 text-stone-600 text-[9px] font-bold">반복 50%</span>` : ''}
+          </div>
           <div class="text-right font-extrabold text-amber-700">+${res.earnedGold} 🪙</div>
           <div class="text-[#4a584e]">획득 뼈다귀</div>
           <div class="text-right font-extrabold text-amber-900">+${res.earnedSnacks || 0} 🦴</div>
@@ -522,15 +560,10 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       <div class="text-center space-y-4">
         <div class="text-4xl">🐶✨</div>
         <h2 class="text-xl font-black text-[#1f2d24]">튜토리얼 완료!</h2>
-        <p class="text-xs text-[#4a584e] leading-relaxed">${dogName}와(과) 함께할 시작 경로를 선택해 주세요.</p>
-        <div class="space-y-2.5 pt-1">
-          <button id="btn-start-path-ch1" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
-            <span>🌱 CH.1 기초부터 시작</span>
-            <span class="text-xs font-extrabold opacity-80">LV.1 →</span>
-          </button>
-          <button id="btn-start-path-diag" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#d97706] hover:bg-[#b45309] text-white font-black text-sm active:scale-95 transition text-left flex items-center justify-between">
-            <span>⚡ 30초 실력 진단 테스트</span>
-            <span class="text-xs font-extrabold opacity-80">추천 레벨 찾기 →</span>
+        <p class="text-xs text-[#4a584e] leading-relaxed">${dogName}와 함께 모험을 시작할 준비가 되었어요!</p>
+        <div class="pt-1">
+          <button id="btn-start-path-ch1" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition text-center flex items-center justify-center gap-2">
+            <span>⚔️ STAGE 1 모험 시작하기</span>
           </button>
         </div>
       </div>
@@ -547,7 +580,6 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     };
 
     document.getElementById('btn-start-path-ch1')?.addEventListener('click', () => handlePath('ch1'));
-    document.getElementById('btn-start-path-diag')?.addEventListener('click', () => handlePath('diagnostic'));
   }
 
   // === GameEngine 핸들러 바인딩 ===
@@ -576,7 +608,18 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       }
     },
 
-    onHudUpdate({ hp, maxHp, xp, xpToNext, ultGauge, evoXp, boss, edgeArrows, viewW, viewH, wrongReview }) {
+    onHudUpdate({ hp, maxHp, xp, xpToNext, ultGauge, evoXp, boss, edgeArrows, viewW, viewH, wrongReview, placement }) {
+      if (hudPlacementBadge && hudPlacementText) {
+        if (placement) {
+          hudPlacementBadge.classList.remove('hidden');
+          const lives = Math.max(0, placement.lives ?? 3);
+          const hearts = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 3 - lives));
+          hudPlacementText.textContent = `🎓 STAGE ${placement.targetUnitNum} 월반 도전 · ${hearts} (남은 기회 ${lives}회)`;
+        } else {
+          hudPlacementBadge.classList.add('hidden');
+        }
+      }
+
       if (wrongReviewOverlay) {
         if (wrongReview) {
           wrongReviewWord.textContent = wrongReview.word || '';
@@ -622,22 +665,9 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       }
       prevSkillStep = step;
 
-      const ultPct = Math.min(100, Math.round((ultGauge / BALANCE.COMBAT.ULT_MAX_GAUGE) * 100));
       const ultReady = ultGauge >= BALANCE.COMBAT.ULT_MAX_GAUGE;
-      if (btnUlt) {
-        btnUlt.disabled = !ultReady;
-        if (ultReady) {
-          btnUlt.className = 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center ult-btn-pop bg-gradient-to-br from-orange-500 via-rose-500 to-amber-500 border-2 border-amber-200 text-white shadow-[0_0_24px_rgba(249,115,22,0.85)] opacity-100 transition-all active:scale-95 z-20';
-          btnUlt.style.opacity = '';
-          btnUlt.style.boxShadow = '';
-        } else {
-          btnUlt.className = 'absolute pointer-events-auto w-16 h-16 rounded-full flex flex-col items-center justify-center bg-[#1b3b2b]/85 border-2 border-emerald-500/70 text-emerald-100 transition-all z-20';
-          btnUlt.style.opacity = (0.45 + (ultPct / 100) * 0.45).toFixed(2);
-          btnUlt.style.boxShadow = ultPct > 30 ? `0 0 ${Math.round((ultPct / 100) * 16)}px rgba(52, 211, 153, 0.4)` : 'none';
-        }
-      }
-      if (btnUltLabel) {
-        btnUltLabel.textContent = ultReady ? '대폭발' : `${ultPct}%`;
+      if (hudUltReadyBadge) {
+        hudUltReadyBadge.classList.toggle('hidden', !ultReady);
       }
 
       if (boss && boss.hp > 0) {

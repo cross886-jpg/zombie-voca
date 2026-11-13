@@ -54,19 +54,19 @@ async function bootstrap() {
     },
   });
 
-  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2' } = {}) {
+  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2', isPlacement = false, targetUnitNum = 1 } = {}) {
     audioEngine.unlock();
     lobbyUI.closeModal();
     lobbyUI.hideLobby();
     hudUI.closeModal();
     hudUI.showHud();
     canvas.classList.remove('hidden');
-    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel });
+    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel, isPlacement, targetUnitNum });
   }
 
   lobbyUI = createLobbyUI({
-    onStartBattle({ chapterNumber, courseId, unitId }) {
-      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false });
+    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, targetUnitNum = 1 }) {
+      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, targetUnitNum });
     },
     onStartTutorial() {
       startBattleFlow({ chapterNumber: 1, courseId: 'lv1', isTutorial: true });
@@ -131,9 +131,13 @@ async function bootstrap() {
     }
   });
 
-  // 첫 접속 시 30초 프롤로그 튜토리얼 자동 진입, 완료 유저는 메인 로비 표시
-  if (!save.tutorialCompleted) {
-    startBattleFlow({ chapterNumber: 1, courseId: 'lv1', isTutorial: true });
+  // 첫 접속 언어 선택 및 메인 로비 진입 분기
+  if (!save.langConfirmed) {
+    lobbyUI.showLobby();
+    lobbyUI.openInitialLanguageModal(() => {
+      lobbyUI.showLobby();
+      lobbyUI.renderActiveTab();
+    });
   } else {
     lobbyUI.showLobby();
   }

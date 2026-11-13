@@ -20,11 +20,11 @@ import { audioEngine } from '../core/audioEngine.js';
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 const LEAGUE_META = {
-  bronze: { name: '브론즈 리그', icon: '🥉', badgeClass: 'bg-amber-900/30 text-amber-300 border-amber-700/50', rewardSnacks: 3 },
-  silver: { name: '실버 리그', icon: '🥈', badgeClass: 'bg-slate-700/30 text-slate-200 border-slate-500/50', rewardSnacks: 4 },
-  gold: { name: '골드 리그', icon: '🥇', badgeClass: 'bg-yellow-700/30 text-yellow-300 border-yellow-500/50', rewardSnacks: 5 },
-  ruby: { name: '루비 리그', icon: '💎', badgeClass: 'bg-rose-800/30 text-rose-300 border-rose-500/50', rewardSnacks: 7 },
-  diamond: { name: '다이아 리그', icon: '👑', badgeClass: 'bg-cyan-800/30 text-cyan-300 border-cyan-400/50', rewardSnacks: 10 },
+  bronze: { name: '브론즈 리그', icon: '🥉', badgeClass: 'bg-amber-100 text-amber-950 border-amber-400', rewardSnacks: 3 },
+  silver: { name: '실버 리그', icon: '🥈', badgeClass: 'bg-slate-200 text-slate-900 border-slate-400', rewardSnacks: 4 },
+  gold: { name: '골드 리그', icon: '🥇', badgeClass: 'bg-yellow-100 text-yellow-950 border-yellow-400', rewardSnacks: 5 },
+  ruby: { name: '루비 리그', icon: '💎', badgeClass: 'bg-rose-100 text-rose-950 border-rose-300', rewardSnacks: 7 },
+  diamond: { name: '다이아 리그', icon: '👑', badgeClass: 'bg-cyan-100 text-cyan-950 border-cyan-400', rewardSnacks: 10 },
 };
 
 const BREED_ICONS = {
@@ -172,16 +172,22 @@ export function createChallengeUI({ onResourcesChanged, openModal, closeModal, o
           </div>
         </div>
 
-        <!-- 3단계 구역 가이드 -->
-        <div class="grid grid-cols-3 gap-1.5 text-center text-[10px] font-extrabold">
-          <div class="py-1 px-1.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300">
-            🟢 1~5위 승급 (+${tierMeta.rewardSnacks}🦴)
+        <!-- 순위 구간 범례 (정적 안내 칩 바) -->
+        <div class="flex items-center justify-between gap-1 px-3 py-1.5 rounded-xl bg-[#efe9dc]/80 border border-[#dcd3bd] text-[10px] select-none pointer-events-none">
+          <div class="flex items-center gap-1 font-bold text-emerald-800">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+            <span>1~5위 승급</span>
+            <span class="text-[9px] font-semibold text-emerald-700">(+${tierMeta.rewardSnacks}🦴)</span>
           </div>
-          <div class="py-1 px-1.5 rounded-lg bg-[#efe9dc] text-[#4a584e] border border-[#d2c8b4]">
-            ⚪ 6~17위 유지
+          <span class="text-[#c5baa3] text-[9px]">•</span>
+          <div class="flex items-center gap-1 font-semibold text-[#4a584e]">
+            <span class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+            <span>6~17위 유지</span>
           </div>
-          <div class="py-1 px-1.5 rounded-lg ${leagueTier === 'bronze' ? 'bg-[#efe9dc] text-[#4a584e] border-[#d2c8b4]' : 'bg-rose-100 text-rose-800 border-rose-300'}">
-            ${leagueTier === 'bronze' ? '⚪ 18~20위 유지' : '🔴 18~20위 강등'}
+          <span class="text-[#c5baa3] text-[9px]">•</span>
+          <div class="flex items-center gap-1 font-semibold ${leagueTier === 'bronze' ? 'text-[#4a584e]' : 'text-rose-700 font-bold'}">
+            <span class="w-2 h-2 rounded-full ${leagueTier === 'bronze' ? 'bg-slate-400' : 'bg-rose-500'} shrink-0"></span>
+            <span>${leagueTier === 'bronze' ? '18~20위 유지' : '18~20위 강등'}</span>
           </div>
         </div>
 

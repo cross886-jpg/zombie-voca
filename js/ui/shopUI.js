@@ -44,25 +44,25 @@ const MILK_SKINS = [
     id: 'skin_detective',
     titleSuffix: '탐정',
     icon: '🕵️',
-    cost: 400,
+    cost: 150,
     desc: '셜록의 명추리 모자와 트렌치코트로 단어를 꿰뚫어 봅니다.',
-    statText: '공격력 +3 · 최대 체력 +10 (전투력 +35)',
+    statText: '공격력 +3 · 체력 +10',
   },
   {
     id: 'skin_astronaut',
     titleSuffix: '우주비행사',
     icon: '🧑‍🚀',
-    cost: 750,
+    cost: 300,
     desc: '산소 헬멧과 네온 우주복을 입고 중력을 거슬러 달립니다.',
-    statText: '공격력 +5 · 최대 체력 +20 (전투력 +55)',
+    statText: '공격력 +5 · 체력 +20',
   },
   {
     id: 'skin_crown',
     titleSuffix: '황금 왕관',
     icon: '👑',
-    cost: 1200,
+    cost: 500,
     desc: '영롱하게 빛나는 황실 왕관과 황금빛 후광을 두릅니다.',
-    statText: '공격력 +8 · 최대 체력 +30 (전투력 +90)',
+    statText: '공격력 +8 · 체력 +30',
   },
 ];
 
@@ -94,6 +94,49 @@ const PERMANENT_UPGRADES = [
     maxLevel: 3,
     costs: [350, 600, 850],
     descPerLv: 'Lv.1: 시작 시 불꽃 왈왈 무기 장착, Lv.2+: 기본 공격력 추가 증가',
+  },
+];
+
+export const CURRENCY_EXCHANGE_ITEMS = [
+  {
+    id: 'exch_gold_small',
+    name: '금화 주머니',
+    icon: '🪙',
+    type: 'gold',
+    amount: 150,
+    costGems: 30,
+    badge: '실속',
+    desc: '훈련소 스탯 강화에 유용한 기본 금화 주머니',
+  },
+  {
+    id: 'exch_gold_large',
+    name: '금화 상자',
+    icon: '💰',
+    type: 'gold',
+    amount: 600,
+    costGems: 100,
+    badge: '+20% 보너스',
+    desc: '대량의 훈련과 스탯 급성장을 위한 금화 궤짝',
+  },
+  {
+    id: 'exch_snacks_small',
+    name: '뼈다귀 번들',
+    icon: '🦴',
+    type: 'snacks',
+    amount: 2,
+    costGems: 40,
+    badge: '인기',
+    desc: '승급전 추가 도전 및 동료 간식용 뼈다귀',
+  },
+  {
+    id: 'exch_snacks_large',
+    name: '특대 뼈다귀 바구니',
+    icon: '🍖',
+    type: 'snacks',
+    amount: 8,
+    costGems: 150,
+    badge: '대용량',
+    desc: '동료 동물 모집과 성장에 넉넉한 대용량 바구니',
   },
 ];
 
@@ -129,7 +172,7 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
       </div>
     `).join('');
 
-    // 2. 강아지 전용 스킨 카드 HTML
+    // 2. 강아지 전용 스킨 카드 HTML (컴팩트 2열 그리드)
     const skinsHtml = MILK_SKINS.map((skin) => {
       const isOwned = ownedItems.has(skin.id);
       const isEquipped = equippedSkin === skin.id;
@@ -144,45 +187,41 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
               ? 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-sm'
               : 'bg-[#d2c8b4] text-[#4a584e] opacity-75'
           } font-extrabold text-xs active:scale-95 transition">
-            💎 ${skin.cost.toLocaleString()} 구매
+            💎 ${skin.cost.toLocaleString()}
           </button>
         `;
       } else if (isEquipped) {
         actionBtn = `
-          <button type="button" data-skin-id="${skin.id}" class="btn-unequip-skin w-full py-2 rounded-xl bg-emerald-700 text-emerald-100 font-extrabold text-xs shadow-sm flex items-center justify-center gap-1 active:scale-95 transition">
-            <span>✔ 장착중</span>
-            <span class="text-[10px] text-emerald-300">(해제)</span>
+          <button type="button" data-skin-id="${skin.id}" class="btn-toggle-skin w-full py-2 rounded-xl bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-1 active:scale-95 transition border border-emerald-400/50">
+            <span>✔ 장착 중 · 해제</span>
           </button>
         `;
       } else {
         actionBtn = `
-          <button type="button" data-skin-id="${skin.id}" class="btn-equip-skin w-full py-2 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-extrabold text-xs shadow-sm active:scale-95 transition">
+          <button type="button" data-skin-id="${skin.id}" class="btn-toggle-skin w-full py-2 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-extrabold text-xs shadow-sm active:scale-95 transition">
             장착하기
           </button>
         `;
       }
 
       return `
-        <div class="p-3.5 rounded-2xl bg-[#faf6ee] shadow-sm border ${isEquipped ? 'border-emerald-500 ring-2 ring-emerald-400/40' : 'border-[#d2c8b4]'} flex flex-col justify-between space-y-2">
-          <div class="flex items-start gap-2.5">
-            <div class="w-12 h-12 rounded-xl bg-[#efe9dc] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0 shadow-inner">
+        <div class="relative p-3 rounded-2xl bg-[#faf6ee] shadow-sm border ${
+          isEquipped ? 'border-emerald-500 ring-2 ring-emerald-400/40' : 'border-[#d2c8b4]'
+        } flex flex-col justify-between text-center space-y-2">
+          ${isEquipped ? '<span class="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[9px] font-black bg-emerald-600 text-white shadow-xs">착용 중</span>' : ''}
+          <div class="flex flex-col items-center">
+            <div class="w-12 h-12 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4] flex items-center justify-center text-2xl shadow-inner mt-1">
               ${skin.icon}
             </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-black text-[#1f2d24] truncate">${skinName}</span>
-                ${isEquipped ? '<span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-600 text-white font-bold">착용</span>' : ''}
-              </div>
-              <div class="text-[10px] text-[#4a584e] mt-0.5 leading-tight">${skin.desc}</div>
-              <div class="text-[10px] font-bold text-emerald-800 mt-1">${skin.statText}</div>
-            </div>
+            <div class="text-xs font-black text-[#1f2d24] mt-2 truncate max-w-full">${skinName}</div>
+            <div class="text-[10px] font-bold text-emerald-800 mt-0.5">${skin.statText}</div>
           </div>
           ${actionBtn}
         </div>
       `;
     }).join('');
 
-    // 3. 영구 강화 카드 HTML
+    // 3. 영구 강화 카드 HTML (3열 컴팩트 정사각형 카드 그리드)
     const upgradesHtml = PERMANENT_UPGRADES.map((up) => {
       const curLv = upgrades[up.key] || 0;
       const isMax = curLv >= up.maxLevel;
@@ -190,31 +229,28 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
       const canAfford = !isMax && curGems >= nextCost;
 
       return `
-        <div class="p-3.5 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex items-center justify-between gap-3">
-          <div class="w-11 h-11 rounded-xl bg-[#efe9dc] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0 shadow-inner">
-            ${up.icon}
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-black text-[#1f2d24]">${up.name}</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded-full ${isMax ? 'bg-amber-500 text-white' : 'bg-emerald-100 text-emerald-800'} font-bold">
+        <div class="aspect-square rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] p-2 flex flex-col items-center justify-between text-center relative select-none">
+          <div class="text-2xl mt-0.5 leading-none">${up.icon}</div>
+          <div class="w-full min-w-0 px-0.5">
+            <div class="text-[11px] font-black text-[#1f2d24] truncate" title="${up.name}">${up.name}</div>
+            <div class="mt-0.5">
+              <span class="text-[9px] px-1.5 py-0.2 rounded-full ${isMax ? 'bg-amber-500 text-white' : 'bg-emerald-100 text-emerald-800'} font-bold">
                 ${isMax ? 'MAX' : `Lv.${curLv}/${up.maxLevel}`}
               </span>
             </div>
-            <div class="text-[10px] text-[#4a584e] mt-0.5 leading-snug">${up.descPerLv}</div>
           </div>
-          <div class="shrink-0">
+          <div class="w-full">
             ${
               isMax
-                ? `<span class="px-3 py-1.5 rounded-xl bg-amber-500/20 text-amber-800 font-black text-xs border border-amber-500/40">완료</span>`
+                ? `<span class="block w-full py-1 rounded-lg bg-amber-500/20 text-amber-800 font-black text-[10px] border border-amber-500/40 text-center">완료</span>`
                 : `
-                  <button type="button" data-up-key="${up.key}" data-up-cost="${nextCost}" class="btn-upgrade-perm px-3 py-2 rounded-xl ${
+                  <button type="button" data-up-key="${up.key}" data-up-cost="${nextCost}" class="btn-upgrade-perm w-full py-1 rounded-lg ${
                     canAfford
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-sm'
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-xs'
                       : 'bg-[#d2c8b4] text-[#4a584e] opacity-75'
-                  } font-extrabold text-xs active:scale-95 transition flex flex-col items-center">
+                  } font-extrabold text-[10px] active:scale-95 transition flex items-center justify-center gap-1">
                     <span>강화</span>
-                    <span class="text-[9px] text-cyan-200">💎 ${nextCost}</span>
+                    <span class="text-[9px] text-cyan-200">💎${nextCost}</span>
                   </button>
                 `
             }
@@ -223,8 +259,37 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
       `;
     }).join('');
 
+    // 4. 보석 재화 교환소 카드 HTML
+    const exchangeHtml = CURRENCY_EXCHANGE_ITEMS.map((item) => {
+      const rewardText = item.type === 'gold'
+        ? `🪙 +${item.amount.toLocaleString()}`
+        : `🦴 +${item.amount.toLocaleString()}`;
+      const rewardColor = item.type === 'gold' ? 'text-amber-700' : 'text-amber-900';
+
+      return `
+        <div class="p-3.5 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col justify-between space-y-2 hover:border-emerald-500/60 transition">
+          <div>
+            <div class="flex items-start justify-between gap-1.5">
+              <div class="flex items-center gap-2">
+                <span class="text-2xl">${item.icon}</span>
+                <div>
+                  <div class="text-xs font-black text-[#1f2d24]">${item.name}</div>
+                  <div class="text-sm font-black ${rewardColor}">${rewardText}</div>
+                </div>
+              </div>
+              <span class="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-[#efe9dc] text-[#4a584e] border border-[#d2c8b4] shrink-0">${item.badge}</span>
+            </div>
+            <div class="text-[10px] text-[#4a584e] mt-2 leading-snug">${item.desc}</div>
+          </div>
+          <button type="button" data-exch-id="${item.id}" class="btn-exchange-currency w-full py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs shadow-xs active:scale-95 transition flex items-center justify-center gap-1">
+            <span>💎 ${item.costGems} 교환</span>
+          </button>
+        </div>
+      `;
+    }).join('');
+
     shopPanel.innerHTML = `
-      <!-- 상단 보유 보석 실시간 대시보드 카드 -->
+      <!-- 상단 보유 보석 실시간 대시보드 카드 (단일화) -->
       <div class="p-4 rounded-2xl bg-gradient-to-r from-[#142c20] via-[#1b3b2b] to-[#12281d] text-white shadow-[0_4px_16px_rgba(20,44,32,0.4)] border border-emerald-600/40 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="w-12 h-12 rounded-full bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center text-2xl shadow-[0_0_16px_rgba(34,211,238,0.35)]">
@@ -237,9 +302,6 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
             </div>
           </div>
         </div>
-        <button id="btn-scroll-to-packages" type="button" class="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 text-cyan-200 text-xs font-extrabold active:scale-95 transition">
-          + 보석 충전
-        </button>
       </div>
 
       <!-- 섹션 1: 보석 충전소 (인앱 결제 패키지) -->
@@ -256,7 +318,21 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
         </div>
       </div>
 
-      <!-- 섹션 2: 강아지 전용 스킨 상점 -->
+      <!-- 섹션 2: 보석 재화 교환소 -->
+      <div class="space-y-2 pt-2">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-1.5">
+            <span class="text-sm">🔄</span>
+            <h3 class="text-xs font-black text-[#1f2d24]">보석 재화 교환소</h3>
+          </div>
+          <span class="text-[10px] text-emerald-800 font-bold">금화 🪙 & 뼈다귀 🦴 교환</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          ${exchangeHtml}
+        </div>
+      </div>
+
+      <!-- 섹션 3: 강아지 전용 스킨 상점 (2열 컴팩트 카드) -->
       <div class="space-y-2 pt-2">
         <div class="flex items-center justify-between px-1">
           <div class="flex items-center gap-1.5">
@@ -265,12 +341,12 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
           </div>
           <span class="text-[10px] text-emerald-800 font-bold">외형 변경 & 능력치 강화</span>
         </div>
-        <div class="space-y-2">
+        <div class="grid grid-cols-2 gap-2.5">
           ${skinsHtml}
         </div>
       </div>
 
-      <!-- 섹션 3: 영구 강화 상점 -->
+      <!-- 섹션 4: 영구 강화 상점 -->
       <div class="space-y-2 pt-2">
         <div class="flex items-center justify-between px-1">
           <div class="flex items-center gap-1.5">
@@ -279,7 +355,7 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
           </div>
           <span class="text-[10px] text-amber-800 font-bold">전투 시작 시 영구 적용</span>
         </div>
-        <div class="space-y-2">
+        <div class="grid grid-cols-3 gap-2">
           ${upgradesHtml}
         </div>
       </div>
@@ -291,9 +367,60 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
   function bindShopEvents() {
     if (!shopPanel) return;
 
-    // 보석 충전소 이동 버튼
-    document.getElementById('btn-scroll-to-packages')?.addEventListener('click', () => {
-      document.getElementById('section-gem-packages')?.scrollIntoView({ behavior: 'smooth' });
+    // 보석 재화 교환소 (금화 🪙 & 뼈다귀 🦴)
+    shopPanel.querySelectorAll('.btn-exchange-currency').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const exchId = btn.dataset.exchId;
+        const item = CURRENCY_EXCHANGE_ITEMS.find((i) => i.id === exchId);
+        if (!item) return;
+
+        const save = getSave();
+        const curGems = save.gems ?? 300;
+        if (curGems < item.costGems) {
+          openModal?.(`
+            <div class="text-center space-y-3">
+              <div class="text-3xl">💎</div>
+              <h3 class="text-sm font-black text-rose-600">보석이 부족합니다</h3>
+              <p class="text-xs text-[#4a584e]">보석 ${item.costGems - curGems}개가 더 필요해요.<br/>보석 충전소에서 충전 후 다시 시도해 주세요.</p>
+              <button id="btn-alert-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-white font-bold text-xs active:scale-95 transition">확인</button>
+            </div>
+          `);
+          document.getElementById('btn-alert-ok')?.addEventListener('click', () => closeModal?.());
+          return;
+        }
+
+        const rewardDesc = item.type === 'gold' ? `🪙 금화 +${item.amount.toLocaleString()}개` : `🦴 뼈다귀 +${item.amount.toLocaleString()}개`;
+        openModal?.(`
+          <div class="text-center space-y-3.5">
+            <div class="text-4xl">${item.icon}</div>
+            <h3 class="text-base font-black text-emerald-800">${item.name} 교환</h3>
+            <p class="text-xs text-[#4a584e] leading-relaxed">
+              보석 <strong class="text-cyan-700">💎 ${item.costGems}개</strong>를 사용하여<br/>
+              <strong>${rewardDesc}</strong>(으)로 교환하시겠습니까?
+            </p>
+            <div class="flex gap-2 pt-1">
+              <button id="btn-cancel-exch" type="button" class="flex-1 py-2.5 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] text-[#1f2d24] font-bold text-xs active:scale-95 transition">취소</button>
+              <button id="btn-confirm-exch" type="button" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-xs shadow-md active:scale-95 transition">교환하기</button>
+            </div>
+          </div>
+        `);
+
+        document.getElementById('btn-cancel-exch')?.addEventListener('click', () => closeModal?.());
+        document.getElementById('btn-confirm-exch')?.addEventListener('click', () => {
+          updateSave((s) => {
+            s.gems = Math.max(0, (s.gems || 0) - item.costGems);
+            if (item.type === 'gold') {
+              s.gold = (s.gold || 0) + item.amount;
+            } else if (item.type === 'snacks') {
+              s.snacks = (s.snacks || 0) + item.amount;
+            }
+          });
+          audioEngine.playCorrect();
+          closeModal?.();
+          onResourcesChanged?.();
+          renderShopTab();
+        });
+      });
     });
 
     // 충전 패키지 구매
@@ -390,24 +517,15 @@ export function createShopUI({ onResourcesChanged, openModal, closeModal } = {})
       });
     });
 
-    // 스킨 장착
-    shopPanel.querySelectorAll('.btn-equip-skin').forEach((btn) => {
+    // 보유 스킨 장착/해제 단일 토글
+    shopPanel.querySelectorAll('.btn-toggle-skin').forEach((btn) => {
       btn.addEventListener('click', () => {
         const skinId = btn.dataset.skinId;
-        updateSave((s) => {
-          s.equippedSkin = skinId;
-        });
-        audioEngine.playButtonClick();
-        onResourcesChanged?.();
-        renderShopTab();
-      });
-    });
+        const curEquipped = getSave().equippedSkin || '';
+        const willEquip = curEquipped !== skinId;
 
-    // 스킨 해제
-    shopPanel.querySelectorAll('.btn-unequip-skin').forEach((btn) => {
-      btn.addEventListener('click', () => {
         updateSave((s) => {
-          s.equippedSkin = null;
+          s.equippedSkin = willEquip ? skinId : '';
         });
         audioEngine.playButtonClick();
         onResourcesChanged?.();

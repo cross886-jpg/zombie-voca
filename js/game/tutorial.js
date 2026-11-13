@@ -57,6 +57,7 @@ export class TutorialController {
     this.active = false;
     updateSave((s) => {
       s.tutorialCompleted = true;
+      s.tutorialDone = true;
     });
   }
 }

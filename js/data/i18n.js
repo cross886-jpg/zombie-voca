@@ -12,9 +12,9 @@ const DICTIONARY = {
     },
     evo: {
       stage0: '네 발 아기 강아지',
-      stage1: '두 발 견습생',
-      stage2: '에너지 블레이드 검사',
-      stage3: '슈퍼 가디언',
+      stage1: '활발한 성장기 강아지',
+      stage2: '두 발 보행 수호견',
+      stage3: '전설의 알파 수호견',
     },
     course: {
       lv1: 'Lv.1 입문 (A1)',
@@ -43,6 +43,7 @@ const DICTIONARY = {
       tabShop: '상점',
       tabChallenge: '챌린지',
       startBattle: '전투 출격',
+      startTutorial: '튜토리얼 시작',
       selectCourse: '영단어 난이도 코스',
       selectChapter: '미국 횡단 챕터',
       chapterLocked: '이전 챕터 클리어 시 해금',
@@ -86,13 +87,15 @@ const DICTIONARY = {
       resultMastered: '신규 마스터 단어',
       confirm: '확인',
       close: '닫기',
-      settingsTitle: '설정 & 세이브 백업',
+      settingsTitle: '설정',
       languageLabel: '언어 (Language)',
       bgmLabel: '배경음 (BGM)',
-      sfxLabel: '효과음 & 발음 (SFX/TTS)',
-      exportSave: '세이브 코드 복사 (Base64)',
-      importSave: '세이브 코드 불러오기',
-      importPlaceholder: '백업한 Base64 코드를 붙여넣으세요',
+      sfxLabel: '효과음 (SFX/TTS)',
+      hapticLabel: '진동 (Haptic)',
+      lowFxLabel: '저사양 모드 (Low FX)',
+      accountLabel: '계정 연동',
+      accountComingSoon: 'Google / Apple (준비 중)',
+      sendFeedback: '💬 피드백 및 문의 보내기',
       backupSuccess: '세이브 코드가 클립보드에 복사되었습니다.',
       restoreSuccess: '데이터가 성공적으로 복원되었습니다!',
       restoreError: '올바르지 않은 세이브 코드입니다.',
@@ -100,7 +103,7 @@ const DICTIONARY = {
     tutorial: {
       step1: '이동해서 정답 비석을 부수세요!',
       step2: '이동해서 정답 비석을 부수세요!',
-      step3: '🔥 우측 하단 대폭발 버튼을 눌러보세요!',
+      step3: '💥 화면을 두 번 빠르게 탭하여 대폭발을 사용하세요!',
       complete: '튜토리얼 완료! 이제 본격적으로 주인을 찾아 떠나요!',
     },
   },
@@ -112,9 +115,9 @@ const DICTIONARY = {
     },
     evo: {
       stage0: 'Four-Paw Puppy',
-      stage1: 'Bipedal Apprentice',
-      stage2: 'Energy Blade Knight',
-      stage3: 'Super Guardian',
+      stage1: 'Active Growing Pup',
+      stage2: 'Bipedal Guardian Dog',
+      stage3: 'Legendary Alpha Guardian',
     },
     course: {
       lv1: 'Lv.1 Starter (A1)',
@@ -143,6 +146,7 @@ const DICTIONARY = {
       tabShop: 'Shop',
       tabChallenge: 'Challenge',
       startBattle: 'Start Battle',
+      startTutorial: 'Start Tutorial',
       selectCourse: 'Vocabulary Course',
       selectChapter: 'Cross-USA Chapter',
       chapterLocked: 'Clear previous chapter to unlock',
@@ -186,13 +190,15 @@ const DICTIONARY = {
       resultMastered: 'Newly Mastered',
       confirm: 'OK',
       close: 'Close',
-      settingsTitle: 'Settings & Save Backup',
+      settingsTitle: 'Settings',
       languageLabel: 'Language',
-      bgmLabel: 'BGM',
-      sfxLabel: 'SFX & Voice',
-      exportSave: 'Copy Save Code (Base64)',
-      importSave: 'Restore Save Code',
-      importPlaceholder: 'Paste your Base64 save code here',
+      bgmLabel: 'Music (BGM)',
+      sfxLabel: 'Sound (SFX/TTS)',
+      hapticLabel: 'Haptic (Vibration)',
+      lowFxLabel: 'Low FX Mode',
+      accountLabel: 'Account Sync',
+      accountComingSoon: 'Google / Apple (Coming Soon)',
+      sendFeedback: '💬 Send Feedback & Inquiries',
       backupSuccess: 'Save code copied to clipboard.',
       restoreSuccess: 'Save data restored successfully!',
       restoreError: 'Invalid save code.',
@@ -200,7 +206,7 @@ const DICTIONARY = {
     tutorial: {
       step1: 'Drag to move! Milk barks automatically to defeat zombies.',
       step2: 'Listen to the word and stand on the matching monolith for 0.4s!',
-      step3: 'Ultimate Gauge full! Tap [🔥 Mega Bark Blast] below!',
+      step3: '💥 Double tap the screen quickly to trigger Mega Blast!',
       complete: 'Tutorial Complete! Time to find Milk’s owner!',
     },
   },
@@ -210,11 +216,25 @@ const DICTIONARY = {
       title: 'Zombie Voca: Bark & Survive',
       playerDefaultName: 'Leche',
     },
+    evo: {
+      stage0: 'Cachorro de Cuatro Patas',
+      stage1: 'Cachorro en Crecimiento',
+      stage2: 'Perro Guardián Bípedo',
+      stage3: 'Guardián Alfa Legendario',
+    },
+    course: {
+      lv1: 'Nivel 1 Básico (A1)',
+      lv2: 'Nivel 2 Intermedio (A1~A2)',
+      lv3: 'Nivel 3 Avanzado (B1~B2)',
+      lv4: 'Nivel 4 Maestro (B2~C2)',
+    },
     hud: {
       ttsLoop: 'Audio Repetido',
       ultButton: 'Super Ladrido',
       evoXp: 'XP Evo',
       ultGauge: 'Definitiva',
+      bossLock: 'Bloqueo Nivel 3',
+      bossEnraged: '¡Enfurecido!',
     },
     lobby: {
       tabGear: 'Equipo',
@@ -224,11 +244,53 @@ const DICTIONARY = {
       tabShop: 'Tienda',
       tabChallenge: 'Desafío',
       startBattle: 'Iniciar Batalla',
+      startTutorial: 'Iniciar Tutorial',
+      dailyMissions: 'Misiones',
+      shopTitle: 'Tienda',
+      attendance7d: 'Asistencia',
+      chapterLocked: 'Capítulo Bloqueado',
+    },
+    modal: {
+      settingsTitle: 'Ajustes',
+      languageLabel: 'Idioma (Language)',
+      bgmLabel: 'Música (BGM)',
+      sfxLabel: 'Sonido (SFX/TTS)',
+      hapticLabel: 'Vibración (Haptic)',
+      lowFxLabel: 'Modo Bajo Rendimiento',
+      accountLabel: 'Vincular Cuenta',
+      accountComingSoon: 'Google / Apple (Próximamente)',
+      sendFeedback: '💬 Enviar Comentarios',
+      close: 'Cerrar',
+      backupRestore: 'Copia de Seguridad / Restaurar',
+      exportCode: 'Exportar Código',
+      importCode: 'Importar Código',
+      importPlaceholder: 'Pega tu código Base64 aquí',
+      backupSuccess: 'Código copiado al portapapeles.',
+      restoreSuccess: '¡Datos restaurados con éxito!',
+      restoreError: 'Código de guardado inválido.',
+    },
+    tutorial: {
+      step1: '¡Arrastra para moverte! Leche ladra automáticamente.',
+      step2: '¡Escucha la palabra y quédate en el monolito 0.4s!',
+      step3: '💥 ¡Toca dos veces la pantalla para la Super Explosión!',
+      complete: '¡Tutorial completado! ¡Hora de encontrar al dueño!',
     },
   },
 };
 
 let currentLang = 'ko';
+
+/**
+ * 브라우저/기기 언어 자동 감지 (ko, es 지원, 그 외 기본값 en)
+ * @returns {'ko'|'en'|'es'}
+ */
+export function detectDeviceLanguage() {
+  if (typeof navigator === 'undefined') return 'en';
+  const navLang = (navigator.language || (navigator.languages && navigator.languages[0]) || '').toLowerCase();
+  if (navLang.startsWith('ko')) return 'ko';
+  if (navLang.startsWith('es')) return 'es';
+  return 'en';
+}
 
 /**
  * 현재 언어 설정
@@ -238,7 +300,7 @@ export function setLanguage(lang) {
   if (DICTIONARY[lang]) {
     currentLang = lang;
   } else {
-    currentLang = 'ko';
+    currentLang = detectDeviceLanguage();
   }
 }
 

@@ -3,9 +3,10 @@
  * 60fps 메인 루프 (dt <= 0.05s 클램프), 5대 게임 상태 통제, 30문제 덱 & 1.5초 비석 리스폰 지휘관
  */
 
-import { BALANCE, getTrainingBonusValue } from '../config/balance.js';
+import { BALANCE, getTrainingBonusValue, calcStageReward } from '../config/balance.js';
 import { SKILLS, COMPANIONS } from '../data/catalog.js';
-import { getChapter } from '../data/chapters.js';
+import { getChapter, getChapterNumberForUnit } from '../data/chapters.js';
+import { getTotalUnits } from '../data/data_en.js?v=2';
 import { t } from '../data/i18n.js';
 import { getSave, updateSave } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
@@ -66,10 +67,12 @@ export class GameEngine {
     this.wrongReviewWord = null;
 
     this.runStats = {
+      unitId: 'unit_001',
       correctCount: 0,
       wrongCount: 0,
       earnedEvoXp: 0,
       earnedGold: 0,
+      podGoldEarned: 0,
       newlyMasteredCount: 0,
       revivedOnce: false,
       isTutorial: false,
@@ -107,9 +110,9 @@ export class GameEngine {
   }
 
   /**
-   * 전투 시작 (정규 30문제 스테이지 또는 첫 접속 30초 튜토리얼)
+   * 전투 시작 (정규 30문제 스테이지 또는 첫 접속 30초 튜토리얼 / 승급전 / 월반 도전)
    */
-  startBattle({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2' } = {}) {
+  startBattle({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2', isPlacement = false, targetUnitNum = 1 } = {}) {
     this.resizeCanvas();
     const save = getSave();
 
@@ -132,11 +135,17 @@ export class GameEngine {
     this.combat.reset(this.player, this.enemies, this.monoliths);
     this.camera.reset(startX, startY);
 
+    const resolvedTargetUnitNum = isPlacement
+      ? (targetUnitNum || parseInt((chosenUnitId || 'unit_001').replace(/\D/g, ''), 10) || 1)
+      : null;
+
     this.runStats = {
+      unitId: chosenUnitId,
       correctCount: 0,
       wrongCount: 0,
       earnedEvoXp: 0,
       earnedGold: 0,
+      podGoldEarned: 0,
       earnedSnacks: 0,
       earnedGems: 0,
       pickedGems: 0,
@@ -145,6 +154,10 @@ export class GameEngine {
       isTutorial,
       isPromotion,
       targetLevel,
+      isPlacement,
+      targetUnitNum: resolvedTargetUnitNum,
+      placementLives: isPlacement ? 3 : null,
+      placementPassed: false,
     };
 
     if (isTutorial) {
@@ -162,6 +175,18 @@ export class GameEngine {
         this.arenaWidth,
         this.arenaHeight,
         10
+      );
+    } else if (isPlacement) {
+      this.tutorial.stop();
+      this.deck = wordEngine.buildPlacementDeck(resolvedTargetUnitNum);
+      this.enemies.spawnInitialWave(
+        this.chapter,
+        1.0,
+        startX,
+        startY,
+        this.arenaWidth,
+        this.arenaHeight,
+        8
       );
     } else {
       this.tutorial.stop();
@@ -196,6 +221,10 @@ export class GameEngine {
 
   _presentCurrentQuestion() {
     if (this.questionIndex >= this.deck.length) {
+      if (this.runStats.isPlacement) {
+        this._finishStage(true);
+        return;
+      }
       // 보스 미격파 상태에서 30번까지 다 소진한 경우 연장 문제 추가
       if (!this.runStats.isTutorial && this.enemies.boss && this.enemies.boss.hp > 0) {
         const extraPool = wordEngine.getCourseWords(this.course.id);
@@ -209,8 +238,8 @@ export class GameEngine {
       }
     }
 
-    // 28번 문제(index 27) 진입 시 챕터 보스 등장 + 1.5초 줌아웃→줌인 연출
-    if (!this.runStats.isTutorial && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !this.enemies.boss) {
+    // 28번 문제(index 27) 진입 시 챕터 보스 등장 + 1.5초 줌아웃→줌인 연출 (월반 및 튜토리얼 제외)
+    if (!this.runStats.isTutorial && !this.runStats.isPlacement && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !this.enemies.boss) {
       this.enemies.spawnBoss(this.chapter, 1.0, this.player.x, this.player.y);
       this.camera.triggerZoomSequence(BALANCE.BOSS.ZOOM_SEQUENCE_SEC);
     }
@@ -257,9 +286,60 @@ export class GameEngine {
       if (wordRes.newlyMastered) this.runStats.newlyMasteredCount += 1;
 
       this.player.addUltGauge(BALANCE.COMBAT.ULT_CHARGE_PER_CORRECT);
-      this.combat.triggerCorrectShockwave(this.player, this.camera);
-      this.combat.spawnDamageText(this.player.x, this.player.y - 38, t('hud.correctShockwave'), '#22d3ee', 1.1);
+
+      // 전술 구조 캡슐 개방 굵직한 기본 금화 보상 (+25 🪙)
+      const podGold = 25;
+      this.runStats.podGoldEarned = (this.runStats.podGoldEarned || 0) + podGold;
+      this.combat.spawnDamageText(monolith.x + 24, monolith.y - 18, `+${podGold} 🪙`, '#fbbf24', 1.15);
+
+      // 캡슐 해치 개방 및 넉백 충격파 (플레이어 + 캡슐 주변)
+      this.combat.triggerCorrectShockwave(monolith, this.camera, this.player);
+      this.combat.triggerCorrectShockwave(this.player, this.camera, this.player);
       audioEngine.playCorrect();
+
+      // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품
+      const surpriseRoll = Math.random();
+      if (surpriseRoll < 0.5) {
+        // 1. 깜짝 아기 동물 구출 지원 (Surprise Animal Rescue)
+        const compPool = COMPANIONS;
+        const rescuedDef = compPool[Math.floor(Math.random() * compPool.length)];
+        if (Math.random() < 0.6) {
+          // 일정 시간(16초) 함께 싸워주는 임시 지원 사격 동료 합류
+          this.companions.addTemporaryCompanion(rescuedDef, this.player, 16);
+          this.combat.spawnDamageText(monolith.x, monolith.y - 42, `🐾 ${rescuedDef.name} 구출! 지원 사격!`, '#34d399', 1.3);
+          audioEngine.playPowerUp?.();
+        } else {
+          // 대량 보석 & 간식 & 추가 금화 보은 선물
+          const giftGold = 35;
+          this.runStats.podGoldEarned = (this.runStats.podGoldEarned || 0) + giftGold;
+          this.combat.spawnDamageText(monolith.x, monolith.y - 42, `🎁 ${rescuedDef.name}의 보은! 대량 보석 & +${giftGold}🪙!`, '#fbbf24', 1.3);
+          for (let g = 0; g < 6; g++) {
+            const ga = (Math.PI * 2 * g) / 6;
+            const gx = monolith.x + Math.cos(ga) * (26 + Math.random() * 20);
+            const gy = monolith.y + Math.sin(ga) * (26 + Math.random() * 20);
+            this.monoliths.spawnDrop('gem', gx, gy, BALANCE.COMBAT.GEM_XP_VALUE * 1.5);
+          }
+          this.monoliths.spawnDrop('snack', monolith.x, monolith.y);
+        }
+      } else {
+        // 2. 특수 전술 보급품 (경험치 보석 다발, 회복 간식, 폭탄 충격파 폭발)
+        this.combat.spawnDamageText(monolith.x, monolith.y - 42, '📦 특수 전술 보급품 캡슐 해금!', '#22d3ee', 1.3);
+        for (let g = 0; g < 5; g++) {
+          const ga = (Math.PI * 2 * g) / 5;
+          const gx = monolith.x + Math.cos(ga) * (24 + Math.random() * 22);
+          const gy = monolith.y + Math.sin(ga) * (24 + Math.random() * 22);
+          this.monoliths.spawnDrop('gem', gx, gy, BALANCE.COMBAT.GEM_XP_VALUE * 1.2);
+        }
+        this.monoliths.spawnDrop('snack', monolith.x + 10, monolith.y - 8);
+
+        // 캡슐 보급 폭발: 주변 좀비 광역 처치 데미지
+        for (const e of this.enemies.enemies) {
+          const d = Math.hypot(e.x - monolith.x, e.y - monolith.y);
+          if (d <= 140) {
+            this.combat.damageEnemy(e, this.player.atk * 1.8, '#f59e0b');
+          }
+        }
+      }
 
       // 보스전 중 정답 시 하늘에서 음파 레이저로 보스 3단계 격파
       if (this.enemies.boss && this.enemies.boss.hp > 0) {
@@ -278,13 +358,40 @@ export class GameEngine {
       this.runStats.wrongCount += 1;
       this.runStats.earnedEvoXp = Math.max(0, this.runStats.earnedEvoXp + xpPenalty);
       this.player.applySlowDebuff();
+
+      // [오답(함정) 캡슐 개방 매복 트랩 연출]: 붉은 경고등과 함께 숨어있던 좀비 무리(2~3마리) 기습 돌출
+      this.combat.spawnDamageText(monolith.x, monolith.y - 42, '🚨 좀비 기습 매복 트랩!', '#ef4444', 1.3);
+      this.camera?.shake(10, 0.28);
+      audioEngine.playWrong();
+
+      const ambushCount = 2 + (Math.random() < 0.5 ? 1 : 0);
+      for (let i = 0; i < ambushCount; i++) {
+        const ang = (Math.PI * 2 * i) / ambushCount + (Math.random() - 0.5) * 0.4;
+        const burstDist = 32 + Math.random() * 24;
+        const zx = Math.max(80, Math.min(this.arenaWidth - 80, monolith.x + Math.cos(ang) * burstDist));
+        const zy = Math.max(80, Math.min(this.arenaHeight - 80, monolith.y + Math.sin(ang) * burstDist));
+        const z = this.enemies.spawnEnemy('walker', zx, zy, 0.85, 1.0, 1.15);
+        if (z) {
+          z.knockVx = Math.cos(ang) * 200;
+          z.knockVy = Math.sin(ang) * 200;
+        }
+      }
+
+      // 월반 도전 시 오답 1회당 하트(남은 기회) 1개 차감, 3회 소진 시 즉시 실패 종료
+      if (this.runStats.isPlacement) {
+        this.runStats.placementLives = Math.max(0, (this.runStats.placementLives ?? 3) - 1);
+        if (this.runStats.placementLives <= 0) {
+          this._finishStage(false);
+          return;
+        }
+      }
+
       this.wrongReviewTimer = 1.2;
       this.wrongReviewWord = {
         word: this.currentWord.word,
         phonetic: this.currentWord.phonetic || '',
         meaning: this.currentWord.meaning,
       };
-      audioEngine.playWrong();
       audioEngine.speakWord(this.currentWord.word);
 
       if (this.enemies.boss && this.enemies.boss.hp > 0) {
@@ -295,8 +402,8 @@ export class GameEngine {
 
     this.questionIndex += 1;
 
-    // 오답 시 해당 단어를 2~3문제 뒤 큐에 재삽입 (Spaced Repetition)
-    if (!this.runStats.isTutorial && !isCorrect && this.currentWord) {
+    // 오답 시 해당 단어를 2~3문제 뒤 큐에 재삽입 (Spaced Repetition, 월반 및 튜토리얼 제외)
+    if (!this.runStats.isTutorial && !this.runStats.isPlacement && !isCorrect && this.currentWord) {
       const offset = Math.random() < 0.5 ? 2 : 3;
       let insertIdx = Math.min(this.deck.length, this.questionIndex + offset);
       const prevSame = this.deck[insertIdx - 1]?.id === this.currentWord.id;
@@ -309,6 +416,10 @@ export class GameEngine {
 
     // 튜토리얼 완료 또는 덱 전체 소진 시 클리어 확인
     if (this.runStats.isTutorial && this.questionIndex >= BALANCE.TUTORIAL.QUESTION_COUNT) {
+      if (!this.tutorial.ultTriggered) {
+        // 튜토리얼 3단계: 대폭발 더블 탭이 발동될 때까지 완료를 유보
+        return;
+      }
       this.tutorial.finish();
       this._finishStage(true);
       return;
@@ -337,6 +448,12 @@ export class GameEngine {
     this.combat.triggerUltimate(this.player, this.camera);
     if (this.runStats.isTutorial) {
       this.tutorial.onUltUsed();
+      setTimeout(() => {
+        if (this.runStats?.isTutorial && this.state === GAME_STATES.PLAYING) {
+          this.tutorial.finish();
+          this._finishStage(true);
+        }
+      }, 1200);
     }
   }
 
@@ -461,29 +578,39 @@ export class GameEngine {
 
     const isPromo = Boolean(this.runStats.isPromotion);
     const promoPassed = isPromo && this.runStats.correctCount >= 17; // 20문제 중 17문제 이상 (85%)
+    const isPlacement = Boolean(this.runStats.isPlacement);
+    const placementPassed = isPlacement && cleared && (this.runStats.placementLives > 0);
 
-    const courseMult = this.course.rewardMult;
-    const baseGold = cleared ? this.chapter.goldReward : Math.round(this.chapter.goldReward * 0.25);
-    const goldEarned = this.runStats.isTutorial
-      ? 100
-      : Math.round((baseGold + this.runStats.correctCount * 6) * courseMult);
+    const save = getSave();
+    const curUnitNum = parseInt((this.runStats.unitId || save.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+    const maxUnlocked = save.maxUnlockedUnit || 1;
 
-    const evoBonus = cleared && !this.runStats.isTutorial ? this.chapter.evoXpBonus : 0;
-    const totalEvoXp = this.runStats.earnedEvoXp + evoBonus;
-    
-    // 일반 스테이지 클리어 시 뼈다귀(완벽 2개, 일반 1개), 승급전 합격 시 +3개 보상
-    let earnedSnacks = 0;
-    if (isPromo) {
-      earnedSnacks = promoPassed ? 3 : 0;
-    } else {
-      earnedSnacks = cleared ? ((this.runStats.wrongCount === 0 && this.runStats.correctCount > 0) ? 2 : 1) : 0;
-    }
-    const earnedGems = 0;
+    // 단일 진실 공급원(Single Source of Truth) 함수로 보상 일원화 정산
+    const reward = calcStageReward({
+      cleared,
+      isTutorial: this.runStats.isTutorial,
+      isPlacement,
+      isPromotion: isPromo,
+      promoPassed,
+      stageNumber: curUnitNum,
+      maxUnlockedUnit: maxUnlocked,
+      chapterNumber: this.chapter.number,
+      correctCount: this.runStats.correctCount,
+      wrongCount: this.runStats.wrongCount,
+      podGoldEarned: this.runStats.podGoldEarned || 0,
+      baseChapterGold: this.chapter.goldReward,
+      courseMult: this.course.rewardMult,
+      hasBoss: Boolean(this.enemies.boss && this.enemies.boss.hp <= 0),
+      earnedEvoXp: this.runStats.earnedEvoXp,
+      chapterEvoBonus: cleared && !this.runStats.isTutorial ? this.chapter.evoXpBonus : 0,
+      kills: this.combat.kills,
+    });
 
-    // 주간 리그 점수 산정
-    const baseScore = (this.runStats.correctCount * 100) + (this.combat.kills * 15);
-    const clearBonus = cleared ? 500 : 100;
-    const stageScore = baseScore + clearBonus;
+    const goldEarned = reward.earnedGold;
+    const earnedSnacks = reward.earnedSnacks;
+    const totalEvoXp = reward.earnedEvoXp;
+    const earnedGems = reward.earnedGems;
+    const stageScore = reward.stageScore;
 
     this.runStats.earnedGold = goldEarned;
     this.runStats.earnedSnacks = earnedSnacks;
@@ -491,6 +618,41 @@ export class GameEngine {
     this.runStats.earnedGems = earnedGems;
     this.runStats.score = stageScore;
     this.runStats.promoPassed = promoPassed;
+    this.runStats.placementPassed = placementPassed;
+    this.runStats.isFirstClear = reward.isFirstClear;
+    this.runStats.isRepeatFarm = reward.isRepeatFarm;
+
+    if (isPlacement) {
+      const targetUnitNum = this.runStats.targetUnitNum;
+      const totalUnits = getTotalUnits();
+      const safeTarget = Math.min(Math.max(1, targetUnitNum), totalUnits);
+
+      updateSave((s) => {
+        s.dailyMissions.progress.battles += 1;
+        s.dailyMissions.progress.wordsCorrect += this.runStats.correctCount;
+        s.dailyMissions.progress.kills += this.combat.kills;
+
+        if (placementPassed) {
+          s.maxUnlockedUnit = Math.max(s.maxUnlockedUnit || 1, safeTarget);
+          s.selectedUnit = `unit_${String(safeTarget).padStart(3, '0')}`;
+          const nextCh = getChapterNumberForUnit(safeTarget, totalUnits);
+          if (nextCh > (s.unlockedChapter || 1)) {
+            s.unlockedChapter = nextCh;
+          }
+          s.selectedChapter = nextCh;
+        }
+      });
+
+      this.handlers.onStageResult?.({
+        isPlacement: true,
+        placementPassed,
+        targetUnitNum: safeTarget,
+        correctCount: this.runStats.correctCount,
+        lives: this.runStats.placementLives,
+        kills: this.combat.kills,
+      });
+      return;
+    }
 
     updateSave((s) => {
       s.gold += goldEarned;
@@ -498,8 +660,25 @@ export class GameEngine {
         s.snacks = (s.snacks || 0) + earnedSnacks;
       }
       s.evoXp += totalEvoXp;
-      if (cleared && !this.runStats.isTutorial && !isPromo && this.chapter.number >= s.unlockedChapter && s.unlockedChapter < 5) {
-        s.unlockedChapter = this.chapter.number + 1;
+      if (cleared && !this.runStats.isTutorial && !isPromo) {
+        if (this.chapter.number >= s.unlockedChapter && s.unlockedChapter < 5) {
+          s.unlockedChapter = this.chapter.number + 1;
+        }
+
+        // 유닛 순차 해금 로직 (동적 전체 유닛 연동)
+        const totalUnits = getTotalUnits();
+        const curUnitNum = parseInt((this.runStats.unitId || s.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+        const maxUnlocked = s.maxUnlockedUnit || 1;
+        if (curUnitNum >= maxUnlocked && maxUnlocked < totalUnits) {
+          const nextUnitNum = maxUnlocked + 1;
+          s.maxUnlockedUnit = nextUnitNum;
+          s.selectedUnit = `unit_${String(nextUnitNum).padStart(3, '0')}`;
+          const nextCh = getChapterNumberForUnit(nextUnitNum, totalUnits);
+          if (nextCh > (s.unlockedChapter || 1)) {
+            s.unlockedChapter = nextCh;
+          }
+          s.selectedChapter = nextCh;
+        }
       }
       if (promoPassed && this.runStats.targetLevel) {
         s.certifiedLevel = this.runStats.targetLevel;
@@ -603,9 +782,6 @@ export class GameEngine {
         const scale = tier.id === 'gold' ? 1.35 : 1.15;
         this.combat.spawnDamageText(this.player.x, this.player.y - 42, label, tier.color, scale);
       }
-      updateSave((s) => {
-        s.gold += monoRes.pickedGems;
-      });
     }
     if (monoRes.pickedSnacks > 0) {
       const healPerSnack = Math.max(1, Math.round(this.player.maxHp * (BALANCE.COMBAT.SNACK_HEAL_RATIO || 0.28)));
@@ -622,6 +798,10 @@ export class GameEngine {
 
     // 사망 판정
     if (this.player.hp <= 0) {
+      if (this.runStats.isPlacement) {
+        this._finishStage(false);
+        return;
+      }
       this.state = GAME_STATES.GAMEOVER_MODAL;
       audioEngine.pauseAll();
       this.handlers.onGameOver?.({ canRevive: !this.runStats.revivedOnce });
@@ -659,6 +839,10 @@ export class GameEngine {
       viewW: this.viewW,
       viewH: this.viewH,
       wrongReview: this.wrongReviewTimer > 0 ? this.wrongReviewWord : null,
+      placement: this.runStats.isPlacement ? {
+        targetUnitNum: this.runStats.targetUnitNum,
+        lives: this.runStats.placementLives,
+      } : null,
     });
   }
 

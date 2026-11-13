@@ -30,15 +30,19 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* 스크롤바 최소화 */
+/* 전역 스크롤바 시각적 숨김 (마우스 휠 및 터치 스크롤 정상 유지) */
+*,
+#lobby-content,
+#modal-card {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar,
 #lobby-content::-webkit-scrollbar,
 #modal-card::-webkit-scrollbar {
-  width: 4px;
-}
-#lobby-content::-webkit-scrollbar-thumb,
-#modal-card::-webkit-scrollbar-thumb {
-  background: rgba(180, 160, 130, 0.45);
-  border-radius: 9999px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* 상단 포레스트 그린 네온 LED 전광판 */

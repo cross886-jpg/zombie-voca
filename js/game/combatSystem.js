@@ -107,7 +107,7 @@ export class CombatSystem {
       const weapon =
         COSTUMES.find((c) => c.id === player.equipped?.weapon) ||
         COSTUMES.find((c) => c.id === 'weapon_boomerang');
-      const wType = weapon?.type || 'single';
+      const wType = weapon?.projectileType || weapon?.type || 'bullet';
       const ang = target ? Math.atan2(target.y - player.y, target.x - player.x) : player.facingAngle;
       audioEngine.playBark();
 
@@ -129,12 +129,115 @@ export class CombatSystem {
             this.damageEnemy(t, dmg, weapon.projColor || '#fbbf24');
           }
         }
-      } else {
-        const spd = weapon.projSpeed || 430;
+      } else if (wType === 'spread') {
+        // [산탄총류] 부채꼴 3발 산탄 발사
+        const spd = weapon.projSpeed || 500;
+        const rad = weapon.projRadius || 6;
+        const col = weapon.projColor || '#f59e0b';
+        const spreadOffsets = [-0.22, 0, 0.22];
+        const pelletDmg = Math.max(1, Math.round(dmg * 0.75));
+
+        for (const off of spreadOffsets) {
+          const a = ang + off;
+          this.spawnProjectile({
+            x: player.x,
+            y: player.y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            damage: pelletDmg,
+            radius: rad,
+            color: col,
+            shape: weapon.shape || 'pellet',
+            pierce: weapon.pierce || 0,
+            aoeRadius: 0,
+            ttl: 0.65,
+          });
+        }
+      } else if (wType === 'explosive') {
+        // [수류탄·RPG·로켓·뉴크류] 착탄 시 광역 폭발 + 스플래시 데미지
+        const spd = weapon.projSpeed || 420;
         const rad = weapon.projRadius || 10;
-        const col = weapon.projColor || skillDef.color;
-        const pierceCount = weapon.pierce || 0;
-        const shape = weapon.shape || 'bone';
+        const col = weapon.projColor || '#ef4444';
+        const aoe = weapon.aoeRadius || 85;
+
+        this.spawnProjectile({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          damage: dmg,
+          radius: rad,
+          color: col,
+          shape: weapon.shape || 'missile',
+          pierce: 0,
+          aoeRadius: aoe,
+          ttl: 0.85,
+        });
+      } else if (wType === 'pierce') {
+        // [저격총·레일건류] 고속 관통 탄환 및 궤적 빔
+        const spd = weapon.projSpeed || 750;
+        const rad = weapon.projRadius || 7;
+        const col = weapon.projColor || '#06b6d4';
+        const pierceCount = weapon.pierce || 5;
+
+        this.spawnProjectile({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          damage: dmg,
+          radius: rad,
+          color: col,
+          shape: weapon.shape || 'beam',
+          pierce: pierceCount,
+          aoeRadius: weapon.aoeRadius || 0,
+          ttl: 0.8,
+        });
+      } else if (wType === 'flame') {
+        // [화염탄·화염방사기]
+        const spd = weapon.projSpeed || 340;
+        const rad = weapon.projRadius || 13;
+        const col = weapon.projColor || '#ea580c';
+        const a = ang + (Math.random() - 0.5) * 0.18;
+
+        this.spawnProjectile({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          damage: dmg,
+          radius: rad,
+          color: col,
+          shape: 'flame',
+          pierce: weapon.pierce || 1,
+          aoeRadius: weapon.aoeRadius || 55,
+          ttl: 0.65,
+        });
+      } else if (wType === 'laser') {
+        // [레이저·테슬라·플라즈마류]
+        const spd = weapon.projSpeed || 700;
+        const rad = weapon.projRadius || 8;
+        const col = weapon.projColor || '#a855f7';
+
+        this.spawnProjectile({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          damage: dmg,
+          radius: rad,
+          color: col,
+          shape: weapon.shape || 'laser',
+          pierce: weapon.pierce || 3,
+          aoeRadius: weapon.aoeRadius || 0,
+          ttl: 0.8,
+        });
+      } else {
+        // [일반 탄환/기본 부메랑]
+        const spd = weapon.projSpeed || 520;
+        const rad = weapon.projRadius || 6;
+        const col = weapon.projColor || '#fbbf24';
+        const shape = weapon.shape || 'bullet';
 
         this.spawnProjectile({
           x: player.x,
@@ -145,7 +248,7 @@ export class CombatSystem {
           radius: rad,
           color: col,
           shape,
-          pierce: pierceCount,
+          pierce: weapon.pierce || 0,
           aoeRadius: 0,
           ttl: 0.75,
         });
@@ -222,28 +325,29 @@ export class CombatSystem {
   /**
    * 비석 정답 확정 시 주변 좀비 넉백 충격파
    */
-  triggerCorrectShockwave(player, camera) {
+  triggerCorrectShockwave(origin, camera, player = origin) {
     const r = BALANCE.MONOLITH.CORRECT_KNOCKBACK_RADIUS;
     const force = BALANCE.MONOLITH.CORRECT_KNOCKBACK_FORCE;
     this.shockwaves.push({
-      x: player.x,
-      y: player.y,
+      x: origin.x,
+      y: origin.y,
       radius: 20,
       maxRadius: r,
       color: '#22d3ee',
       ttl: 0.38,
       maxTtl: 0.38,
     });
-    camera.shake(9, 0.22);
+    camera?.shake(9, 0.22);
 
+    const atk = player?.atk || 20;
     for (const e of this._enemyManager.enemies) {
-      const dx = e.x - player.x;
-      const dy = e.y - player.y;
+      const dx = e.x - origin.x;
+      const dy = e.y - origin.y;
       const dist = Math.hypot(dx, dy) || 1;
       if (dist <= r) {
         e.knockVx = (dx / dist) * force;
         e.knockVy = (dy / dist) * force;
-        this.damageEnemy(e, player.atk * 1.4, '#22d3ee');
+        this.damageEnemy(e, atk * 1.4, '#22d3ee');
       }
     }
   }
@@ -452,7 +556,62 @@ export class CombatSystem {
         ctx.translate(p.x, p.y);
         ctx.rotate(angle);
         ctx.beginPath();
-        ctx.ellipse(0, 0, p.radius * 1.5, p.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, p.radius * 1.6, p.radius * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'beam') {
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-p.radius * 2.2, -p.radius * 0.5, p.radius * 4.4, p.radius, p.radius * 0.5);
+        } else {
+          ctx.ellipse(0, 0, p.radius * 2.2, p.radius * 0.5, 0, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-p.radius * 1.5, -p.radius * 0.25, p.radius * 3, p.radius * 0.5, p.radius * 0.25);
+        } else {
+          ctx.ellipse(0, 0, p.radius * 1.5, p.radius * 0.25, 0, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      } else if (p.shape === 'laser') {
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-p.radius * 1.8, -p.radius * 0.5, p.radius * 3.6, p.radius, 3);
+        } else {
+          ctx.ellipse(0, 0, p.radius * 1.8, p.radius * 0.5, 0, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-p.radius, -p.radius * 0.2, p.radius * 2, p.radius * 0.4);
+      } else if (p.shape === 'flame') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius * (0.8 + Math.random() * 0.4), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'missile') {
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-p.radius * 1.3, -p.radius * 0.5, p.radius * 2.6, p.radius, 3);
+        } else {
+          ctx.ellipse(0, 0, p.radius * 1.3, p.radius * 0.5, 0, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        ctx.fillStyle = '#fb923c';
+        ctx.beginPath();
+        ctx.arc(-p.radius * 1.3, 0, p.radius * 0.4, 0, Math.PI * 2);
         ctx.fill();
       } else if (p.shape === 'bone') {
         const spin = (Date.now() / 90) % (Math.PI * 2);
@@ -466,8 +625,11 @@ export class CombatSystem {
         }
         ctx.fill();
       } else {
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(angle);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, p.radius * 1.4, p.radius * 0.8, 0, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();

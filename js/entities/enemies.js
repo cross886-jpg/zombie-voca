@@ -235,11 +235,13 @@ export class EnemyManager {
   }
 
   render(ctx) {
-    // 일반 좀비 렌더링 (1.4배 스케일)
+    const enemyScale = BALANCE.ENEMIES.RENDER_SCALE || 1.05;
+
+    // 일반 좀비 렌더링
     for (const e of this.enemies) {
       ctx.save();
       ctx.translate(e.x, e.y);
-      ctx.scale(1.4, 1.4);
+      ctx.scale(enemyScale, enemyScale);
 
       // 그림자
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -253,31 +255,33 @@ export class EnemyManager {
       ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // 좀비 눈
+      // 좀비 눈 (반지름에 비례)
+      const eyeR = Math.max(1.8, e.radius * 0.16);
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
-      ctx.arc(-e.radius * 0.3, -2, 2.5, 0, Math.PI * 2);
-      ctx.arc(e.radius * 0.3, -2, 2.5, 0, Math.PI * 2);
+      ctx.arc(-e.radius * 0.3, -1.5, eyeR, 0, Math.PI * 2);
+      ctx.arc(e.radius * 0.3, -1.5, eyeR, 0, Math.PI * 2);
       ctx.fill();
 
-      // 피격 시 미니 체력바
+      // 피격 시 미니 체력바 (축소된 몸체에 밀착)
       if (e.hp < e.maxHp) {
         const w = e.radius * 1.8;
         ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.fillRect(-w / 2, -e.radius - 9, w, 4);
+        ctx.fillRect(-w / 2, -e.radius - 7, w, 3);
         ctx.fillStyle = '#f43f5e';
-        ctx.fillRect(-w / 2, -e.radius - 9, w * (e.hp / e.maxHp), 4);
+        ctx.fillRect(-w / 2, -e.radius - 7, w * (e.hp / e.maxHp), 3);
       }
 
       ctx.restore();
     }
 
-    // 보스 렌더링 (1.4배 스케일)
+    // 보스 렌더링
     if (this.boss && this.boss.hp > 0) {
       const b = this.boss;
+      const bossScale = BALANCE.BOSS.RENDER_SCALE || 1.05;
       ctx.save();
       ctx.translate(b.x, b.y);
-      ctx.scale(1.4, 1.4);
+      ctx.scale(bossScale, bossScale);
 
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.beginPath();
@@ -286,9 +290,9 @@ export class EnemyManager {
 
       if (b.enraged) {
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(0, 0, b.radius + 8, 0, Math.PI * 2);
+        ctx.arc(0, 0, b.radius + 6, 0, Math.PI * 2);
         ctx.stroke();
       }
 
@@ -298,13 +302,13 @@ export class EnemyManager {
       ctx.fill();
 
       ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.5;
       ctx.stroke();
 
-      ctx.font = 'bold 28px sans-serif';
+      ctx.font = 'bold 22px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('🧟', 0, 2);
+      ctx.fillText('🧟', 0, 1.5);
 
       ctx.restore();
     }

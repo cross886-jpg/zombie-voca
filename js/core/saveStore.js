@@ -4,15 +4,20 @@
  */
 
 import { BALANCE } from '../config/balance.js';
+import { getTotalUnits } from '../data/data_en.js?v=2';
+import { detectDeviceLanguage } from '../data/i18n.js';
 
 const SAVE_KEY = 'zombie_voca_save_v1';
 export const CURRENT_SAVE_VERSION = 1;
 
 function createDefaultSave() {
+  const detected = detectDeviceLanguage();
   return {
     saveVersion: CURRENT_SAVE_VERSION,
-    language: 'ko',
-    dogName: '우유',
+    language: detected,
+    lang: detected,
+    langConfirmed: false,
+    dogName: detected === 'es' ? 'Leche' : detected === 'en' ? 'Milk' : '우유',
     selectedBreed: 'pomeranian',
     certifiedLevel: 'A1',
     challenge: {
@@ -22,6 +27,7 @@ function createDefaultSave() {
       dailyFreeUsedDate: '',
     },
     tutorialCompleted: false,
+    tutorialDone: false,
     gold: 120,
     snacks: 3,
     gems: 300,
@@ -36,6 +42,7 @@ function createDefaultSave() {
     unlockedChapter: 1,
     selectedChapter: 1,
     selectedUnit: 'unit_001',
+    maxUnlockedUnit: 1,
     selectedCourse: 'lv1',
     dominantHand: 'right',
     training: {
@@ -76,11 +83,14 @@ function createDefaultSave() {
       lastClaimDate: '',
       streakDay: 0,
     },
+    lastFreeSupplyDate: '',
     audio: {
       bgmEnabled: true,
       sfxEnabled: true,
       bgmVolume: 0.42,
     },
+    haptic: true,
+    lowFx: false,
   };
 }
 
@@ -114,9 +124,33 @@ function mergeWithDefaults(defaults, saved) {
     }
   }
   result.saveVersion = CURRENT_SAVE_VERSION;
-  if (!result.dogName) result.dogName = '우유';
+  const detected = detectDeviceLanguage();
+  const effectiveLang = saved?.language || saved?.lang || detected;
+  result.language = effectiveLang;
+  result.lang = effectiveLang;
+  result.tutorialCompleted = Boolean(saved?.tutorialCompleted || saved?.tutorialDone);
+  result.tutorialDone = result.tutorialCompleted;
+  result.haptic = saved && typeof saved.haptic === 'boolean' ? saved.haptic : true;
+  result.lowFx = saved && typeof saved.lowFx === 'boolean' ? saved.lowFx : false;
+  if (saved && typeof saved.langConfirmed === 'boolean') {
+    result.langConfirmed = saved.langConfirmed;
+  } else {
+    // 기존 유저는 이미 튜토리얼을 완료했거나 게임을 진행한 경우 언어가 확정된 상태로 간주
+    result.langConfirmed = Boolean(saved && (result.tutorialCompleted || (saved.gold && saved.gold > 120)));
+  }
+  if (!result.dogName) result.dogName = effectiveLang === 'es' ? 'Leche' : effectiveLang === 'en' ? 'Milk' : '우유';
   if (!result.selectedBreed) result.selectedBreed = 'pomeranian';
   if (!result.certifiedLevel) result.certifiedLevel = 'A1';
+  if (typeof result.lastFreeSupplyDate !== 'string') result.lastFreeSupplyDate = '';
+  const totalUnits = getTotalUnits();
+  const rawSelUnitNum = parseInt((result.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
+  const selUnitNum = Math.min(Math.max(1, rawSelUnitNum), totalUnits);
+  result.selectedUnit = `unit_${String(selUnitNum).padStart(3, '0')}`;
+  if (typeof result.maxUnlockedUnit !== 'number' || result.maxUnlockedUnit < 1) {
+    result.maxUnlockedUnit = Math.max(1, selUnitNum);
+  } else {
+    result.maxUnlockedUnit = Math.min(Math.max(result.maxUnlockedUnit, selUnitNum), totalUnits);
+  }
   if (!result.challenge) {
     result.challenge = {
       leagueTier: 'bronze',
