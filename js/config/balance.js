@@ -37,9 +37,11 @@ export const BALANCE = Object.freeze({
   },
 
   MONOLITH: {
-    CAPTURE_TIME_SEC: 0.4,       // 비석 점령 소요 시간 (0.4초)
+    CAPTURE_TIME_SEC: 1.0,       // 벙커 진입 발판 잠금 해제 소요 시간 (1.0초)
     RESPAWN_DELAY_SEC: 1.5,      // 확정 소멸 후 다음 비석 스폰 대기 시간 (1.5초)
-    CAPTURE_RADIUS: 52,          // 몸 부딪힘 점령 판정 반경
+    CAPTURE_RADIUS: 28,          // 벙커 해치 본체 물리 충돌 차단 반경 (28px 엄폐물)
+    ENTRY_OFFSET_Y: 38,          // 정면 진입 발판 Y 오프셋 (+38px)
+    ENTRY_RADIUS: 28,            // 정면 진입 발판 판정 반경 (28px)
     CORRECT_XP: 100,             // 정답 시 진화 XP 상승
     WRONG_XP_PENALTY: -50,       // 오답 시 진화 XP 하락
     WRONG_SLOW_DURATION: 3.0,    // 오답 시 이동속도 저하 디버프 (3초)
@@ -50,7 +52,7 @@ export const BALANCE = Object.freeze({
 
   PLAYER: {
     BASE_HP: 120,
-    BASE_SPEED: 160,
+    BASE_SPEED: 115,             // 캐릭터 비율 축소에 맞춘 묵직하고 정밀한 컨트롤 속도 (기존 160 대비 약 28% 하향)
     BASE_ATK: 18,
     RADIUS: 15,
     RENDER_SCALE: 1.05,

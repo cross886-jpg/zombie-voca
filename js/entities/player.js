@@ -143,7 +143,7 @@ export class Player {
     this.recalcStats(false);
   }
 
-  update(dt, inputVec, arenaWidth, arenaHeight, obstacles = []) {
+  update(dt, inputVec, arenaWidth, arenaHeight, obstacles = [], monoliths = []) {
     if (this.invulnTimer > 0) {
       this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     }
@@ -171,6 +171,7 @@ export class Player {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     resolveCircleCollisions(this, obstacles);
+    resolveCircleCollisions(this, monoliths);
 
     // 네온 방화벽 경계 클램프 (상단 전광판 높이 감안 topMargin 보정)
     const topMargin = 120;

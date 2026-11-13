@@ -211,6 +211,7 @@ export const audioEngine = {
 
     const now = Date.now();
     if (cleanWord === lastSpokenWord && now - lastSpokenAt < 400) {
+      onFinished?.();
       return;
     }
     lastSpokenWord = cleanWord;
@@ -257,8 +258,8 @@ export const audioEngine = {
     }
   },
 
-  speakWord(word) {
-    this.speakWordOnce(word);
+  speakWord(word, onFinished = null) {
+    this.speakWordOnce(word, onFinished);
   },
 
   /**

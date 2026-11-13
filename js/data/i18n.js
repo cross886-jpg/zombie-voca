@@ -101,8 +101,8 @@ const DICTIONARY = {
       restoreError: '올바르지 않은 세이브 코드입니다.',
     },
     tutorial: {
-      step1: '이동해서 정답 비석을 부수세요!',
-      step2: '이동해서 정답 비석을 부수세요!',
+      step1: '조이스틱으로 이동하세요! 우유가 자동으로 짖어 좀비를 공격합니다.',
+      step2: '단어를 듣고 일치하는 구조 캡슐 영역에 머물러 잠금을 해제하세요!',
       step3: '💥 화면을 두 번 빠르게 탭하여 대폭발을 사용하세요!',
       complete: '튜토리얼 완료! 이제 본격적으로 주인을 찾아 떠나요!',
     },
@@ -205,7 +205,7 @@ const DICTIONARY = {
     },
     tutorial: {
       step1: 'Drag to move! Milk barks automatically to defeat zombies.',
-      step2: 'Listen to the word and stand on the matching monolith for 0.4s!',
+      step2: 'Listen to the word and stay in the matching rescue pod zone to unlock!',
       step3: '💥 Double tap the screen quickly to trigger Mega Blast!',
       complete: 'Tutorial Complete! Time to find Milk’s owner!',
     },
@@ -271,7 +271,7 @@ const DICTIONARY = {
     },
     tutorial: {
       step1: '¡Arrastra para moverte! Leche ladra automáticamente.',
-      step2: '¡Escucha la palabra y quédate en el monolito 0.4s!',
+      step2: '¡Escucha la palabra y quédate en la cápsula correcta para desbloquear!',
       step3: '💥 ¡Toca dos veces la pantalla para la Super Explosión!',
       complete: '¡Tutorial completado! ¡Hora de encontrar al dueño!',
     },

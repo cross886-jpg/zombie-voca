@@ -17,7 +17,6 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const modalCard = document.getElementById('modal-card');
   const canvas = document.getElementById('game-canvas');
 
-  const hpBar = document.getElementById('hud-hp-bar');
   const btnPause = document.getElementById('btn-pause');
   const btnSkipTutorial = document.getElementById('btn-skip-tutorial');
 
@@ -448,7 +447,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
           <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs">
             <div class="text-[#4a584e]">도전 스테이지</div>
             <div class="text-right font-extrabold text-[#1f2d24]">STAGE ${targetUnit}</div>
-            <div class="text-[#4a584e]">정답 비석</div>
+            <div class="text-[#4a584e]">정답 벙커</div>
             <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount || 0} / 10</div>
             <div class="text-[#4a584e]">남은 기회</div>
             <div class="text-right font-extrabold text-[#1f2d24]">${hearts}</div>
@@ -627,21 +626,6 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
           wrongReviewOverlay.classList.remove('hidden');
         } else {
           wrongReviewOverlay.classList.add('hidden');
-        }
-      }
-
-      // 체력(HP) 업데이트: 두껍고 시인성 높은 게이지 바 + 수치 + 비율별 컬러 전환 (초록 -> 노랑 -> 빨강)
-      const curHp = Math.max(0, Math.round(hp));
-      const totalHp = Math.max(1, Math.round(maxHp));
-      const hpPct = Math.max(0, Math.min(100, (curHp / totalHp) * 100));
-      if (hpBar) {
-        hpBar.style.width = `${hpPct}%`;
-        if (hpPct >= 60) {
-          hpBar.className = 'h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] transition-all duration-200';
-        } else if (hpPct >= 30) {
-          hpBar.className = 'h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 shadow-[0_0_8px_rgba(245,158,11,0.6)] transition-all duration-200';
-        } else {
-          hpBar.className = 'h-full rounded-full bg-gradient-to-r from-rose-600 to-red-500 shadow-[0_0_12px_rgba(239,68,68,0.85)] animate-pulse transition-all duration-200';
         }
       }
 

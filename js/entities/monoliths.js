@@ -46,8 +46,9 @@ export class MonolithManager {
     choices.forEach((choice, idx) => {
       const dir = quadrantDirs[idx % 4];
       const topMargin = 120; // 상단 전광판 높이 감안 안전 마진
+      const bottomMargin = 138; // 정면 진입 발판(Y+38, 반경 28) 및 하단 통과 여유 감안 안전 마진
       const clampX = (val) => Math.max(margin, Math.min(arenaWidth - margin, val));
-      const clampY = (val) => Math.max(margin + topMargin, Math.min(arenaHeight - margin, val));
+      const clampY = (val) => Math.max(margin + topMargin, Math.min(arenaHeight - bottomMargin, val));
 
       // 사분면별 기본 오프셋(기존 대비 1.4배 확대): 가로 반경 182~294px, 세로 반경 224~364px
       let px = clampX(playerX + dir.sx * 230);
@@ -81,8 +82,10 @@ export class MonolithManager {
         meaning: choice.meaning,
         isCorrect: choice.isCorrect,
         wordId: choice.wordId,
-        captureProgress: 0, // 0 ~ 1 (0.4초 완충)
-        radius: BALANCE.MONOLITH.CAPTURE_RADIUS,
+        captureProgress: 0, // 0 ~ 1 (1.0초 완충)
+        radius: BALANCE.MONOLITH.CAPTURE_RADIUS || 28, // 강철 벙커 해치 본체 물리 충돌 차단 반경 (엄폐물)
+        entryOffsetY: BALANCE.MONOLITH.ENTRY_OFFSET_Y || 38, // 정면 진입 발판 Y 오프셋
+        entryRadius: BALANCE.MONOLITH.ENTRY_RADIUS || 28, // 정면 진입 발판 판정 반경
         hatchOpen: 0,
         trapWarning: false,
       };
@@ -122,16 +125,21 @@ export class MonolithManager {
 
     if (!this.revealOnly) {
       for (const m of this.monoliths) {
-        const dist = Math.hypot(player.x - m.x, player.y - m.y);
-        if (dist <= m.radius + player.radius * 0.4) {
-          m.captureProgress += dt / BALANCE.MONOLITH.CAPTURE_TIME_SEC;
+        // 해치 본체 중심이 아니라 정면 진입 발판 영역 안으로 플레이어가 들어갔을 때만 판정
+        const entryX = m.x;
+        const entryY = m.y + (m.entryOffsetY || 38);
+        const distToEntry = Math.hypot(player.x - entryX, player.y - entryY);
+        const inEntryZone = distToEntry <= (m.entryRadius || 28) + player.radius * 0.35;
+
+        if (inEntryZone) {
+          m.captureProgress += dt / (BALANCE.MONOLITH.CAPTURE_TIME_SEC || 1.0);
           captureTicking = true;
           if (m.captureProgress >= 1) {
             resolvedMonolith = m;
             break;
           }
         } else if (m.captureProgress > 0) {
-          m.captureProgress = Math.max(0, m.captureProgress - dt * 1.8);
+          m.captureProgress = Math.max(0, m.captureProgress - dt * 1.5);
         }
       }
 
@@ -224,7 +232,7 @@ export class MonolithManager {
       ctx.restore();
     }
 
-    // 2. 4개 봉인된 긴급 구조 캡슐 (Sealed Rescue Pod) 렌더링
+    // 2. 4개 지하 벙커 해치 & 정면 진입 발판 (Bunker Hatch) 렌더링
     for (const m of this.monoliths) {
       ctx.save();
       const riseOffset = (1 - this.riseProgress) * 36;
@@ -232,165 +240,205 @@ export class MonolithManager {
       ctx.translate(m.x, m.y + riseOffset);
       ctx.globalAlpha = 0.25 + this.riseProgress * 0.75;
 
-      const ringRadius = m.radius * 0.84;
       const isHacking = m.captureProgress > 0;
       const isSuccess = m.highlighted;
       const isTrap = m.trapWarning;
 
-      // --- [1. 바닥 원형 해킹 존 & 점선 펄스 링] ---
-      const padGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, ringRadius);
+      // ==========================================
+      // [A. 정면 진입 발판 (Entry Zone Footpad)]
+      // ==========================================
+      const footY = m.entryOffsetY || 38;
+      const footW = 56;
+      const footH = 34;
+      const footR = m.entryRadius || 28;
+
+      // 발판 베이스 그림자
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(0, footY + 4, footW / 2 + 2, footH / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 발판 내부 배경 (금속 격자 미끄럼 방지 플레이트)
+      const padGrad = ctx.createLinearGradient(0, footY - footH / 2, 0, footY + footH / 2);
       if (isSuccess) {
-        padGrad.addColorStop(0, 'rgba(16, 185, 129, 0.45)');
-        padGrad.addColorStop(1, 'rgba(6, 78, 59, 0.18)');
+        padGrad.addColorStop(0, 'rgba(6, 78, 59, 0.9)');
+        padGrad.addColorStop(1, 'rgba(4, 47, 35, 0.95)');
       } else if (isTrap) {
-        padGrad.addColorStop(0, 'rgba(239, 68, 68, 0.5)');
-        padGrad.addColorStop(1, 'rgba(127, 29, 29, 0.2)');
+        padGrad.addColorStop(0, 'rgba(127, 29, 29, 0.9)');
+        padGrad.addColorStop(1, 'rgba(69, 10, 10, 0.95)');
       } else if (isHacking) {
-        padGrad.addColorStop(0, 'rgba(245, 158, 11, 0.42)');
-        padGrad.addColorStop(1, 'rgba(120, 53, 15, 0.18)');
+        padGrad.addColorStop(0, 'rgba(120, 53, 15, 0.9)');
+        padGrad.addColorStop(1, 'rgba(69, 26, 3, 0.95)');
       } else {
-        padGrad.addColorStop(0, 'rgba(34, 211, 238, 0.22)');
-        padGrad.addColorStop(1, 'rgba(15, 23, 42, 0.65)');
+        padGrad.addColorStop(0, 'rgba(15, 23, 42, 0.88)');
+        padGrad.addColorStop(1, 'rgba(8, 14, 26, 0.94)');
       }
       ctx.fillStyle = padGrad;
       ctx.beginPath();
-      ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+      ctx.roundRect(-footW / 2, footY - footH / 2, footW, footH, 10);
       ctx.fill();
 
-      // 회전 점선 펄스 링
+      // 미끄럼 방지 사선 그립 텍스처
       ctx.save();
-      ctx.setLineDash([8, 6]);
-      ctx.lineDashOffset = -time * 30;
-      ctx.strokeStyle = isSuccess ? '#34d399' : (isTrap ? '#ef4444' : (isHacking ? '#facc15' : 'rgba(34, 211, 238, 0.75)'));
-      ctx.lineWidth = isSuccess || isTrap ? 3.5 : 2.5;
       ctx.beginPath();
-      ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+      ctx.roundRect(-footW / 2, footY - footH / 2, footW, footH, 10);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+      ctx.lineWidth = 2;
+      for (let s = -footW; s < footW; s += 8) {
+        ctx.beginPath();
+        ctx.moveTo(s, footY - footH);
+        ctx.lineTo(s + footH, footY + footH);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 노란/민트색 점선 테두리 (Yellow / Mint Dashed Outline)
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.lineDashOffset = -time * 20;
+      ctx.strokeStyle = isSuccess
+        ? '#34d399'
+        : isTrap
+          ? '#ef4444'
+          : isHacking
+            ? '#facc15'
+            : 'rgba(52, 211, 153, 0.85)';
+      ctx.lineWidth = isHacking || isSuccess || isTrap ? 2.8 : 2.0;
+      ctx.shadowColor = isSuccess ? '#10b981' : (isHacking ? '#f59e0b' : 'rgba(52, 211, 153, 0.6)');
+      ctx.shadowBlur = isHacking || isSuccess ? 10 : 4;
+      ctx.beginPath();
+      ctx.roundRect(-footW / 2, footY - footH / 2, footW, footH, 10);
       ctx.stroke();
       ctx.restore();
 
-      // 4방향 사이버 크로스헤어 / 브래킷 마커
-      ctx.strokeStyle = isSuccess ? '#34d399' : (isTrap ? '#f87171' : (isHacking ? '#fbbf24' : 'rgba(34, 211, 238, 0.8)'));
-      ctx.lineWidth = 2;
-      for (let a = 0; a < 4; a++) {
-        const ang = (a * Math.PI) / 2;
-        const cosA = Math.cos(ang);
-        const sinA = Math.sin(ang);
-        ctx.beginPath();
-        ctx.moveTo(cosA * (ringRadius - 8), sinA * (ringRadius - 8));
-        ctx.lineTo(cosA * (ringRadius + 8), sinA * (ringRadius + 8));
-        ctx.stroke();
-      }
+      // 발판 중앙 전술 진입 셰브론 화살표 (▲ 벙커 방향 유도)
+      ctx.fillStyle = isSuccess
+        ? '#34d399'
+        : isTrap
+          ? '#f87171'
+          : isHacking
+            ? '#facc15'
+            : 'rgba(52, 211, 153, 0.9)';
+      ctx.font = '900 11px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('▲ ENTRY ▲', 0, footY);
 
-      // 0.4초 잠금 해제 게이지 원형 아크
+      // 발판 잠금 해제 게이지 원형 아크
       if (m.captureProgress > 0) {
         ctx.save();
         ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 6;
+        ctx.lineWidth = 5;
         ctx.lineCap = 'round';
         ctx.shadowColor = '#f59e0b';
         ctx.shadowBlur = 12;
         ctx.beginPath();
-        ctx.arc(0, 0, ringRadius + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, m.captureProgress));
+        ctx.arc(0, footY, footR + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, m.captureProgress));
         ctx.stroke();
         ctx.restore();
       }
 
-      // --- [2. 봉인된 긴급 구조 캡슐 본체 (불투명 금속·유리 재질 밀폐 캡슐)] ---
-      const podY = -24;
-      const podW = 54;
-      const podH = 68;
-      const hatchSlide = (m.hatchOpen || 0) * 26;
+      // ==========================================
+      // [B. 강철 벙커 해치 본체 (radius: 28px 엄폐물)]
+      // ==========================================
+      const hatchR = m.radius || 28;
 
-      // 접지 그림자
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      // 지면 접지 섀도우
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.beginPath();
-      ctx.ellipse(0, 6, 28, 9, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 4, hatchR + 4, hatchR * 0.55, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // 하단 유압 지지 프레임 (Hydraulic Foot Clamps)
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(-28, -5, 10, 10);
-      ctx.fillRect(18, -5, 10, 10);
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(-26, -3, 6, 6);
-      ctx.fillRect(20, -3, 6, 6);
-
-      // 외벽 아머 쉘 (다크 티타늄 메탈릭 그라데이션)
-      const bodyGrad = ctx.createLinearGradient(-podW / 2, 0, podW / 2, 0);
-      bodyGrad.addColorStop(0, '#0f172a');
-      bodyGrad.addColorStop(0.3, '#334155');
-      bodyGrad.addColorStop(0.7, '#1e293b');
-      bodyGrad.addColorStop(1, '#0f172a');
-
-      ctx.fillStyle = bodyGrad;
+      // 벙커 외벽 볼트 링 베벨
+      const outerGrad = ctx.createRadialGradient(0, -4, 4, 0, 0, hatchR + 3);
+      outerGrad.addColorStop(0, '#334155');
+      outerGrad.addColorStop(0.7, '#1e293b');
+      outerGrad.addColorStop(1, '#0f172a');
+      ctx.fillStyle = outerGrad;
       ctx.strokeStyle = isSuccess ? '#34d399' : (isTrap ? '#ef4444' : (isHacking ? '#f59e0b' : '#475569'));
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.roundRect(-podW / 2, podY - podH / 2, podW, podH, 16);
+      ctx.arc(0, 0, hatchR, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      // 전면 봉인 해치 / 강화 방폭 윈도우 (안이 보이지 않는 불투명 편광 옵시디언 틴팅)
-      const glassW = 38;
-      const glassH = 46;
-      const glassY = podY - 2 - hatchSlide;
+      // 외벽 고정용 산업용 육각 볼트 리벳 (8개 균등 배치)
+      ctx.fillStyle = '#64748b';
+      for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4;
+        const bx = Math.cos(ang) * (hatchR - 4);
+        const by = Math.sin(ang) * (hatchR - 4);
+        ctx.beginPath();
+        ctx.arc(bx, by, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
-      const glassGrad = ctx.createLinearGradient(-glassW / 2, glassY - glassH / 2, glassW / 2, glassY + glassH / 2);
-      glassGrad.addColorStop(0, '#091c24');
-      glassGrad.addColorStop(0.5, '#0d2830');
-      glassGrad.addColorStop(1, '#050f14');
-
-      ctx.fillStyle = glassGrad;
-      ctx.strokeStyle = isSuccess ? '#10b981' : (isTrap ? '#ef4444' : (isHacking ? '#d97706' : '#164e63'));
-      ctx.lineWidth = 2;
+      // 내부 회전 개폐 해치 도어 (Inner Blast Hatch)
+      const innerR = hatchR - 7;
+      const innerGrad = ctx.createLinearGradient(-innerR, -innerR, innerR, innerR);
+      innerGrad.addColorStop(0, '#1e293b');
+      innerGrad.addColorStop(0.5, '#0f172a');
+      innerGrad.addColorStop(1, '#1e293b');
+      ctx.fillStyle = innerGrad;
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.roundRect(-glassW / 2, glassY - glassH / 2, glassW, glassH, 10);
+      ctx.arc(0, 0, innerR, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
 
-      // 방폭 유리 반사광 (사선 글레어 스트라이프: 불투명성을 돋보이게 하는 리얼한 광택)
+      // 3갈래 중장비 개폐 락 크로스바 (Heavy Locking Spokes)
       ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(-glassW / 2, glassY - glassH / 2, glassW, glassH, 10);
-      ctx.clip();
-
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(-glassW, glassY + glassH);
-      ctx.lineTo(glassW, glassY - glassH);
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.lineWidth = 8;
-      ctx.beginPath();
-      ctx.moveTo(-glassW + 14, glassY + glassH);
-      ctx.lineTo(glassW + 14, glassY - glassH);
-      ctx.stroke();
+      const hatchAngle = (m.hatchOpen || 0) * Math.PI * 0.4;
+      ctx.rotate(hatchAngle);
+      ctx.strokeStyle = '#475569';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 3; k++) {
+        const spokeAng = (k * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(spokeAng) * (innerR - 3), Math.sin(spokeAng) * (innerR - 3));
+        ctx.stroke();
+      }
       ctx.restore();
 
-      // 캡슐 상단 경고/상태 비콘 라이트
-      const beaconColor = isSuccess ? '#10b981' : (isTrap ? '#ef4444' : (isHacking ? '#f59e0b' : '#06b6d4'));
+      // 중앙 메카닉 허브 & LED 상태 비콘
+      const beaconColor = isSuccess
+        ? '#10b981'
+        : isTrap
+          ? '#ef4444'
+          : isHacking
+            ? '#f59e0b'
+            : '#22d3ee';
       ctx.save();
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.shadowColor = beaconColor;
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 12;
       ctx.fillStyle = beaconColor;
       ctx.beginPath();
-      ctx.arc(0, podY - podH / 2 - 4, 5, 0, Math.PI * 2);
+      ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // --- [3. 전자 자물쇠 홀로그램 & 단어 뜻 선명 배너] ---
+      // ==========================================
+      // [C. 상단 고정 단어 뜻 HUD 배너]
+      // ==========================================
       const bannerW = 120;
-      const bannerH = 34;
-      const bannerY = podY - podH / 2 - 28 + pulse;
+      const bannerH = 32;
+      const bannerY = -hatchR - 18 + pulse;
 
       ctx.save();
       ctx.shadowColor = isSuccess ? '#10b981' : (isTrap ? '#ef4444' : (isHacking ? '#f59e0b' : '#06b6d4'));
       ctx.shadowBlur = isSuccess ? 18 : 12;
 
       // 홀로그램 플레이트 배경
-      ctx.fillStyle = isSuccess ? 'rgba(6, 78, 59, 0.94)' : (isTrap ? 'rgba(127, 29, 29, 0.94)' : 'rgba(10, 25, 47, 0.94)');
+      ctx.fillStyle = isSuccess ? 'rgba(6, 78, 59, 0.95)' : (isTrap ? 'rgba(127, 29, 29, 0.95)' : 'rgba(10, 25, 47, 0.95)');
       ctx.strokeStyle = isSuccess ? '#34d399' : (isTrap ? '#ef4444' : (isHacking ? '#facc15' : 'rgba(34, 211, 238, 0.85)'));
       ctx.lineWidth = 2.2;
       ctx.beginPath();
@@ -404,7 +452,7 @@ export class MonolithManager {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const lockIcon = isSuccess ? '🔓' : (isTrap ? '🚨' : (isHacking ? '⚡' : '🔒'));
-      ctx.fillText(lockIcon, -bannerW / 2 + 16, bannerY);
+      ctx.fillText(lockIcon, -bannerW / 2 + 15, bannerY);
 
       // 단어 뜻 텍스트 (우측, 크고 또렷한 굵은 폰트)
       ctx.fillStyle = '#ffffff';

@@ -98,11 +98,16 @@ function createDefaultSave() {
  * 저장된 객체에 누락된 기본 키가 있을 경우 안전하게 병합
  * @param {object} defaults
  * @param {object} saved
+ * @param {boolean} [isRoot=true] 최상위 루트 객체 여부
  * @returns {object}
  */
-function mergeWithDefaults(defaults, saved) {
+function mergeWithDefaults(defaults, saved, isRoot = true) {
   if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
     return structuredClone(defaults);
+  }
+  // defaults가 빈 객체({})인 경우(wordStats, companions.levels 등 동적 딕셔너리) saved 데이터 전체 보존
+  if (Object.keys(defaults).length === 0) {
+    return structuredClone(saved);
   }
   const result = {};
   for (const key of Object.keys(defaults)) {
@@ -116,13 +121,26 @@ function mergeWithDefaults(defaults, saved) {
       !Array.isArray(defVal) &&
       defVal !== null
     ) {
-      result[key] = mergeWithDefaults(defVal, savVal);
+      if (Object.keys(defVal).length === 0) {
+        // wordStats, companions.levels 등 동적 맵인 경우 saved 데이터 유실 없이 보존
+        result[key] = typeof savVal === 'object' && !Array.isArray(savVal)
+          ? structuredClone(savVal)
+          : structuredClone(defVal);
+      } else {
+        result[key] = mergeWithDefaults(defVal, savVal, false);
+      }
     } else if (Array.isArray(defVal)) {
       result[key] = Array.isArray(savVal) ? [...savVal] : [...defVal];
     } else {
       result[key] = savVal;
     }
   }
+
+  // 최상위 루트 객체가 아닌 하위 프로퍼티(training, challenge 등)는 루트 전용 정산 로직을 건너뜀
+  if (!isRoot) {
+    return result;
+  }
+
   result.saveVersion = CURRENT_SAVE_VERSION;
   const detected = detectDeviceLanguage();
   const effectiveLang = saved?.language || saved?.lang || detected;

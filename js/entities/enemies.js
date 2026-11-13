@@ -227,6 +227,10 @@ export class EnemyManager {
       b.x += (dx / dist) * spd * dt;
       b.y += (dy / dist) * spd * dt;
 
+      // 보스 벙커 및 장애물 물리 충돌 밀어내기
+      resolveCircleCollisions(b, monoliths);
+      resolveCircleCollisions(b, obstacles);
+
       if (dist < b.radius + player.radius - 4) {
         const dmg = b.enraged ? b.damage * BALANCE.BOSS.ENRAGE_DMG_MULT : b.damage;
         player.takeDamage(dmg);

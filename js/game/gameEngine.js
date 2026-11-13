@@ -753,7 +753,7 @@ export class GameEngine {
       }
     }
 
-    this.player.update(dt, this.inputVec, this.arenaWidth, this.arenaHeight, this.obstacles.obstacles);
+    this.player.update(dt, this.inputVec, this.arenaWidth, this.arenaHeight, this.obstacles.obstacles, this.monoliths.monoliths);
     this.enemies.update(
       dt,
       this.player,
