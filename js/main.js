@@ -7,13 +7,14 @@
  * - 첫 접속 시 30초 프롤로그 튜토리얼 자동 진입
  */
 
-import { loadSave } from './core/saveStore.js';
+import { loadSave, getSave } from './core/saveStore.js';
 import { audioEngine } from './core/audioEngine.js';
 import { applyI18nToDOM, setLanguage } from './data/i18n.js';
 import { loadWordDatabase } from './data/data_en.js?v=2';
 import { GAME_STATES, GameEngine } from './game/gameEngine.js';
 import { createHudUI } from './ui/hudUI.js';
 import { createLobbyUI } from './ui/lobbyUI.js';
+import { openInitialStudyLangModal } from './ui/lobbyModals.js';
 import { createGrowthUI } from './ui/growthUI.js';
 import { createShopUI } from './ui/shopUI.js';
 import { createChallengeUI } from './ui/challengeUI.js';
@@ -65,10 +66,23 @@ async function bootstrap() {
   }
 
   lobbyUI = createLobbyUI({
-    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, targetUnitNum = 1 }) {
-      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, targetUnitNum });
+    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, targetUnitNum = 1, isPromotion = false, targetLevel = null } = {}) {
+      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, targetUnitNum, isPromotion, targetLevel });
     },
     onStartTutorial() {
+      if (!getSave().langSelected) {
+        openInitialStudyLangModal(
+          {
+            openModal: lobbyUI.openModal,
+            closeModal: lobbyUI.closeModal,
+            refreshHeader: lobbyUI.refreshHeader,
+          },
+          {
+            onStartTutorial: () => startBattleFlow({ chapterNumber: 1, courseId: 'lv1', isTutorial: true }),
+          }
+        );
+        return;
+      }
       startBattleFlow({ chapterNumber: 1, courseId: 'lv1', isTutorial: true });
     },
     onRenderGear() {
@@ -82,9 +96,6 @@ async function bootstrap() {
     },
     onRenderChallenge() {
       challengeUI?.renderChallengeTab();
-    },
-    onOpenSupplyShop() {
-      growthUI?.openSupplyShopModal();
     },
   });
 
@@ -131,15 +142,21 @@ async function bootstrap() {
     }
   });
 
-  // 첫 접속 언어 선택 및 메인 로비 진입 분기
-  if (!save.langConfirmed) {
-    lobbyUI.showLobby();
-    lobbyUI.openInitialLanguageModal(() => {
-      lobbyUI.showLobby();
-      lobbyUI.renderActiveTab();
-    });
-  } else {
-    lobbyUI.showLobby();
+  // 메인 로비 진입
+  lobbyUI.showLobby();
+
+  // 최초 접속 시 공부할 언어 선택 팝업 오픈
+  if (!getSave().langSelected) {
+    openInitialStudyLangModal(
+      {
+        openModal: lobbyUI.openModal,
+        closeModal: lobbyUI.closeModal,
+        refreshHeader: lobbyUI.refreshHeader,
+      },
+      {
+        onStartTutorial: () => startBattleFlow({ chapterNumber: 1, courseId: 'lv1', isTutorial: true }),
+      }
+    );
   }
 }
 

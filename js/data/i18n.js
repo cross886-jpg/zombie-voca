@@ -1,13 +1,13 @@
 /**
  * js/data/i18n.js
- * 좀비 보카 (Zombie Voca) — 글로벌 다국어 사전 및 번역 헬퍼
+ * 영단어 특공대: 멍멍 수호대 (Voca Squad: Puppy Guardians) — 글로벌 다국어 사전 및 번역 헬퍼
  * 기본 언어: 'ko' | 확장 가능: 'en', 'es'
  */
 
 const DICTIONARY = {
   ko: {
     app: {
-      title: '좀비 보카 (Zombie Voca)',
+      title: '영단어 특공대: 멍멍 수호대',
       playerDefaultName: '우유',
     },
     evo: {
@@ -36,7 +36,7 @@ const DICTIONARY = {
       sonicLaser: '음파 레이저 격파!',
     },
     lobby: {
-      tabGear: '장비·코스튬',
+      tabGear: '내 강아지',
       tabBattle: '전투',
       tabTraining: '훈련소',
       tabWordbook: '기억수첩',
@@ -49,6 +49,13 @@ const DICTIONARY = {
       chapterLocked: '이전 챕터 클리어 시 해금',
       dailyMissions: '일일 미션',
       attendance7d: '7일 출석부',
+      quests: '📜 퀘스트',
+      attendance30d: '30일 출석',
+      dailyQuests: '일일 퀘스트',
+      weeklyQuests: '주간 퀘스트',
+      achievements: '영구 업적',
+      petTreats: '강아지 간식',
+      supplyBoxes: '보급 상자',
       claimReward: '보상 받기',
       claimed: '수령 완료',
       companionsTitle: '동물 친구 동료 (최대 2마리)',
@@ -101,16 +108,23 @@ const DICTIONARY = {
       restoreError: '올바르지 않은 세이브 코드입니다.',
     },
     tutorial: {
-      step1: '조이스틱으로 이동하세요! 우유가 자동으로 짖어 좀비를 공격합니다.',
-      step2: '단어를 듣고 일치하는 구조 캡슐 영역에 머물러 잠금을 해제하세요!',
-      step3: '💥 화면을 두 번 빠르게 탭하여 대폭발을 사용하세요!',
-      complete: '튜토리얼 완료! 이제 본격적으로 주인을 찾아 떠나요!',
+      step1: '멍! 화면을 드래그해서 나를 움직여 봐! 사격은 내가 자동으로 할게!',
+      step2: '저기 위 전광판을 봐! 우리가 해독해야 할 목표 단어가 떠 있어!',
+      step3: "멍! 전광판의 '{word}'는 '{meaning}'라는 뜻이야! 화살표를 따라 벙커 해치 원 안에서 정답을 골라 봐! ({current} / {target})",
+      step3Retry: "아쉬워! 전광판의 '{word}'는 '{meaning}'라는 뜻이야! 다시 한번 골라 봐!",
+      step4: '멍! 레벨이 올라 새 스킬을 배울 수 있어! 원하는 스킬 카드 하나를 터치해서 장착해 봐!',
+      step4Applied: '좋아! [{skillName}] 스킬 덕분에 내 공격이 더 강하고 빨라졌어!',
+      step5: '새 스킬로 좀비를 무찌르고 바닥에 떨어진 보석들을 주워서 필살기 게이지를 꽉 채워 보자!',
+      step6: '게이지가 꽉 찼어! 화면을 두 번 빠르게 터치(더블탭)해서 필살기를 써 봐!',
+      step6Done: '완벽해! 이제 진짜 특공대원 다워졌어!',
+      ackBtn: '🐾 알겠어!',
+      complete: '완벽해! 이제 진짜 특공대원 다워졌어!',
     },
   },
 
   en: {
     app: {
-      title: 'Zombie Voca: Bark & Survive',
+      title: 'Voca Squad: Puppy Guardians',
       playerDefaultName: 'Milk',
     },
     evo: {
@@ -152,6 +166,13 @@ const DICTIONARY = {
       chapterLocked: 'Clear previous chapter to unlock',
       dailyMissions: 'Daily Missions',
       attendance7d: '7-Day Check-In',
+      quests: '📜 Quests',
+      attendance30d: '30D Check-In',
+      dailyQuests: 'Daily Quests',
+      weeklyQuests: 'Weekly Quests',
+      achievements: 'Achievements',
+      petTreats: 'Pet Treats',
+      supplyBoxes: 'Supply Boxes',
       claimReward: 'Claim',
       claimed: 'Claimed',
       companionsTitle: 'Animal Companions (Max 2)',
@@ -204,16 +225,23 @@ const DICTIONARY = {
       restoreError: 'Invalid save code.',
     },
     tutorial: {
-      step1: 'Drag to move! Milk barks automatically to defeat zombies.',
-      step2: 'Listen to the word and stay in the matching rescue pod zone to unlock!',
-      step3: '💥 Double tap the screen quickly to trigger Mega Blast!',
-      complete: 'Tutorial Complete! Time to find Milk’s owner!',
+      step1: 'Woof! Drag the screen to move me! I will shoot automatically!',
+      step2: 'Look at the scoreboard above! That is the target word we need to decode!',
+      step3: "Woof! '{word}' on the scoreboard means '{meaning}'! Follow the arrows and pick the answer inside the bunker hatch circle! ({current} / {target})",
+      step3Retry: "Almost! '{word}' means '{meaning}'! Try picking it again!",
+      step4: 'Awesome! Decoding words lets you learn battle skills. Pick one you like!',
+      step4Applied: 'Nice! With [{skillName}], my attacks are now stronger and faster!',
+      step5: 'Defeat zombies with your new skill and pick up gems on the ground to fill the Ultimate gauge!',
+      step6: 'Gauge is full! Quickly double-tap the screen to unleash your Ultimate!',
+      step6Done: 'Perfect! Now you are a true Voca Squad commando!',
+      ackBtn: '🐾 Got it!',
+      complete: 'Perfect! Now you are a true Voca Squad commando!',
     },
   },
 
   es: {
     app: {
-      title: 'Zombie Voca: Bark & Survive',
+      title: 'Voca Squad: Puppy Guardians',
       playerDefaultName: 'Leche',
     },
     evo: {
@@ -248,6 +276,13 @@ const DICTIONARY = {
       dailyMissions: 'Misiones',
       shopTitle: 'Tienda',
       attendance7d: 'Asistencia',
+      quests: '📜 Misiones',
+      attendance30d: 'Asistencia 30D',
+      dailyQuests: 'Misiones Diarias',
+      weeklyQuests: 'Misiones Semanales',
+      achievements: 'Logros',
+      petTreats: 'Premios para Mascotas',
+      supplyBoxes: 'Cajas de Suministro',
       chapterLocked: 'Capítulo Bloqueado',
     },
     modal: {
@@ -270,10 +305,17 @@ const DICTIONARY = {
       restoreError: 'Código de guardado inválido.',
     },
     tutorial: {
-      step1: '¡Arrastra para moverte! Leche ladra automáticamente.',
-      step2: '¡Escucha la palabra y quédate en la cápsula correcta para desbloquear!',
-      step3: '💥 ¡Toca dos veces la pantalla para la Super Explosión!',
-      complete: '¡Tutorial completado! ¡Hora de encontrar al dueño!',
+      step1: '¡Guau! ¡Arrastra la pantalla para moverme! ¡Yo dispararé automáticamente!',
+      step2: '¡Mira el marcador de arriba! ¡Ahí está la palabra objetivo que debemos descifrar!',
+      step3: "¡Guau! '{word}' en el marcador significa '{meaning}'. ¡Sigue las flechas y elige la respuesta en la escotilla! ({current} / {target})",
+      step3Retry: "¡Casi! '{word}' significa '{meaning}'. ¡Inténtalo de nuevo!",
+      step4: '¡Genial! Al descifrar palabras aprendes habilidades. ¡Elige una!',
+      step4Applied: '¡Bien! ¡Con [{skillName}] mi ataque es más fuerte y rápido!',
+      step5: '¡Derrota zombis con tu nueva habilidad y recoge gemas para llenar el medidor definitivo!',
+      step6: '¡Medidor lleno! ¡Toca dos veces rápido la pantalla para usar tu habilidad definitiva!',
+      step6Done: '¡Perfecto! ¡Ya eres todo un miembro del escuadrón!',
+      ackBtn: '🐾 ¡Entendido!',
+      complete: '¡Perfecto! ¡Ya eres todo un miembro del escuadrón!',
     },
   },
 };

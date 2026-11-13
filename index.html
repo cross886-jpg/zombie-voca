@@ -7,7 +7,7 @@
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
   <meta name="theme-color" content="#070b14" />
-  <title>좀비 보카 (Zombie Voca)</title>
+  <title>영단어 특공대: 멍멍 수호대</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="./css/style.css" />
   <style>
@@ -79,41 +79,77 @@
           </div>
         </div>
 
-        <!-- 단일 네온 LED 전광판 카드 (좌: 세로 번개 3개, 중: 네온 영단어, 우: 일시정지) -->
-        <div id="led-scoreboard" class="led-board pointer-events-auto mx-auto w-full rounded-2xl px-3.5 py-2 flex flex-col gap-1.5 cursor-pointer">
-          <!-- 상단 메인 행: 좌(세로 번개 3개) · 중(네온 영단어) · 우(일시정지) -->
-          <div class="flex items-center justify-between gap-2">
-            <!-- 좌측: 세로 1열 번개 3개 스킬 인디케이터 -->
-            <div id="hud-skill-sparks" class="flex flex-col items-center justify-center gap-0.5 px-1.5 py-1 rounded-xl bg-[#0b1a13]/90 border border-emerald-400/50 shadow-[0_0_8px_rgba(52,211,153,0.25)] shrink-0 transition-all duration-300">
+        <!-- 상단 HUD 동일 높이 3분할 행 (좌: 번개 3칸, 중: 순수 영단어 전광판, 우: 독립 일시정지) -->
+        <div class="pointer-events-auto mx-auto w-full flex items-stretch gap-2 h-14">
+          <!-- 좌측 블록: 번개 3칸 게이지 인디케이터 -->
+          <div id="hud-left-widget" class="flex items-center justify-center px-3 rounded-2xl bg-[#11261b]/95 border border-emerald-400/40 shadow-md shrink-0">
+            <!-- 번개 3칸 게이지 -->
+            <div id="hud-skill-sparks" class="flex items-center gap-1">
               <span id="skill-spark-0" class="text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95">⚡</span>
               <span id="skill-spark-1" class="text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95">⚡</span>
               <span id="skill-spark-2" class="text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95">⚡</span>
             </div>
+          </div>
 
-            <!-- 중앙: 네온 영단어 문제 (터치 시 발음 재생) -->
-            <div class="flex-1 flex items-center justify-center min-w-0 py-0.5 active:scale-95 transition-transform" title="터치하여 발음 듣기">
-              <div id="led-word-text" class="neon-word-glow text-3xl sm:text-4xl font-extrabold tracking-wide leading-none text-[#f8f5ec] select-none truncate">
-                READY
-              </div>
+          <!-- 중앙 블록: 순수 영어 단어 전용 전광판 (G, g, y, p, q, j 상하 잘림 방지 충분한 여백 및 사각형 음영 제거) -->
+          <div id="led-scoreboard" class="flex-1 rounded-2xl bg-[#11261b]/95 border border-emerald-400/50 shadow-[0_0_12px_rgba(52,211,153,0.25)] flex items-center justify-center px-3 cursor-pointer select-none active:scale-95 transition-transform overflow-visible" title="터치하여 발음 듣기">
+            <div id="led-word-text" class="neon-word-glow text-2xl sm:text-3xl font-extrabold tracking-wider leading-[1.3] text-[#f8f5ec] text-center truncate py-1">
+              READY
             </div>
+          </div>
 
-            <!-- 우측: 액션 버튼 (건너뛰기 및 일시정지) -->
-            <div class="flex items-center gap-1.5 shrink-0 pointer-events-auto">
-              <button id="btn-skip-tutorial" type="button" class="hidden px-2 h-7 rounded-lg bg-amber-500/20 border border-amber-400/50 text-[10px] font-extrabold text-amber-200 whitespace-nowrap active:scale-95">
-                건너뛰기 ⏭
-              </button>
-              <button id="btn-pause" type="button" class="w-8 h-8 rounded-xl bg-[#1b3b2b] hover:bg-[#234735] border border-emerald-400/50 shadow-[0_0_8px_rgba(52,211,153,0.3)] flex items-center justify-center text-xs font-bold text-[#f8f5ec] active:scale-95">
-                ⏸
-              </button>
-            </div>
+          <!-- 우측 블록: 일시정지 독립 버튼 -->
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button id="btn-pause" type="button" class="w-14 h-14 rounded-2xl bg-[#11261b]/95 hover:bg-[#1b3b2b] border border-emerald-400/50 shadow-md flex items-center justify-center text-base font-bold text-[#f8f5ec] active:scale-95 transition cursor-pointer" title="일시정지">
+              ⏸
+            </button>
           </div>
         </div>
 
-        <!-- 대폭발 READY 더블 탭 펄스 알림 배지 -->
-        <div id="hud-ult-ready-badge" class="hidden pointer-events-none mx-auto w-fit px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white font-black text-xs tracking-wider shadow-[0_0_20px_rgba(245,158,11,0.85)] border-2 border-yellow-200 animate-bounce flex items-center gap-1.5">
-          <span class="text-sm">💥</span>
-          <span>화면 두 번 탭! (DOUBLE TAP)</span>
+        <!-- Step 2 전용: 상단 전광판 아래쪽에서 전광판을 가리키는 큰 강아지 발바닥(🐾) 포인터 -->
+        <div id="tutorial-scoreboard-pointer" class="hidden pointer-events-none mx-auto flex flex-col items-center pt-1">
+          <div class="text-[48px] leading-none select-none tutorial-scoreboard-paw drop-shadow-[0_4px_12px_rgba(251,191,36,0.9)]">🐾</div>
+          <span class="mt-1 px-2.5 py-0.5 rounded-full bg-amber-400 text-[#1f2d24] text-[11px] font-black shadow-md">▲ 목표 단어 확인!</span>
         </div>
+      </div>
+
+      <!-- 튜토리얼 하단 엄지 조작 구역 제스처 오버레이 (Step 1 8자 트랙 / Step 6 더블탭) -->
+      <div id="tutorial-gesture-overlay" class="hidden absolute inset-x-0 bottom-[118px] pointer-events-none z-25 flex flex-col items-center justify-center">
+        <!-- Step 1: 가로 8자(∞) 점선 트랙 + 큰 강아지 발바닥(🐾) 순환 애니메이션 -->
+        <div id="tutorial-gesture-drag" class="hidden flex flex-col items-center gap-1.5">
+          <div class="relative w-[220px] h-[88px] flex items-center justify-center">
+            <svg viewBox="0 0 220 88" class="w-full h-full overflow-visible drop-shadow-[0_2px_10px_rgba(16,185,129,0.55)]">
+              <path
+                d="M 110 44 C 145 8, 204 8, 204 44 C 204 80, 145 80, 110 44 C 75 8, 16 8, 16 44 C 16 80, 75 80, 110 44 Z"
+                fill="none"
+                stroke="#6ee7b7"
+                stroke-width="3.5"
+                stroke-dasharray="7 6"
+                stroke-linecap="round"
+                opacity="0.88"
+              />
+            </svg>
+            <span class="absolute left-1/2 top-1/2 text-[50px] leading-none select-none tutorial-infinity-paw drop-shadow-[0_4px_14px_rgba(52,211,153,0.95)]">🐾</span>
+          </div>
+          <span class="px-3 py-1 rounded-full bg-[#0a1811]/90 border border-emerald-400/70 text-emerald-200 text-xs font-black shadow-lg">드래그하여 이동</span>
+        </div>
+
+        <!-- Step 6: 큰 강아지 발바닥(🐾) 더블탭 + 파동(리플) 애니메이션 -->
+        <div id="tutorial-gesture-doubletap" class="hidden flex flex-col items-center mb-16">
+          <div class="relative w-24 h-24 flex items-center justify-center">
+            <div class="absolute inset-0 rounded-full border-2 border-amber-400/90 bg-amber-400/20 tutorial-doubletap-ripple"></div>
+            <div class="absolute inset-2 rounded-full border-2 border-orange-400/80 bg-orange-400/15 tutorial-doubletap-ripple-delay"></div>
+            <span class="relative text-[52px] leading-none select-none tutorial-doubletap-paw drop-shadow-[0_4px_14px_rgba(251,191,36,0.95)]">🐾</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 필살기 100% 충전 시 하단 중앙 컴팩트 정사각형 필살기 발동 버튼 (기본 숨김, 튜토리얼 배너 유무에 따라 높이 자동 보정) -->
+      <div id="hud-ult-action-wrap" class="hidden pointer-events-none absolute inset-x-0 bottom-6 z-30 flex justify-center transition-all duration-200">
+        <button id="btn-hud-ult-cast" type="button" class="pointer-events-auto w-16 h-16 rounded-2xl bg-gradient-to-b from-amber-400 via-orange-500 to-rose-500 border-2 border-yellow-200 text-white shadow-[0_6px_20px_rgba(245,158,11,0.75)] flex flex-col items-center justify-center gap-0.5 active:scale-95 transition cursor-pointer tutorial-highlight-pulse">
+          <span class="text-2xl leading-none drop-shadow-sm">🔥</span>
+          <span id="hud-ult-btn-label" class="text-[10px] font-black leading-none tracking-tight drop-shadow-sm">필살기</span>
+        </button>
       </div>
     </div>
 
@@ -121,27 +157,31 @@
     <div id="lobby-layer" class="relative z-10 flex flex-col h-full w-full bg-gradient-to-b from-[#efe9dc] via-[#f5f0e6] to-[#e6dec8]">
       <!-- 상단 재화 & 프로필 바 -->
       <header class="px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 border-b border-[#142c20] bg-[#1b3b2b] text-[#f8f5ec] flex items-center justify-between gap-2 shadow-md">
-        <div id="btn-header-profile" class="flex items-center gap-2.5 cursor-pointer active:scale-95 transition" title="프로필 & 설정">
-          <div id="lobby-evo-badge" class="w-10 h-10 rounded-xl bg-[#234735] border border-[#2d5a43] flex items-center justify-center text-xl shadow-xs">🐶</div>
-          <div>
-            <div>
-              <div class="text-xs font-extrabold text-[#f8f5ec]" id="lobby-player-title">우유</div>
-              <div class="text-[11px] font-semibold text-emerald-300" id="lobby-evo-stage-name">네 발 아기 강아지 · A1</div>
+        <!-- 1. 좌측 프로필 위젯 (모바일 RPG 스타일: 아바타 + CEFR 알약 배지 + 이름/레벨 게이지 바) -->
+        <div id="btn-header-profile" class="flex items-center gap-2.5 cursor-pointer active:scale-95 transition select-none" title="모험가 프로필">
+          <div class="relative shrink-0">
+            <div id="lobby-evo-badge" class="w-10 h-10 rounded-xl bg-[#234735] border border-[#2d5a43] flex items-center justify-center text-xl shadow-xs">🐶</div>
+          </div>
+          <div class="flex flex-col justify-center gap-1 min-w-0">
+            <div class="text-xs font-extrabold text-[#f8f5ec] truncate max-w-[70px]" id="lobby-player-title">우유</div>
+            <button id="lobby-cert-badge" type="button" title="특공대 학습 코스 설정" class="self-start px-1.5 py-0.5 rounded-full bg-amber-500 border border-[#1b3b2b] text-[9px] font-black text-white leading-none whitespace-nowrap shadow-xs cursor-pointer active:scale-95 transition">🇺🇸 A1</button>
+            <div class="w-full min-w-14 h-1.5 rounded-full bg-[#142c20] border border-[#2d5a43] overflow-hidden">
+              <div id="lobby-header-xp-bar" class="h-full bg-gradient-to-r from-emerald-400 to-teal-300 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
           </div>
         </div>
 
-        <div class="flex items-center gap-1.5 text-xs font-bold">
-          <button id="btn-header-gold" type="button" title="훈련소로 이동" class="px-2.5 py-1 rounded-full bg-[#234735] hover:bg-[#2d5a43] border border-[#2d5a43] text-amber-300 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition">
+        <!-- 2. 우측 3대 재화 (금화 · 뼈다귀 · 보석) -->
+        <div class="flex items-center gap-1.5 text-xs font-bold shrink-0">
+          <button id="btn-header-gold" type="button" title="훈련소로 이동" class="px-2 py-1 rounded-full bg-[#234735] hover:bg-[#2d5a43] border border-[#2d5a43] text-amber-300 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition tabular-nums whitespace-nowrap">
             🪙 <span id="res-gold">0</span>
           </button>
-          <button id="btn-header-snacks" type="button" title="훈련소로 이동" class="px-2.5 py-1 rounded-full bg-[#234735] hover:bg-[#2d5a43] border border-[#2d5a43] text-amber-200 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition">
+          <button id="btn-header-snacks" type="button" title="훈련소로 이동" class="px-2 py-1 rounded-full bg-[#234735] hover:bg-[#2d5a43] border border-[#2d5a43] text-amber-200 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition tabular-nums whitespace-nowrap">
             🦴 <span id="res-snacks">0</span>
           </button>
-          <button id="btn-header-gems" type="button" title="상점으로 이동" class="px-2.5 py-1 rounded-full bg-[#234735] hover:bg-[#2d5a43] border border-[#2d5a43] text-cyan-300 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition">
-            💎 <span id="res-gems">300</span>
+          <button id="btn-header-gems" type="button" title="상점으로 이동" class="px-2 py-1 rounded-full bg-[#234735] hover:bg-[#2d5a43] border border-[#2d5a43] text-cyan-300 flex items-center gap-1 shadow-xs cursor-pointer active:scale-95 transition tabular-nums whitespace-nowrap">
+            💎 <span id="res-gems">0</span>
           </button>
-          <button id="btn-open-settings" type="button" class="w-8 h-8 rounded-full bg-[#234735] border border-[#2d5a43] text-[#f8f5ec] shadow-xs flex items-center justify-center text-sm active:scale-95" title="설정">⚙️</button>
         </div>
       </header>
 
@@ -164,8 +204,8 @@
       <!-- 하단 5단 네비게이션 탭 -->
       <nav class="relative flex items-center justify-between border-t border-[#142c20] bg-[#1b3b2b] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 px-2 gap-1 shadow-[0_-4px_16px_rgba(20,44,32,0.35)]">
         <button type="button" data-lobby-tab="gear" class="lobby-tab-btn flex-1 flex flex-col items-center py-1.5 px-1 rounded-xl border border-transparent text-[#a3b899] hover:text-[#f8f5ec] transition">
-          <span class="text-lg leading-none">🎒</span>
-          <span class="text-[10px] font-bold mt-1 whitespace-nowrap" data-i18n="lobby.tabGear">장비·코스튬</span>
+          <span class="text-lg leading-none">🐾</span>
+          <span class="text-[10px] font-bold mt-1 whitespace-nowrap" data-i18n="lobby.tabGear">내 강아지</span>
         </button>
         <button type="button" data-lobby-tab="training" class="lobby-tab-btn flex-1 flex flex-col items-center py-1.5 px-1 rounded-xl border border-transparent text-[#a3b899] hover:text-[#f8f5ec] transition">
           <span class="text-lg leading-none">🏋️</span>
@@ -189,6 +229,28 @@
     <!-- 4. 공통 모달 & 팝업 오버레이 레이어 -->
     <div id="modal-layer" class="hidden absolute inset-0 z-40 bg-[#1f2d24]/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div id="modal-card" class="w-full max-w-[420px] max-h-[88dvh] overflow-y-auto bg-[#faf6ee] border border-[#d2c8b4] text-[#1f2d24] rounded-2xl p-5 shadow-2xl"></div>
+    </div>
+
+    <!-- 우유 교관 코칭 말풍선 배너 (전투 화면 맨 하단 bottom-4 고정, 스킬 선택 모달보다 높은 z-50 노출) -->
+    <div id="hud-tutorial-coach" class="hidden pointer-events-auto absolute bottom-4 inset-x-3 z-50 rounded-2xl bg-[#faf6ee]/95 border-2 border-amber-400 shadow-[0_6px_24px_rgba(0,0,0,0.45),0_0_20px_rgba(245,158,11,0.35)] px-3 py-2.5 flex items-center gap-2.5 transition-all duration-200">
+      <div class="relative shrink-0">
+        <div class="w-11 h-11 rounded-xl bg-white border-2 border-amber-400 shadow-xs flex flex-col items-center justify-center leading-none">
+          <span class="text-xl leading-none">🐶</span>
+          <span class="text-[8px] font-black text-amber-800 mt-0.5">우유 교관</span>
+        </div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-1.5">
+          <span id="tutorial-coach-step" class="text-[10px] font-black text-amber-800 bg-amber-200/80 px-1.5 py-0.5 rounded-full leading-none">STEP 1 / 6</span>
+          <span id="tutorial-coach-count" class="hidden text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-1.5 py-0.5 rounded-full leading-none">0 / 2</span>
+        </div>
+        <p id="tutorial-coach-text" class="text-xs font-extrabold text-[#1f2d24] mt-1 leading-snug break-keep">
+          멍! 화면을 드래그해서 나를 움직여 봐! 사격은 내가 자동으로 할게!
+        </p>
+      </div>
+      <button id="btn-tutorial-coach-ack" type="button" class="hidden shrink-0 px-2.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs shadow-md active:scale-95 transition cursor-pointer whitespace-nowrap">
+        🐾 알겠어!
+      </button>
     </div>
 
   </div>

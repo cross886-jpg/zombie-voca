@@ -6,7 +6,7 @@
 
 import { COMPANIONS } from '../data/catalog.js';
 
-export const MAX_EQUIPPED_COMPANIONS = 2;
+export const MAX_EQUIPPED_COMPANIONS = 3;
 
 export const BALANCE = Object.freeze({
   ENGINE: {
@@ -37,12 +37,13 @@ export const BALANCE = Object.freeze({
   },
 
   MONOLITH: {
-    CAPTURE_TIME_SEC: 1.0,       // 벙커 진입 발판 잠금 해제 소요 시간 (1.0초)
+    CAPTURE_TIME_SEC: 0.7,       // 벙커 진입 발판 잠금 해제 소요 시간 (0.7초)
     RESPAWN_DELAY_SEC: 1.5,      // 확정 소멸 후 다음 비석 스폰 대기 시간 (1.5초)
     CAPTURE_RADIUS: 28,          // 벙커 해치 본체 물리 충돌 차단 반경 (28px 엄폐물)
     ENTRY_OFFSET_Y: 38,          // 정면 진입 발판 Y 오프셋 (+38px)
     ENTRY_RADIUS: 28,            // 정면 진입 발판 판정 반경 (28px)
     CORRECT_XP: 100,             // 정답 시 진화 XP 상승
+    CORRECT_HEAL_RATIO: 0.04,    // 정답 시 체력 회복량: 최대 체력의 4% (과잉 회복 방지)
     WRONG_XP_PENALTY: -50,       // 오답 시 진화 XP 하락
     WRONG_SLOW_DURATION: 3.0,    // 오답 시 이동속도 저하 디버프 (3초)
     WRONG_SLOW_MULT: 0.55,       // 오답 디버프 이동속도 배율
@@ -51,9 +52,9 @@ export const BALANCE = Object.freeze({
   },
 
   PLAYER: {
-    BASE_HP: 120,
+    BASE_HP: 100,
     BASE_SPEED: 115,             // 캐릭터 비율 축소에 맞춘 묵직하고 정밀한 컨트롤 속도 (기존 160 대비 약 28% 하향)
-    BASE_ATK: 18,
+    BASE_ATK: 10,
     RADIUS: 15,
     RENDER_SCALE: 1.05,
     PICKUP_RADIUS: 72,
@@ -87,16 +88,12 @@ export const BALANCE = Object.freeze({
     ULT_RADIUS: 340,
     DAMAGE_TEXT_TTL: 0.65,
     GEM_XP_VALUE: 10,
-    SNACK_DROP_CHANCE: 0.015, // 기존 0.06 대비 1/4 수준으로 하향 (한 판 30문제 기준 평균 1~2개 희소 드롭)
-    SNACK_HEAL_RATIO: 0.28,   // 뼈다귀 1개당 최대 체력의 28% 회복 (25%~30% 범위)
+    GEM_CHARGE_VALUE: 2,
+    GEM_TTL: 14,               // 14초 후 자연 소멸 (자석 스탯 가치 유지)
+    BONE_DROP_CHANCE: 0.015,   // 희소 드롭 (🦴 뼈다귀: 로비 성장·친밀도 재화)
+    MEDKIT_DROP_CHANCE: 0.005, // 극희소 드롭 (💊 구급상자: 즉시 체력 회복)
+    MEDKIT_HEAL_RATIO: 0.3,    // 구급상자 획득 시 최대 체력의 30% 즉시 회복
   },
-
-  GEM_TIERS: [
-    { id: 'blue',   chance: 0.75, charge: 2,   scale: 1.0,  color: '#38bdf8', glow: '#38bdf8', blur: 8 },
-    { id: 'green',  chance: 0.18, charge: 10,  scale: 1.2,  color: '#4ade80', glow: '#22c55e', blur: 11 },
-    { id: 'purple', chance: 0.06, charge: 35,  scale: 1.4,  color: '#c084fc', glow: '#a855f7', blur: 15 },
-    { id: 'gold',   chance: 0.01, charge: 100, scale: 1.65, color: '#facc15', glow: '#f59e0b', blur: 20 },
-  ],
 
   ENEMIES: {
     MAX_ACTIVE: 48,
@@ -112,11 +109,24 @@ export const BALANCE = Object.freeze({
       MAX_MULT: 1.35,
     },
     TYPES: {
-      walker:  { hp: 28,  speed: 42, dmg: 8,  radius: 13, xp: 10, color: '#6ee7b7' },
-      runner:  { hp: 20,  speed: 68, dmg: 10, radius: 11, xp: 12, color: '#fca5a5' },
-      brute:   { hp: 82,  speed: 30, dmg: 16, radius: 18, xp: 24, color: '#c4b5fd' },
-      spitter: { hp: 32,  speed: 38, dmg: 12, radius: 13, xp: 16, color: '#fde047' },
-      armored: { hp: 125, speed: 28, dmg: 18, radius: 17, xp: 30, color: '#93c5fd' },
+      walker:      { hp: 28,  speed: 42, dmg: 8,  radius: 13, xp: 10, color: '#4ade80' },
+      conehead:    { hp: 65,  speed: 40, dmg: 10, radius: 13, xp: 18, color: '#fb923c' },
+      runner:      { hp: 22,  speed: 72, dmg: 10, radius: 11, xp: 14, color: '#f87171' },
+      buckethead:  { hp: 120, speed: 36, dmg: 14, radius: 14, xp: 28, color: '#94a3b8' },
+      newspaper:   { hp: 55,  speed: 34, dmg: 10, radius: 13, xp: 22, color: '#fef08a' },
+      spitter:     { hp: 35,  speed: 38, dmg: 12, radius: 13, xp: 18, color: '#a3e635' },
+      polevaulter: { hp: 45,  speed: 64, dmg: 12, radius: 12, xp: 20, color: '#cbd5e1' },
+      screendoor:  { hp: 110, speed: 32, dmg: 14, radius: 14, xp: 26, color: '#64748b' },
+      bomber:      { hp: 38,  speed: 52, dmg: 22, radius: 13, xp: 24, color: '#ef4444' },
+      football:    { hp: 140, speed: 60, dmg: 18, radius: 15, xp: 35, color: '#b91c1c' },
+      dancer:      { hp: 80,  speed: 44, dmg: 12, radius: 14, xp: 32, color: '#f43f5e' },
+      miner:       { hp: 70,  speed: 40, dmg: 16, radius: 13, xp: 28, color: '#d97706' },
+      ghost:       { hp: 50,  speed: 46, dmg: 14, radius: 12, xp: 26, color: '#c084fc' },
+      balloon:     { hp: 42,  speed: 50, dmg: 12, radius: 12, xp: 25, color: '#fb7185' },
+      gargantuar:  { hp: 350, speed: 26, dmg: 32, radius: 24, xp: 60, color: '#475569' },
+      // 레거시 호환
+      brute:       { hp: 82,  speed: 30, dmg: 16, radius: 18, xp: 24, color: '#c4b5fd' },
+      armored:     { hp: 125, speed: 28, dmg: 18, radius: 17, xp: 30, color: '#93c5fd' },
     },
   },
 
@@ -141,25 +151,25 @@ export const BALANCE = Object.freeze({
   },
 
   TRAINING: {
-    BASE_COST_GOLD: 20,
+    BASE_COST_GOLD: 15,
     COST_GROWTH: 1.35,
-    ATK_BONUS_PER_LV: 4,
-    HP_BONUS_PER_LV: 20,
-    SPEED_BONUS_PER_LV: 0.025,
+    ATK_BONUS_PER_LV: 1,
+    HP_BONUS_PER_LV: 10,
+    SPEED_BONUS_PER_LV: 0.02,
     SPEED_MAX_LV: 20,
-    MAGNET_BONUS_PER_LV: 12,
+    MAGNET_BONUS_PER_LV: 8,
     MAGNET_MAX_LV: 20,
-    ULT_CHARGE_BONUS_PER_LV: 0.05,
+    ULT_CHARGE_BONUS_PER_LV: 0.04,
     ULT_CHARGE_MAX_LV: 20,
-    SHIELD_BONUS_PER_LV: 0.04,
+    SHIELD_BONUS_PER_LV: 0.03,
     SHIELD_MAX_LV: 15,
     ITEMS: {
-      atkLevel:    { baseCost: 20, growth: 1.35, maxLv: 99, perLv: 4 },
-      hpLevel:     { baseCost: 20, growth: 1.35, maxLv: 99, perLv: 20 },
-      speedLv:     { baseCost: 25, growth: 1.35, maxLv: 20, perLv: 0.025 },
-      magnetLv:    { baseCost: 25, growth: 1.35, maxLv: 20, perLv: 12 },
-      ultChargeLv: { baseCost: 30, growth: 1.35, maxLv: 20, perLv: 0.05 },
-      shieldLv:    { baseCost: 30, growth: 1.35, maxLv: 15, perLv: 0.04 },
+      atkLevel:    { baseCost: 15, growth: 1.35, maxLv: 99, perLv: 1 },
+      hpLevel:     { baseCost: 15, growth: 1.35, maxLv: 99, perLv: 10 },
+      speedLv:     { baseCost: 15, growth: 1.35, maxLv: 20, perLv: 0.02 },
+      magnetLv:    { baseCost: 15, growth: 1.35, maxLv: 20, perLv: 8 },
+      ultChargeLv: { baseCost: 20, growth: 1.35, maxLv: 20, perLv: 0.04 },
+      shieldLv:    { baseCost: 20, growth: 1.35, maxLv: 15, perLv: 0.03 },
     },
   },
 
@@ -173,6 +183,13 @@ export const BALANCE = Object.freeze({
   TUTORIAL: {
     QUESTION_COUNT: 3,
     INITIAL_ZOMBIES: 4,
+    STEP1_TARGET_KILLS: 2,
+    STEP1_MIN_MOVE_DIST: 24,
+    STEP4_EXPLAIN_SEC: 1.8,
+    STEP5_GEM_ULT_CHARGE: 34,
+    STEP5_KILL_ULT_CHARGE: 12,
+    STEP5_WAVE_ZOMBIES: 6,
+    STEP6_COMPLETE_SEC: 1.4,
   },
 });
 
@@ -217,20 +234,6 @@ export function isCompanionUnlockable(companionId, saveState) {
   const cond = comp.unlockCond || { type: 'chapter', chapter: comp.unlockChapter || 1 };
   const checker = COMPANION_UNLOCK_CHECKERS[cond.type];
   return checker ? checker(cond, saveState) : false;
-}
-
-/**
- * GEM_TIERS 확률 테이블에 따라 보석 등급 1종 추출
- */
-export function rollGemTier() {
-  const tiers = BALANCE.GEM_TIERS;
-  const r = Math.random();
-  let acc = 0;
-  for (const tier of tiers) {
-    acc += tier.chance;
-    if (r < acc) return tier;
-  }
-  return tiers[0];
 }
 
 /**

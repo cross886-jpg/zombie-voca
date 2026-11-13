@@ -3,7 +3,7 @@
  * 4개 입체 홀로그램 비석(4사분면 스폰, 220px 최소 거리, 0.4초 점령 게이지·즉시 소멸) + 보카 젬·간식 드롭
  */
 
-import { BALANCE, rollGemTier } from '../config/balance.js';
+import { BALANCE } from '../config/balance.js';
 
 export class MonolithManager {
   constructor() {
@@ -82,7 +82,7 @@ export class MonolithManager {
         meaning: choice.meaning,
         isCorrect: choice.isCorrect,
         wordId: choice.wordId,
-        captureProgress: 0, // 0 ~ 1 (1.0초 완충)
+        captureProgress: 0, // 0 ~ 1 (0.7초 완충)
         radius: BALANCE.MONOLITH.CAPTURE_RADIUS || 28, // 강철 벙커 해치 본체 물리 충돌 차단 반경 (엄폐물)
         entryOffsetY: BALANCE.MONOLITH.ENTRY_OFFSET_Y || 38, // 정면 진입 발판 Y 오프셋
         entryRadius: BALANCE.MONOLITH.ENTRY_RADIUS || 28, // 정면 진입 발판 판정 반경
@@ -99,21 +99,20 @@ export class MonolithManager {
   }
 
   spawnDrop(type, x, y, value = BALANCE.COMBAT.GEM_XP_VALUE) {
-    const tier = type === 'gem' ? rollGemTier() : null;
     this.drops.push({
-      type, // 'gem' | 'snack'
+      type, // 'gem' | 'snack' (뼈다귀) | 'medkit' (구급상자)
       x,
       y,
       value,
-      tier,
-      radius: tier ? Math.round(10 * tier.scale) : 10,
+      ttl: type === 'gem' ? (BALANCE.COMBAT.GEM_TTL || 14) : null,
+      radius: type === 'medkit' ? 12 : (type === 'snack' ? 11 : 9),
       bobPhase: Math.random() * Math.PI * 2,
     });
   }
 
   /**
-   * 비석 점령 판정 및 드롭 아이템 자석 흡수
-   * @returns {{ resolvedMonolith: object | null, pickedGems: number, pickedSnacks: number, captureTicking: boolean }}
+   * 비석 점령 판정 및 드롭 아이템(보석/뼈다귀/구급상자) 자석 흡수
+   * @returns {{ resolvedMonolith: object | null, pickedGems: number, pickedGemCharge: number, pickedSnacks: number, pickedMedkits: number, captureTicking: boolean }}
    */
   update(dt, player) {
     if (this.riseProgress < 1) {
@@ -132,7 +131,7 @@ export class MonolithManager {
         const inEntryZone = distToEntry <= (m.entryRadius || 28) + player.radius * 0.35;
 
         if (inEntryZone) {
-          m.captureProgress += dt / (BALANCE.MONOLITH.CAPTURE_TIME_SEC || 1.0);
+          m.captureProgress += dt / (BALANCE.MONOLITH.CAPTURE_TIME_SEC || 0.7);
           captureTicking = true;
           if (m.captureProgress >= 1) {
             resolvedMonolith = m;
@@ -156,19 +155,28 @@ export class MonolithManager {
       }
     }
 
-    // 보카 젬 & 간식 자석 흡수
+    // 전장 드롭 3종(보카 젬, 뼈다귀, 구급상자) 자석 흡수 및 시간 경과 처리
     let pickedGems = 0;
     let pickedGemCharge = 0;
-    const pickedHighTiers = [];
     let pickedSnacks = 0;
+    let pickedMedkits = 0;
 
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i];
       d.bobPhase += dt * 5;
 
-      // 풀피(100% 체력) 상태에서는 회복 뼈다귀가 헛되이 소모되지 않도록 자석 흡수 및 획득 방지
+      // 1. 보석(gem) 소멸 타이머 (일정 시간 경과 시 소멸되어 자석 스탯 가치 유지)
+      if (d.type === 'gem' && d.ttl !== null) {
+        d.ttl -= dt;
+        if (d.ttl <= 0) {
+          this.drops.splice(i, 1);
+          continue;
+        }
+      }
+
+      // 2. 구급상자는 풀피(100% 체력) 상태에서는 헛되이 낭비되지 않도록 자석 흡수 방지
       const isFullHp = player.hp >= player.maxHp;
-      if (d.type === 'snack' && isFullHp) {
+      if (d.type === 'medkit' && isFullHp) {
         continue;
       }
 
@@ -187,47 +195,68 @@ export class MonolithManager {
 
       if (dist <= player.radius + d.radius + 6) {
         if (d.type === 'gem') {
-          const tier = d.tier || BALANCE.GEM_TIERS[0];
           pickedGems += d.value;
-          pickedGemCharge += tier.charge;
-          if (tier.id === 'purple' || tier.id === 'gold') {
-            pickedHighTiers.push(tier);
-          }
+          pickedGemCharge += (BALANCE.COMBAT.GEM_CHARGE_VALUE || 2);
         } else if (d.type === 'snack') {
           pickedSnacks += 1;
+        } else if (d.type === 'medkit') {
+          pickedMedkits += 1;
         }
         this.drops.splice(i, 1);
       }
     }
 
-    return { resolvedMonolith, pickedGems, pickedGemCharge, pickedHighTiers, pickedSnacks, captureTicking };
+    return { resolvedMonolith, pickedGems, pickedGemCharge, pickedSnacks, pickedMedkits, captureTicking };
   }
 
-  render(ctx, time) {
-    // 1. 보카 젬 & 간식 드롭 렌더링
+  render(ctx, time, highlightRing = false, camera = null, viewW = 0, viewH = 0) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.006);
+
+    // 1. 전장 드롭 3종 렌더링 (단일 통일 💎 보석, 🦴 뼈다귀, 💊 구급상자)
     for (const d of this.drops) {
       ctx.save();
       const bobY = Math.sin(d.bobPhase) * 3;
       ctx.translate(d.x, d.y + bobY);
 
       if (d.type === 'gem') {
-        const tier = d.tier || BALANCE.GEM_TIERS[0];
-        const s = tier.scale;
-        ctx.fillStyle = tier.color;
-        ctx.shadowColor = tier.glow;
-        ctx.shadowBlur = tier.blur;
+        // 단일 통일 디자인: 네온 시안 다이아몬드 (소멸 3초 전 점멸)
+        if (d.ttl !== null && d.ttl < 3 && Math.floor(d.ttl * 8) % 2 === 0) {
+          ctx.globalAlpha = 0.35;
+        }
+        ctx.fillStyle = '#38bdf8';
+        ctx.shadowColor = '#0ea5e9';
+        ctx.shadowBlur = 10;
         ctx.beginPath();
-        ctx.moveTo(0, -8 * s);
-        ctx.lineTo(7 * s, 0);
-        ctx.lineTo(0, 8 * s);
-        ctx.lineTo(-7 * s, 0);
+        ctx.moveTo(0, -9);
+        ctx.lineTo(7, 0);
+        ctx.lineTo(0, 9);
+        ctx.lineTo(-7, 0);
         ctx.closePath();
         ctx.fill();
-      } else {
+
+        // 내부 반사 하이라이트
+        ctx.fillStyle = '#bae6fd';
+        ctx.beginPath();
+        ctx.moveTo(0, -5);
+        ctx.lineTo(3.5, 0);
+        ctx.lineTo(0, 5);
+        ctx.lineTo(-3.5, 0);
+        ctx.closePath();
+        ctx.fill();
+      } else if (d.type === 'snack') {
+        ctx.shadowColor = 'rgba(251, 191, 36, 0.7)';
+        ctx.shadowBlur = 8;
         ctx.font = '18px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('🦴', 0, 0);
+      } else if (d.type === 'medkit') {
+        ctx.shadowColor = 'rgba(239, 68, 68, 0.8)';
+        ctx.shadowBlur = 12;
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💊', 0, 0);
       }
       ctx.restore();
     }
@@ -236,13 +265,15 @@ export class MonolithManager {
     for (const m of this.monoliths) {
       ctx.save();
       const riseOffset = (1 - this.riseProgress) * 36;
-      const pulse = Math.sin(time * 4 + m.id) * 2;
-      ctx.translate(m.x, m.y + riseOffset);
-      ctx.globalAlpha = 0.25 + this.riseProgress * 0.75;
-
       const isHacking = m.captureProgress > 0;
       const isSuccess = m.highlighted;
       const isTrap = m.trapWarning;
+
+      // 해독 진행 중 캡슐 미세 진동 피드백 (Hacking Vibration Feedback)
+      const vibX = isHacking ? (Math.random() - 0.5) * 2.6 * Math.min(1, m.captureProgress * 1.5) : 0;
+      const vibY = isHacking ? (Math.random() - 0.5) * 2.6 * Math.min(1, m.captureProgress * 1.5) : 0;
+      ctx.translate(m.x + vibX, m.y + riseOffset + vibY);
+      ctx.globalAlpha = 0.25 + this.riseProgress * 0.75;
 
       // ==========================================
       // [A. 정면 진입 발판 (Entry Zone Footpad)]
@@ -257,6 +288,25 @@ export class MonolithManager {
       ctx.beginPath();
       ctx.ellipse(0, footY + 4, footW / 2 + 2, footH / 2, 0, 0, Math.PI * 2);
       ctx.fill();
+
+      // 튜토리얼 Step 3: 벙커 해치 원 주변 강조 펄스 링
+      if (highlightRing) {
+        ctx.save();
+        const ringExpand = (performance.now() * 0.0018) % 1;
+        const ringR = footR + 6 + ringExpand * 22;
+        ctx.strokeStyle = `rgba(250, 204, 21, ${(1 - ringExpand) * 0.9})`;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(0, footY, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, footY, footR + 4 + pulse * 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // 발판 내부 배경 (금속 격자 미끄럼 방지 플레이트)
       const padGrad = ctx.createLinearGradient(0, footY - footH / 2, 0, footY + footH / 2);
@@ -325,17 +375,38 @@ export class MonolithManager {
       ctx.textBaseline = 'middle';
       ctx.fillText('▲ ENTRY ▲', 0, footY);
 
-      // 발판 잠금 해제 게이지 원형 아크
+      // 발판 해독 액션 원형 진행 게이지 링 (굵고 선명한 Progress Arc + 헤드 스파크)
       if (m.captureProgress > 0) {
         ctx.save();
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 5;
-        ctx.lineCap = 'round';
-        ctx.shadowColor = '#f59e0b';
-        ctx.shadowBlur = 12;
+        const progress = Math.min(1, m.captureProgress);
+        const arcR = footR + 4;
+        const startAng = -Math.PI / 2;
+        const endAng = startAng + Math.PI * 2 * progress;
+
+        // 1) 배경 트랙 링
         ctx.beginPath();
-        ctx.arc(0, footY, footR + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, m.captureProgress));
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+        ctx.lineWidth = 5.5;
+        ctx.arc(0, footY, arcR, 0, Math.PI * 2);
         ctx.stroke();
+
+        // 2) 채워지는 굵고 선명한 원형 아크
+        ctx.beginPath();
+        ctx.strokeStyle = isTrap ? '#ef4444' : '#fbbf24';
+        ctx.lineWidth = 6.0;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = isTrap ? '#f87171' : '#f59e0b';
+        ctx.shadowBlur = 14;
+        ctx.arc(0, footY, arcR, startAng, endAng);
+        ctx.stroke();
+
+        // 3) 아크 전두부 헤드 글로우 도트
+        const headX = Math.cos(endAng) * arcR;
+        const headY = footY + Math.sin(endAng) * arcR;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(headX, headY, 3.2, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
       }
 
@@ -428,42 +499,57 @@ export class MonolithManager {
 
       // ==========================================
       // [C. 상단 고정 단어 뜻 HUD 배너]
+      // 화면 뷰포트 안쪽에 해치 중심이 들어와 있을 때만 해치 자체 단어 라벨을 렌더링 (오프스크린 시 가장자리 말풍선과 이중 겹침 방지)
       // ==========================================
-      const bannerW = 120;
-      const bannerH = 32;
-      const bannerY = -hatchR - 18 + pulse;
+      const scrPos = camera && viewW > 0 && viewH > 0 ? camera.worldToScreen(m.x, m.y, viewW, viewH) : null;
+      const isOffscreen = scrPos ? isMonolithOffscreen(scrPos.x, scrPos.y, viewW, viewH) : false;
 
-      ctx.save();
-      ctx.shadowColor = isSuccess ? '#10b981' : (isTrap ? '#ef4444' : (isHacking ? '#f59e0b' : '#06b6d4'));
-      ctx.shadowBlur = isSuccess ? 18 : 12;
+      if (!isOffscreen) {
+        const bannerW = 120;
+        const bannerH = 32;
+        const bannerY = -hatchR - 18 + pulse;
 
-      // 홀로그램 플레이트 배경
-      ctx.fillStyle = isSuccess ? 'rgba(6, 78, 59, 0.95)' : (isTrap ? 'rgba(127, 29, 29, 0.95)' : 'rgba(10, 25, 47, 0.95)');
-      ctx.strokeStyle = isSuccess ? '#34d399' : (isTrap ? '#ef4444' : (isHacking ? '#facc15' : 'rgba(34, 211, 238, 0.85)'));
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.roundRect(-bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 10);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
+        ctx.save();
+        ctx.shadowColor = isSuccess ? '#10b981' : (isTrap ? '#ef4444' : (isHacking ? '#f59e0b' : '#06b6d4'));
+        ctx.shadowBlur = isSuccess ? 18 : 12;
 
-      // 전자 자물쇠 홀로그램 아이콘 (좌측)
-      ctx.font = '14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const lockIcon = isSuccess ? '🔓' : (isTrap ? '🚨' : (isHacking ? '⚡' : '🔒'));
-      ctx.fillText(lockIcon, -bannerW / 2 + 15, bannerY);
+        // 홀로그램 플레이트 배경
+        ctx.fillStyle = isSuccess ? 'rgba(6, 78, 59, 0.95)' : (isTrap ? 'rgba(127, 29, 29, 0.95)' : 'rgba(10, 25, 47, 0.95)');
+        ctx.strokeStyle = isSuccess ? '#34d399' : (isTrap ? '#ef4444' : (isHacking ? '#facc15' : 'rgba(34, 211, 238, 0.85)'));
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.roundRect(-bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
 
-      // 단어 뜻 텍스트 (우측, 크고 또렷한 굵은 폰트)
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '800 15px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(m.meaning, 10, bannerY);
+        // 전자 자물쇠 홀로그램 아이콘 (좌측)
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const lockIcon = isSuccess ? '🔓' : (isTrap ? '🚨' : (isHacking ? '⚡' : '🔒'));
+        ctx.fillText(lockIcon, -bannerW / 2 + 15, bannerY);
+
+        // 단어 뜻 텍스트 (우측, 크고 또렷한 굵은 폰트)
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 15px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(m.meaning, 10, bannerY);
+      }
 
       ctx.restore();
     }
   }
+}
+
+/**
+ * 벙커 해치 중심 좌표가 화면 뷰포트 바깥(오프스크린)에 있는지 엄격 판정
+ * - 해치 중심이 뷰포트 안쪽(0 <= screenX <= viewW && 0 <= screenY <= viewH)이면 false (가장자리 가이드 숨김)
+ * - 해치 중심이 뷰포트 바깥이면 true (가장자리 가이드 표시)
+ */
+export function isMonolithOffscreen(screenX, screenY, viewW, viewH) {
+  return screenX < 0 || screenX > viewW || screenY < 0 || screenY > viewH;
 }
 
 /**

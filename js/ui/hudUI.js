@@ -9,7 +9,7 @@ import { t } from '../data/i18n.js';
 import { audioEngine } from '../core/audioEngine.js';
 import { GAME_STATES } from '../game/gameEngine.js';
 import { getSave, updateSave } from '../core/saveStore.js';
-import { clampIndicatorToThumbSafeZone } from '../entities/monoliths.js';
+import { clampIndicatorToThumbSafeZone, isMonolithOffscreen } from '../entities/monoliths.js';
 
 export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const hudLayer = document.getElementById('hud-layer');
@@ -18,7 +18,6 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const canvas = document.getElementById('game-canvas');
 
   const btnPause = document.getElementById('btn-pause');
-  const btnSkipTutorial = document.getElementById('btn-skip-tutorial');
 
   const bossWrap = document.getElementById('hud-boss-bar-wrap');
   const bossName = document.getElementById('hud-boss-name');
@@ -36,9 +35,23 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const skillSparksWrap = document.getElementById('hud-skill-sparks');
 
   const edgeArrowsWrap = document.getElementById('edge-arrows');
-  const hudUltReadyBadge = document.getElementById('hud-ult-ready-badge');
+  const hudLeftWidget = document.getElementById('hud-left-widget');
   const hudPlacementBadge = document.getElementById('hud-placement-badge');
   const hudPlacementText = document.getElementById('hud-placement-text');
+
+  const hudTutorialCoach = document.getElementById('hud-tutorial-coach');
+  const tutorialCoachStep = document.getElementById('tutorial-coach-step');
+  const tutorialCoachCount = document.getElementById('tutorial-coach-count');
+  const tutorialCoachText = document.getElementById('tutorial-coach-text');
+  const btnTutorialCoachAck = document.getElementById('btn-tutorial-coach-ack');
+
+  const tutorialGestureOverlay = document.getElementById('tutorial-gesture-overlay');
+  const tutorialGestureDrag = document.getElementById('tutorial-gesture-drag');
+  const tutorialGestureDoubleTap = document.getElementById('tutorial-gesture-doubletap');
+  const tutorialScoreboardPointer = document.getElementById('tutorial-scoreboard-pointer');
+  const hudUltActionWrap = document.getElementById('hud-ult-action-wrap');
+  const btnHudUltCast = document.getElementById('btn-hud-ult-cast');
+  const hudUltBtnLabel = document.getElementById('hud-ult-btn-label');
 
   const joystickEl = document.getElementById('virtual-joystick');
   const joystickKnob = document.getElementById('joystick-knob');
@@ -74,9 +87,15 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     edgeArrowsWrap.innerHTML = '';
     bossWrap.classList.add('hidden');
     wrongReviewOverlay?.classList.add('hidden');
-    btnSkipTutorial?.classList.add('hidden');
-    hudUltReadyBadge?.classList.add('hidden');
     hudPlacementBadge?.classList.add('hidden');
+    hudTutorialCoach?.classList.add('hidden');
+    tutorialGestureOverlay?.classList.add('hidden');
+    tutorialGestureDrag?.classList.add('hidden');
+    tutorialGestureDoubleTap?.classList.add('hidden');
+    tutorialScoreboardPointer?.classList.add('hidden');
+    hudUltActionWrap?.classList.add('hidden');
+    ledScoreboard?.classList.remove('tutorial-highlight-pulse');
+    hudLeftWidget?.classList.remove('tutorial-highlight-pulse');
     skillSparks.forEach((el) => {
       if (el) el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95';
     });
@@ -203,17 +222,26 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     }
   });
 
-  btnSkipTutorial?.addEventListener('click', () => {
+  btnTutorialCoachAck?.addEventListener('click', () => {
     resetJoystick();
-    engine.skipTutorial();
-    hideHud();
-    onReturnToLobby?.();
+    engine.acknowledgeTutorialStep2();
+  });
+
+  btnHudUltCast?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    audioEngine.unlock();
+    resetJoystick();
+    engine.useUltimate();
   });
 
   ledScoreboard?.addEventListener('click', () => {
     if (currentWordText) {
       audioEngine.unlock();
       audioEngine.speakWordOnce(currentWordText);
+    }
+    if (engine.runStats?.isTutorial && engine.tutorial?.step === 2) {
+      resetJoystick();
+      engine.acknowledgeTutorialStep2();
     }
   });
 
@@ -230,9 +258,9 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
     const minX = 46;
     const maxXBound = viewW - 46;
-    const topPadding = 138; // 전광판 하단(약 105px) + 33px 여유 간격
+    const topPadding = 138;
     const minY = topPadding;
-    const maxYBound = viewH - 78;
+    const maxYBound = engine.runStats?.isTutorial ? viewH - 134 : viewH - 78;
 
     // 레이-박스 교차 기준점(우유 화면 좌표)을 안전 영역 내로 클램프
     const ox = Math.max(minX + 1, Math.min(maxXBound - 1, playerScr.x));
@@ -240,7 +268,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
     const htmlParts = [];
     for (const item of edgeArrows) {
-      if (!item.outOfView) continue;
+      if (!item.outOfView || !isMonolithOffscreen(item.screenX, item.screenY, viewW, viewH)) continue;
       const dx = item.screenX - playerScr.x;
       const dy = item.screenY - playerScr.y;
       const angle = Math.atan2(dy, dx);
@@ -340,15 +368,21 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       .map((choice, idx) => {
         if (choice.kind === 'skill') {
           const sk = choice.skill;
+          const isAwakening = choice.nextLevel === 5 && sk.category === 'bark';
+          const name = isAwakening && sk.awakenedName ? sk.awakenedName : sk.name;
+          const desc = isAwakening && sk.awakenedDesc ? sk.awakenedDesc : sk.desc;
+          const badgeHtml = isAwakening
+            ? `<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-xs animate-pulse">🔥 Lv.5 각성 진화!</span>`
+            : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-800">Lv.${choice.nextLevel}</span>`;
           return `
-            <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-[#f0ebe0] hover:bg-[#e6dec8] border border-[#d2c8b4] flex items-center gap-3 active:scale-98 transition">
-              <div class="w-11 h-11 rounded-xl bg-[#faf6ee] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0">${sk.icon}</div>
+            <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl ${isAwakening ? 'bg-amber-50/90 hover:bg-amber-100/90 border-2 border-amber-400 shadow-md' : 'bg-[#f0ebe0] hover:bg-[#e6dec8] border border-[#d2c8b4]'} flex items-center gap-3 active:scale-98 transition">
+              <div class="w-11 h-11 rounded-xl ${isAwakening ? 'bg-amber-200/80 border border-amber-400' : 'bg-[#faf6ee] border border-[#d2c8b4]'} flex items-center justify-center text-2xl shrink-0">${sk.icon}</div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between gap-2">
-                  <span class="font-extrabold text-sm text-[#1f2d24] truncate">${sk.name}</span>
-                  <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-800">Lv.${choice.nextLevel}</span>
+                  <span class="font-extrabold text-sm ${isAwakening ? 'text-amber-950 font-black' : 'text-[#1f2d24]'} truncate">${name}</span>
+                  ${badgeHtml}
                 </div>
-                <p class="text-xs text-[#4a584e] mt-0.5 line-clamp-2">${sk.desc}</p>
+                <p class="text-xs ${isAwakening ? 'text-amber-900 font-medium' : 'text-[#4a584e]'} mt-0.5 line-clamp-2">${desc}</p>
               </div>
             </button>
           `;
@@ -552,49 +586,12 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     });
   }
 
-  function showStartPathModal() {
-    const save = getSave?.() || {};
-    const dogName = save.dogName || '우유';
-    openModal(`
-      <div class="text-center space-y-4">
-        <div class="text-4xl">🐶✨</div>
-        <h2 class="text-xl font-black text-[#1f2d24]">튜토리얼 완료!</h2>
-        <p class="text-xs text-[#4a584e] leading-relaxed">${dogName}와 함께 모험을 시작할 준비가 되었어요!</p>
-        <div class="pt-1">
-          <button id="btn-start-path-ch1" type="button" class="w-full py-3.5 px-4 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition text-center flex items-center justify-center gap-2">
-            <span>⚔️ STAGE 1 모험 시작하기</span>
-          </button>
-        </div>
-      </div>
-    `);
-
-    const handlePath = (path) => {
-      closeModal();
-      hideHud();
-      if (onStartPath) {
-        onStartPath(path);
-      } else {
-        onReturnToLobby?.();
-      }
-    };
-
-    document.getElementById('btn-start-path-ch1')?.addEventListener('click', () => handlePath('ch1'));
-  }
-
   // === GameEngine 핸들러 바인딩 ===
   engine.setHandlers({
-    onQuestionChanged({ word, isTutorial }) {
+    onQuestionChanged({ word }) {
       currentWordText = word?.word || '';
       if (ledWordText) {
         ledWordText.textContent = currentWordText || 'READY';
-      }
-
-      if (btnSkipTutorial) {
-        if (isTutorial) {
-          btnSkipTutorial.classList.remove('hidden');
-        } else {
-          btnSkipTutorial.classList.add('hidden');
-        }
       }
     },
 
@@ -607,7 +604,49 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       }
     },
 
-    onHudUpdate({ hp, maxHp, xp, xpToNext, ultGauge, evoXp, boss, edgeArrows, viewW, viewH, wrongReview, placement }) {
+    onHudUpdate({ hp, maxHp, xp, xpToNext, ultGauge, evoXp, boss, edgeArrows, viewW, viewH, wrongReview, tutorialCoaching, placement }) {
+      if (hudTutorialCoach) {
+        if (tutorialCoaching && tutorialCoaching.active) {
+          hudTutorialCoach.classList.remove('hidden');
+          if (tutorialCoachStep) {
+            tutorialCoachStep.textContent = `STEP ${tutorialCoaching.step} / ${tutorialCoaching.totalSteps}`;
+          }
+          if (tutorialCoachText) {
+            tutorialCoachText.textContent = tutorialCoaching.text || '';
+          }
+          if (tutorialCoachCount) {
+            if (tutorialCoaching.countText) {
+              tutorialCoachCount.textContent = tutorialCoaching.countText;
+              tutorialCoachCount.classList.remove('hidden');
+            } else {
+              tutorialCoachCount.classList.add('hidden');
+            }
+          }
+          if (btnTutorialCoachAck) {
+            btnTutorialCoachAck.textContent = t('tutorial.ackBtn') || '🐾 알겠어!';
+            btnTutorialCoachAck.classList.toggle('hidden', !tutorialCoaching.showAckButton);
+          }
+
+          if (tutorialGestureOverlay) {
+            const hasGesture = tutorialCoaching.showDragGesture || tutorialCoaching.showDoubleTapGesture;
+            tutorialGestureOverlay.classList.toggle('hidden', !hasGesture);
+            tutorialGestureDrag?.classList.toggle('hidden', !tutorialCoaching.showDragGesture);
+            tutorialGestureDoubleTap?.classList.toggle('hidden', !tutorialCoaching.showDoubleTapGesture);
+          }
+
+          ledScoreboard?.classList.toggle('tutorial-highlight-pulse', Boolean(tutorialCoaching.highlightScoreboard));
+          tutorialScoreboardPointer?.classList.toggle('hidden', !tutorialCoaching.highlightScoreboard);
+          hudLeftWidget?.classList.toggle('tutorial-highlight-pulse', Boolean(tutorialCoaching.highlightUltGauge));
+        } else {
+          hudTutorialCoach.classList.add('hidden');
+          tutorialGestureOverlay?.classList.add('hidden');
+          tutorialGestureDrag?.classList.add('hidden');
+          tutorialGestureDoubleTap?.classList.add('hidden');
+          tutorialScoreboardPointer?.classList.add('hidden');
+          ledScoreboard?.classList.remove('tutorial-highlight-pulse');
+          hudLeftWidget?.classList.remove('tutorial-highlight-pulse');
+        }
+      }
       if (hudPlacementBadge && hudPlacementText) {
         if (placement) {
           hudPlacementBadge.classList.remove('hidden');
@@ -649,9 +688,19 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       }
       prevSkillStep = step;
 
-      const ultReady = ultGauge >= BALANCE.COMBAT.ULT_MAX_GAUGE;
-      if (hudUltReadyBadge) {
-        hudUltReadyBadge.classList.toggle('hidden', !ultReady);
+      if (hudUltActionWrap) {
+        const isTutorialActive = Boolean(tutorialCoaching && tutorialCoaching.active);
+        const canShowUltBtn = ultGauge >= BALANCE.COMBAT.ULT_MAX_GAUGE && (!isTutorialActive || tutorialCoaching.step === 6);
+        if (canShowUltBtn) {
+          if (hudUltBtnLabel) {
+            hudUltBtnLabel.textContent = t('hud.ultGauge') || '필살기';
+          }
+          hudUltActionWrap.classList.toggle('bottom-[104px]', isTutorialActive);
+          hudUltActionWrap.classList.toggle('bottom-6', !isTutorialActive);
+          hudUltActionWrap.classList.remove('hidden');
+        } else {
+          hudUltActionWrap.classList.add('hidden');
+        }
       }
 
       if (boss && boss.hp > 0) {
@@ -675,31 +724,68 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     onPauseChanged(paused) {
       resetJoystick();
       if (paused) {
+        hudTutorialCoach?.classList.add('hidden');
         showPauseModal();
       } else {
         closeModal();
+        if (engine.runStats?.isTutorial && engine.tutorial?.active) {
+          hudTutorialCoach?.classList.remove('hidden');
+        }
       }
     },
 
     onGameOver({ canRevive }) {
       resetJoystick();
+      hudTutorialCoach?.classList.add('hidden');
       showGameOverModal({ canRevive });
     },
 
     onStageResult(res) {
       resetJoystick();
       if (res.isTutorial && res.cleared) {
-        showStartPathModal();
+        closeModal();
+        hideHud();
+        onReturnToLobby?.();
         return;
       }
       showStageResultModal(res);
     },
+
+    onTutorialCompleted() {
+      resetJoystick();
+      closeModal();
+      hideHud();
+      onReturnToLobby?.();
+    },
+
+    onBanner(text) {
+      showBanner(text);
+    },
   });
+
+  let bannerEl = null;
+  function showBanner(text, duration = 2500) {
+    if (!bannerEl) {
+      bannerEl = document.createElement('div');
+      bannerEl.className = 'absolute top-16 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-emerald-950/90 border border-emerald-400 text-emerald-200 text-xs font-black shadow-lg transition-all duration-300 pointer-events-none text-center whitespace-nowrap';
+      hudLayer?.appendChild(bannerEl);
+    }
+    bannerEl.textContent = text;
+    bannerEl.style.opacity = '1';
+    bannerEl.style.transform = 'translate(-50%, 0)';
+    setTimeout(() => {
+      if (bannerEl) {
+        bannerEl.style.opacity = '0';
+        bannerEl.style.transform = 'translate(-50%, -10px)';
+      }
+    }, duration);
+  }
 
   return {
     showHud,
     hideHud,
     closeModal,
+    showBanner,
   };
 }
 

@@ -7,3 +7,8 @@ dist/
 .vscode/
 .idea/
 
+
+.venv/
+.graphify/
+
+graphify-out/

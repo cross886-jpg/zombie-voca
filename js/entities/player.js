@@ -43,10 +43,10 @@ export function computePlayerStats(saveData, skills = {}) {
   const skinAtk = safeSave.equippedSkin === 'skin_crown' ? 8 : (safeSave.equippedSkin === 'skin_astronaut' ? 5 : (safeSave.equippedSkin === 'skin_detective' ? 3 : 0));
   const skinHp = safeSave.equippedSkin === 'skin_crown' ? 30 : (safeSave.equippedSkin === 'skin_astronaut' ? 20 : (safeSave.equippedSkin === 'skin_detective' ? 10 : 0));
 
-  const passiveAtkMult = 1 + (skills.passive_sharp_fangs || 0) * (SKILLS.find((s) => s.id === 'passive_sharp_fangs')?.perLevel || 0.14);
-  const passiveHpMult = 1 + (skills.passive_thick_fur || 0) * (SKILLS.find((s) => s.id === 'passive_thick_fur')?.perLevel || 0.15);
-  const passiveSpeedMult = 1 + (skills.passive_zoomies || 0) * (SKILLS.find((s) => s.id === 'passive_zoomies')?.perLevel || 0.1);
-  const passivePickupMult = 1 + (skills.passive_magnet || 0) * (SKILLS.find((s) => s.id === 'passive_magnet')?.perLevel || 0.25);
+  const passiveAtkMult = 1 + (skills.passive_sharp_fangs || 0) * (SKILLS.find((s) => s.id === 'passive_sharp_fangs')?.perLevel || 0.08);
+  const passiveHpMult = 1 + (skills.passive_thick_fur || 0) * (SKILLS.find((s) => s.id === 'passive_thick_fur')?.perLevel || 0.08);
+  const passiveSpeedMult = 1 + (skills.passive_zoomies || 0) * (SKILLS.find((s) => s.id === 'passive_zoomies')?.perLevel || 0.05);
+  const passivePickupMult = 1 + (skills.passive_magnet || 0) * (SKILLS.find((s) => s.id === 'passive_magnet')?.perLevel || 0.15);
 
   const maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus + shopHp + skinHp) * evoStage.hpMult * passiveHpMult);
   const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus + skinAtk) * evoStage.atkMult * passiveAtkMult);
@@ -54,7 +54,8 @@ export function computePlayerStats(saveData, skills = {}) {
   const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus + shopMagnet) * passivePickupMult;
   // 인게임 회피 조작감 및 시야 확장을 위한 히트박스 약 18% 축소 (0.82배율)
   const radius = BALANCE.PLAYER.RADIUS * evoStage.scale * 0.82;
-  const combatPower = Math.round(atk * 5 + maxHp * 0.8 + speed * 0.5);
+  // 초기 기준 전투력 100 (공격력 10 * 5 + 체력 100 * 0.5) 및 추가 스피드 가산
+  const combatPower = Math.round(atk * 5 + maxHp * 0.5 + Math.max(0, speed - BALANCE.PLAYER.BASE_SPEED) * 0.5);
 
   return { maxHp, atk, speed, pickupRadius, radius, evoStage, combatPower };
 }
@@ -82,6 +83,7 @@ export class Player {
     this.invulnTimer = 0;
     this.slowTimer = 0;
     this.walkPhase = 0;
+    this.isStepping = false;
 
     this.skills = { bark_sonic: 1 };
     this.evoStage = BALANCE.EVOLUTION_STAGES[0];
@@ -104,6 +106,7 @@ export class Player {
     this.invulnTimer = 0;
     this.slowTimer = 0;
     this.walkPhase = 0;
+    this.isStepping = false;
 
     this.skills = { bark_sonic: 1 };
     if ((saveData?.shopUpgrades?.bonusWeapon || 0) >= 1) {
@@ -143,7 +146,7 @@ export class Player {
     this.recalcStats(false);
   }
 
-  update(dt, inputVec, arenaWidth, arenaHeight, obstacles = [], monoliths = []) {
+  update(dt, inputVec, arenaWidth, arenaHeight, obstacles = [], monoliths = [], forceIdleTrot = false) {
     if (this.invulnTimer > 0) {
       this.invulnTimer = Math.max(0, this.invulnTimer - dt);
     }
@@ -163,9 +166,16 @@ export class Player {
       this.vy = ny * effectiveSpeed * clampedMag;
       this.facingAngle = Math.atan2(ny, nx);
       this.walkPhase += dt * 14 * clampedMag;
+      this.isStepping = true;
     } else {
       this.vx = 0;
       this.vy = 0;
+      if (forceIdleTrot) {
+        this.walkPhase += dt * 12;
+        this.isStepping = true;
+      } else {
+        this.isStepping = false;
+      }
     }
 
     this.x += this.vx * dt;
@@ -300,10 +310,26 @@ export class Player {
       ctx.fill();
     }
 
-    // [레이어 3] 선택된 견종 강아지 본체
+    // [레이어 3] 선택된 견종 강아지 본체 + 총총총 발걸음 모션
     const isBipedal = this.evoStage.stage >= 2;
     const bodyY = (isBipedal ? -2 : 2) + bob;
     const lookX = Math.cos(this.facingAngle) * 2.5;
+    const legSwing = this.isStepping ? Math.sin(this.walkPhase) : 0;
+
+    ctx.save();
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.2 * s;
+    const leftFootY = (14.5 - Math.max(0, legSwing) * 4.2) * s;
+    const rightFootY = (14.5 - Math.max(0, -legSwing) * 4.2) * s;
+    const leftFootX = (-6.5 + legSwing * 1.8) * s;
+    const rightFootX = (6.5 - legSwing * 1.8) * s;
+    ctx.beginPath();
+    ctx.ellipse(leftFootX, leftFootY, 3.8 * s, 2.6 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(rightFootX, rightFootY, 3.8 * s, 2.6 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
 
     drawDogCharacter(ctx, {
       breedId: this.selectedBreed,
@@ -313,14 +339,32 @@ export class Player {
       isBipedal,
     });
 
-    // [레이어 4] 진화 2단계 이상 에너지 블레이드 또는 무기 파츠
+    // [레이어 4] 장착 무기 파츠 (아이콘/이펙트) 또는 진화 2단계 이상 에너지 블레이드
     const weaponItem = this._getCostumeItem('weapon');
-    if (weaponItem || this.evoStage.stage >= 2) {
-      const bladeColor = weaponItem ? weaponItem.color : '#22d3ee';
+    if (weaponItem) {
       ctx.save();
       ctx.rotate(this.facingAngle);
-      ctx.fillStyle = bladeColor;
-      ctx.shadowColor = bladeColor;
+      ctx.translate(16 * s, 0);
+      if (weaponItem.icon) {
+        ctx.font = `${Math.round(15 * s)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = weaponItem.color || '#fbbf24';
+        ctx.shadowBlur = 10;
+        ctx.fillText(weaponItem.icon, 0, 0);
+      } else {
+        const bladeColor = weaponItem.color || '#22d3ee';
+        ctx.fillStyle = bladeColor;
+        ctx.shadowColor = bladeColor;
+        ctx.shadowBlur = 8;
+        ctx.fillRect(-2 * s, -2.5 * s, 16 * s, 5 * s);
+      }
+      ctx.restore();
+    } else if (this.evoStage.stage >= 2) {
+      ctx.save();
+      ctx.rotate(this.facingAngle);
+      ctx.fillStyle = '#22d3ee';
+      ctx.shadowColor = '#22d3ee';
       ctx.shadowBlur = 8;
       ctx.fillRect(12 * s, -2.5 * s, 16 * s, 5 * s);
       ctx.restore();
@@ -396,6 +440,44 @@ export class Player {
         ctx.roundRect(barX, barY, fillW, barH, barR);
       } else {
         ctx.rect(barX, barY, fillW, barH);
+      }
+      ctx.fill();
+    }
+
+    // [레이어 7-B] 캐릭터 발밑 노란색 필살기 충전 게이지 바 (HP Bar 바로 아래)
+    const ultBarH = 3.5;
+    const ultBarR = 1.8;
+    const ultBarY = barY + barH + 2;
+    const ultMax = BALANCE.COMBAT.ULT_MAX_GAUGE || 100;
+    const ultRatio = Math.max(0, Math.min(1, this.ultGauge / ultMax));
+    const ultFillW = Math.max(0, barW * ultRatio);
+    const isUltFull = ultRatio >= 1;
+
+    ctx.globalAlpha = 1.0;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+    ctx.strokeStyle = isUltFull ? 'rgba(250, 204, 21, 0.95)' : 'rgba(0, 0, 0, 0.85)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(barX, ultBarY, barW, ultBarH, ultBarR);
+    } else {
+      ctx.rect(barX, ultBarY, barW, ultBarH);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    if (ultFillW > 0) {
+      const shimmer = isUltFull ? 0.78 + Math.sin(time * 14) * 0.22 : 1.0;
+      ctx.globalAlpha = shimmer;
+      ctx.fillStyle = isUltFull ? '#fde047' : '#facc15';
+      ctx.shadowColor = '#f59e0b';
+      ctx.shadowBlur = isUltFull ? 8 : 2;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(barX, ultBarY, ultFillW, ultBarH, ultBarR);
+      } else {
+        ctx.rect(barX, ultBarY, ultFillW, ultBarH);
       }
       ctx.fill();
     }
@@ -873,6 +955,84 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       ctx.moveTo(9 * s, (bodyY - 15) * s);
       ctx.lineTo(7 * s, (bodyY - 27) * s);
       ctx.lineTo(3 * s, (bodyY - 17) * s);
+      ctx.fill();
+      break;
+    }
+
+    case 'maltese': {
+      // 말티즈: 순백의 부드러운 솜털, 앙증맞은 쳐진 귀 & 머리 위 빨간 리본 핀
+      // 1. 살랑이는 깃털 꼬리
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.arc(-13 * s, (bodyY + 3) * s, 6.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 몸통
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 12 * s, 13 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 14 * s, 11 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 3. 머리
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 12.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. 귀여운 쳐진 털 귀
+      ctx.fillStyle = '#f1f5f9';
+      ctx.beginPath();
+      ctx.ellipse(-10 * s, (bodyY - 7) * s, 4.5 * s, 8 * s, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(10 * s, (bodyY - 7) * s, 4.5 * s, 8 * s, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 5. 머리 위 포인트 레드 리본 핀
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(-3 * s, (bodyY - 20) * s, 3 * s, 0, Math.PI * 2);
+      ctx.arc(3 * s, (bodyY - 20) * s, 3 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 20) * s, 1.8 * s, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+
+    case 'poodle': {
+      // 토이푸들: 곱슬곱슬한 초코 브라운 털, 몽글몽글한 폼폼 귀와 폼폼 꼬리
+      // 1. 폼폼 꼬리
+      ctx.fillStyle = '#92400e';
+      ctx.beginPath();
+      ctx.arc(-14 * s, (bodyY + 3) * s, 5.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2. 몸통 (곱슬 푸들 볼륨)
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      if (isBipedal) {
+        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
+      } else {
+        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 12 * s, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+
+      // 3. 둥근 폼폼 크라운 머리
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.arc(0, (bodyY - 8) * s, 13 * s, 0, Math.PI * 2);
+      ctx.arc(0, (bodyY - 14) * s, 7 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4. 풍성한 폼폼 귀
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath();
+      ctx.arc(-11 * s, (bodyY - 6) * s, 6.5 * s, 0, Math.PI * 2);
+      ctx.arc(11 * s, (bodyY - 6) * s, 6.5 * s, 0, Math.PI * 2);
       ctx.fill();
       break;
     }

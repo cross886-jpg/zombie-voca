@@ -4,7 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { getWords, getTotalUnits } from '../data/data_en.js?v=2';
+import { getActiveWords as getWords, getActiveTotalUnits as getTotalUnits, getActiveCefrWords, getCurrentStudyUnitId } from './courseEngine.js';
 import { getSave, getWordStat, recordWordResult } from './saveStore.js';
 
 function shuffleArray(arr) {
@@ -66,24 +66,19 @@ export const wordEngine = {
    * @returns {Array<object>}
    */
   getUnitWords(unitId) {
-    const id = unitId || getSave().selectedUnit || 'unit_001';
+    const id = unitId || getCurrentStudyUnitId();
     const all = getWords();
     const filtered = all.filter((w) => w.unit === id);
     return filtered.length > 0 ? filtered : this.getCourseWords();
   },
 
   /**
-   * 선택된 난이도 코스(lv1~lv4)에 해당하는 단어 풀 반환
-   * @param {string} [courseId]
+   * 현재 학습 언어·CEFR 등급(3티어 전체 유닛)에 해당하는 단어 풀 반환
    * @returns {Array<object>}
    */
-  getCourseWords(courseId) {
-    const id = courseId || getSave().selectedCourse || 'lv1';
-    const course = BALANCE.COURSES.find((c) => c.id === id) || BALANCE.COURSES[0];
-    const allowedLevels = new Set(course.cefr);
-    const all = getWords();
-    const filtered = all.filter((w) => allowedLevels.has(w.level));
-    return filtered.length > 0 ? filtered : all;
+  getCourseWords() {
+    const cefrWords = getActiveCefrWords();
+    return cefrWords.length > 0 ? cefrWords : getWords();
   },
 
   /**

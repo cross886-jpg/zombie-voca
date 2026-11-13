@@ -22,6 +22,10 @@ export class Camera {
     this.zoomSeqElapsed = 0;
     this.zoomSeqDuration = BALANCE.BOSS.ZOOM_SEQUENCE_SEC;
     this.zoomSeqMin = 0.62;
+
+    this.ultCamActive = false;
+    this.ultCamElapsed = 0;
+    this.ultCamDuration = 0.62;
   }
 
   reset(targetX, targetY) {
@@ -31,6 +35,8 @@ export class Camera {
     this.shakeTimer = 0;
     this.zoomSeqActive = false;
     this.zoomSeqElapsed = 0;
+    this.ultCamActive = false;
+    this.ultCamElapsed = 0;
   }
 
   shake(intensity = 8, duration = 0.22) {
@@ -56,14 +62,42 @@ export class Camera {
     this.zoomSeqMin = minZoom;
   }
 
+  /**
+   * 필살기 발동 시 순간 줌인(1.24x) → 광역 폭발 줌아웃(0.86x) → 정상 복귀(1.0x) + 강렬한 진동 연출
+   */
+  triggerUltimateCamera(duration = 0.62) {
+    this.ultCamActive = true;
+    this.ultCamElapsed = 0;
+    this.ultCamDuration = duration;
+    this.shake(24, duration);
+  }
+
   update(dt, targetX, targetY, arenaWidth, arenaHeight, viewW, viewH) {
     // 부드러운 타겟 추적
     const lerp = 1 - Math.pow(0.001, dt);
     this.x += (targetX - this.x) * lerp;
     this.y += (targetY - this.y) * lerp;
 
-    // 줌아웃 → 줌인 시퀀스
-    if (this.zoomSeqActive) {
+    // 필살기 순간 줌인 → 줌아웃 카메라 무빙 시퀀스
+    if (this.ultCamActive) {
+      this.ultCamElapsed += dt;
+      const p = Math.min(1, this.ultCamElapsed / this.ultCamDuration);
+      if (p < 0.26) {
+        const k = Math.sin((p / 0.26) * (Math.PI / 2));
+        this.zoom = 1.0 + 0.24 * k;
+      } else if (p < 0.72) {
+        const k = (p - 0.26) / 0.46;
+        this.zoom = 1.24 - (1.24 - 0.86) * Math.sin(k * (Math.PI / 2));
+      } else {
+        const k = (p - 0.72) / 0.28;
+        this.zoom = 0.86 + (1.0 - 0.86) * k;
+      }
+      if (p >= 1) {
+        this.zoom = 1.0;
+        this.ultCamActive = false;
+      }
+    } else if (this.zoomSeqActive) {
+      // 보스 등장 줌아웃 → 줌인 시퀀스
       this.zoomSeqElapsed += dt;
       const t = Math.min(1, this.zoomSeqElapsed / this.zoomSeqDuration);
       // sin(pi * t): 0 -> 1 -> 0 곡선으로 부드럽게 줌아웃 후 복귀
@@ -149,6 +183,9 @@ export class Camera {
     }
     ctx.stroke();
 
+    // 10개 챕터별 고유 전장 디테일 렌더링
+    this.renderThemeDetails(ctx, chapter, arenaWidth, arenaHeight, time);
+
     // 중앙 광장 엠블럼 링
     ctx.save();
     ctx.strokeStyle = theme.gridColor;
@@ -169,6 +206,284 @@ export class Camera {
     ctx.shadowColor = theme.firewallColor;
     ctx.shadowBlur = 18;
     ctx.strokeRect(m, m + topMargin, arenaWidth - m * 2, arenaHeight - (m * 2 + topMargin));
+    ctx.restore();
+  }
+
+  /**
+   * 10개 챕터별 전장 테마 디테일 렌더링
+   */
+  renderThemeDetails(ctx, chapter, arenaWidth, arenaHeight, time) {
+    const detail = chapter?.theme?.detailType || 'asphalt';
+    const cx = arenaWidth / 2;
+    const cy = arenaHeight / 2;
+
+    ctx.save();
+
+    switch (detail) {
+      case 'asphalt': {
+        // Ch.1: 도심 외곽 아스팔트 거리 (차선 점선 & 맨홀 뚜껑)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([24, 20]);
+        ctx.beginPath();
+        ctx.moveTo(cx - 140, 140);
+        ctx.lineTo(cx - 140, arenaHeight - 60);
+        ctx.moveTo(cx + 140, 140);
+        ctx.lineTo(cx + 140, arenaHeight - 60);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 맨홀
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx - 260, cy - 180, 28, 0, Math.PI * 2);
+        ctx.arc(cx + 260, cy + 180, 28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        break;
+      }
+
+      case 'subway': {
+        // Ch.2: 폐쇄된 지하철 & 공사 현장 (철도 레일 & 공사 안전 빗금)
+        ctx.strokeStyle = 'rgba(249, 115, 22, 0.2)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(cx - 160, 120);
+        ctx.lineTo(cx - 160, arenaHeight - 40);
+        ctx.moveTo(cx - 100, 120);
+        ctx.lineTo(cx - 100, arenaHeight - 40);
+        ctx.moveTo(cx + 100, 120);
+        ctx.lineTo(cx + 100, arenaHeight - 40);
+        ctx.moveTo(cx + 160, 120);
+        ctx.lineTo(cx + 160, arenaHeight - 40);
+        ctx.stroke();
+
+        // 침목
+        ctx.strokeStyle = 'rgba(217, 119, 6, 0.16)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let y = 140; y < arenaHeight - 40; y += 40) {
+          ctx.moveTo(cx - 175, y);
+          ctx.lineTo(cx - 85, y);
+          ctx.moveTo(cx + 85, y);
+          ctx.lineTo(cx + 175, y);
+        }
+        ctx.stroke();
+        break;
+      }
+
+      case 'sewer': {
+        // Ch.3: 오염된 하수 처리장 & 폐연구소 (녹색 독성 슬러지 웅덩이 & 배수구)
+        const pulse = 0.12 + Math.sin(time * 2) * 0.04;
+        ctx.fillStyle = `rgba(34, 197, 94, ${pulse})`;
+        ctx.beginPath();
+        ctx.ellipse(cx - 240, cy + 140, 90, 50, 0.3, 0, Math.PI * 2);
+        ctx.ellipse(cx + 260, cy - 140, 110, 60, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 연구소 배수구
+        ctx.strokeStyle = 'rgba(74, 222, 128, 0.25)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(cx - 40, cy - 40, 80, 80);
+        for (let i = -30; i <= 30; i += 15) {
+          ctx.beginPath();
+          ctx.moveTo(cx + i, cy - 40);
+          ctx.lineTo(cx + i, cy + 40);
+          ctx.stroke();
+        }
+        break;
+      }
+
+      case 'police': {
+        // Ch.4: 봉쇄된 경찰서 & 바리케이드 광장 (경광등 잔광 & 바리케이드 빗금)
+        const policeBlue = Math.sin(time * 5) * 0.5 + 0.5;
+        const policeRed = 1 - policeBlue;
+
+        ctx.fillStyle = `rgba(59, 130, 246, ${0.06 * policeBlue})`;
+        ctx.fillRect(0, 0, arenaWidth / 2, arenaHeight);
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.06 * policeRed})`;
+        ctx.fillRect(arenaWidth / 2, 0, arenaWidth / 2, arenaHeight);
+
+        // 폴리스 라인 빗금 표시
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.16)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let x = 80; x < arenaWidth - 80; x += 120) {
+          ctx.moveTo(x, 150);
+          ctx.lineTo(x + 50, 190);
+          ctx.moveTo(x, arenaHeight - 80);
+          ctx.lineTo(x + 50, arenaHeight - 40);
+        }
+        ctx.stroke();
+        break;
+      }
+
+      case 'club': {
+        // Ch.5: 네온 번화가 & 클럽 스트리트 (댄스 플로어 체커보드 & 음파 링)
+        const beat = (Math.sin(time * 6) + 1) * 0.5;
+        ctx.fillStyle = `rgba(236, 72, 153, ${0.06 + beat * 0.05})`;
+        const tile = 80;
+        for (let x = 0; x < arenaWidth; x += tile * 2) {
+          for (let y = 0; y < arenaHeight; y += tile * 2) {
+            ctx.fillRect(x, y, tile, tile);
+            ctx.fillRect(x + tile, y + tile, tile, tile);
+          }
+        }
+        // 이퀄라이저 링
+        ctx.strokeStyle = `rgba(244, 63, 94, ${0.25 + beat * 0.25})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 90 + beat * 30, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+
+      case 'graveyard': {
+        // Ch.6: 폐광산 & 어두운 공동묘지 (묘비 실루엣 & 으스스한 안개 흔적)
+        ctx.fillStyle = 'rgba(167, 243, 208, 0.07)';
+        ctx.beginPath();
+        ctx.arc(cx - 300, cy - 200, 70, 0, Math.PI * 2);
+        ctx.arc(cx + 320, cy + 180, 85, 0, Math.PI * 2);
+        ctx.arc(cx, cy + 240, 95, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 묘비 십자가
+        ctx.strokeStyle = 'rgba(45, 212, 191, 0.18)';
+        ctx.lineWidth = 3;
+        const graves = [[cx - 280, cy - 120], [cx + 280, cy - 140], [cx - 220, cy + 200], [cx + 240, cy + 190]];
+        for (const [gx, gy] of graves) {
+          ctx.beginPath();
+          ctx.moveTo(gx, gy - 20);
+          ctx.lineTo(gx, gy + 20);
+          ctx.moveTo(gx - 12, gy - 6);
+          ctx.lineTo(gx + 12, gy - 6);
+          ctx.stroke();
+        }
+        break;
+      }
+
+      case 'steampunk': {
+        // Ch.7: 태엽 시계탑 & 비행선 격납고 (회전 톱니바퀴 & 황동 리벳)
+        const rot = time * 0.35;
+        ctx.strokeStyle = 'rgba(217, 119, 6, 0.22)';
+        ctx.lineWidth = 2;
+
+        const drawGear = (x, y, r, teeth, spin) => {
+          ctx.beginPath();
+          for (let i = 0; i < teeth; i++) {
+            const a = spin + (i * Math.PI * 2) / teeth;
+            const ra = r + (i % 2 === 0 ? 10 : 0);
+            const gx = x + Math.cos(a) * ra;
+            const gy = y + Math.sin(a) * ra;
+            if (i === 0) ctx.moveTo(gx, gy);
+            else ctx.lineTo(gx, gy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+          ctx.stroke();
+        };
+
+        drawGear(cx - 220, cy - 160, 65, 12, rot);
+        drawGear(cx + 230, cy + 170, 80, 16, -rot * 0.75);
+        break;
+      }
+
+      case 'highway': {
+        // Ch.8: 무너진 고속도로 & 대교 위 (고속도로 노란 중앙선 & 균열)
+        ctx.strokeStyle = 'rgba(234, 179, 8, 0.24)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(cx - 6, 120);
+        ctx.lineTo(cx - 6, arenaHeight - 40);
+        ctx.moveTo(cx + 6, 120);
+        ctx.lineTo(cx + 6, arenaHeight - 40);
+        ctx.stroke();
+
+        // 아스팔트 대형 균열 지그재그
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.18)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx - 280, cy);
+        ctx.lineTo(cx - 210, cy - 40);
+        ctx.lineTo(cx - 150, cy + 20);
+        ctx.lineTo(cx - 80, cy - 25);
+        ctx.moveTo(cx + 80, cy + 30);
+        ctx.lineTo(cx + 170, cy - 20);
+        ctx.lineTo(cx + 240, cy + 50);
+        ctx.lineTo(cx + 310, cy);
+        ctx.stroke();
+        break;
+      }
+
+      case 'cyber': {
+        // Ch.9: 최첨단 로봇 공학 벙커 기지 (육각 테크 타일 & 회로 노드)
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.2)';
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.25)';
+        ctx.lineWidth = 1.5;
+
+        const drawHex = (x, y, r) => {
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const a = (i * Math.PI) / 3;
+            const hx = x + Math.cos(a) * r;
+            const hy = y + Math.sin(a) * r;
+            if (i === 0) ctx.moveTo(hx, hy);
+            else ctx.lineTo(hx, hy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        };
+
+        for (let x = cx - 280; x <= cx + 280; x += 140) {
+          drawHex(x, cy - 180, 40);
+          drawHex(x, cy + 180, 40);
+        }
+
+        // 빛나는 회로 노드
+        const blink = Math.sin(time * 4) * 0.5 + 0.5;
+        ctx.fillStyle = `rgba(34, 211, 238, ${0.3 + blink * 0.4})`;
+        for (let x = cx - 210; x <= cx + 210; x += 140) {
+          ctx.beginPath();
+          ctx.arc(x, cy, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+      }
+
+      case 'bloodmoon': {
+        // Ch.10: 붉은 달의 좀비 왕국 성채 (핏빛 오컬트 마법진 & 붉은 달 인장)
+        const darkPulse = (Math.sin(time * 3) + 1) * 0.5;
+        ctx.strokeStyle = `rgba(239, 68, 68, ${0.25 + darkPulse * 0.2})`;
+        ctx.lineWidth = 2.5;
+
+        // 중앙 붉은 달 거대 오컬트 원
+        ctx.beginPath();
+        ctx.arc(cx, cy, 220, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 내부 역오각성/룬 문양
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a1 = (i * Math.PI * 2) / 5 - Math.PI / 2;
+          const a2 = ((i + 2) * Math.PI * 2) / 5 - Math.PI / 2;
+          ctx.moveTo(cx + Math.cos(a1) * 220, cy + Math.sin(a1) * 220);
+          ctx.lineTo(cx + Math.cos(a2) * 220, cy + Math.sin(a2) * 220);
+        }
+        ctx.stroke();
+
+        // 붉은 달 중심핵
+        ctx.fillStyle = `rgba(239, 68, 68, ${0.08 + darkPulse * 0.08})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 70, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+    }
+
     ctx.restore();
   }
 }

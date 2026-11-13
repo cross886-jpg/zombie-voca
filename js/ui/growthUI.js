@@ -22,9 +22,10 @@ import {
   isCompanionUnlocked,
 } from '../data/catalog.js';
 import { t } from '../data/i18n.js';
-import { getSave, updateSave } from '../core/saveStore.js';
+import { getSave, updateSave, getAffection, addAffection, MAX_SUPPORTERS } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
-import { computePlayerStats, drawDogCharacter, drawDogSkin, getEvolutionStage } from '../entities/player.js';
+import { computePlayerStats } from '../entities/player.js';
+import { renderDogToCanvas } from '../render/dogRenderer.js';
 
 const TRAINING_UI_DEFS = [
   {
@@ -117,112 +118,8 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
   let selectedCompId = COMPANIONS[0]?.id || 'rookie';
   let trainingSubTab = 'hero'; // 'hero' | 'companion'
   let statBoostFlash = { key: null, isLevelUp: false, timer: null };
-  let gearSubTab = 'costume'; // 'costume' | 'companion'
+  let gearSubTab = 'companion'; // 'companion' | 'costume'
   let inventoryFilter = 'all'; // 'all' | 'weapon' | 'hat' | 'top' | 'acc'
-  let friendFilter = 'all'; // 'all' | 'breed' | 'support'
-  let selectedFriendId = 'pomeranian';
-
-  function rollSupplyBox({ isFree, gemCost } = {}) {
-    const save = getSave();
-    const today = new Date().toISOString().slice(0, 10);
-
-    // 확률: 35% 희귀 강아지 코스튬, 35% 장비 강화 조각(뼈다귀), 30% 훈련용 금화
-    const roll = Math.random();
-    let resultHtml = '';
-
-    if (roll < 0.35) {
-      // 1. 희귀 강아지 코스튬
-      const rRoll = Math.random();
-      let targetRarity = 'common';
-      if (rRoll > 0.97) targetRarity = 'legend';
-      else if (rRoll > 0.88) targetRarity = 'epic';
-      else if (rRoll > 0.60) targetRarity = 'rare';
-
-      let pool = COSTUMES.filter((c) => c.rarity === targetRarity);
-      if (pool.length === 0) pool = COSTUMES;
-      const picked = pool[Math.floor(Math.random() * pool.length)];
-      const alreadyOwned = save.costumes.owned.includes(picked.id);
-      const refundSnacks = targetRarity === 'legend' ? 4 : targetRarity === 'epic' ? 3 : 2;
-
-      updateSave((s) => {
-        if (isFree) {
-          s.lastFreeSupplyDate = today;
-        } else {
-          s.gems = Math.max(0, (s.gems ?? 300) - gemCost);
-        }
-        if (alreadyOwned) {
-          s.snacks = (s.snacks || 0) + refundSnacks;
-        } else {
-          s.costumes.owned.push(picked.id);
-        }
-      });
-
-      resultHtml = `
-        <div class="text-center space-y-3">
-          <div class="text-5xl">${picked.icon}</div>
-          <div class="text-xs font-bold uppercase tracking-wider text-emerald-800">${picked.rarity}</div>
-          <h3 class="text-lg font-black text-[#1f2d24]">${picked.name}</h3>
-          <p class="text-xs text-[#4a584e]">
-            ${
-              alreadyOwned
-                ? `이미 보유 중인 파츠입니다! 간식 +${refundSnacks}🦴으로 변환되었습니다.`
-                : `새 코스튬 획득! 도감 보너스 (+${picked.atkBonus} ATK / +${picked.hpBonus} HP)`
-            }
-          </p>
-          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-[#f8f5ec] font-black text-sm active:scale-95 transition">확인</button>
-        </div>
-      `;
-    } else if (roll < 0.70) {
-      // 2. 장비 강화 조각 (뼈다귀 🦴 2~3개)
-      const qty = Math.random() < 0.6 ? 2 : 3;
-      updateSave((s) => {
-        if (isFree) {
-          s.lastFreeSupplyDate = today;
-        } else {
-          s.gems = Math.max(0, (s.gems ?? 300) - gemCost);
-        }
-        s.snacks = (s.snacks || 0) + qty;
-      });
-
-      resultHtml = `
-        <div class="text-center space-y-3">
-          <div class="text-5xl">🦴</div>
-          <h3 class="text-lg font-black text-amber-700">장비 강화 조각 (뼈다귀 +${qty}개)</h3>
-          <p class="text-xs text-[#4a584e]">동물 친구 해금 및 승급전에 사용할 수 있는 뼈다귀를 획득했습니다!</p>
-          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#d97706] text-white font-black text-sm active:scale-95 transition">확인</button>
-        </div>
-      `;
-    } else {
-      // 3. 훈련용 금화 (🪙 60~100개)
-      const goldAmt = Math.floor(Math.random() * 5 + 6) * 10; // 60, 70, 80, 90, 100
-      updateSave((s) => {
-        if (isFree) {
-          s.lastFreeSupplyDate = today;
-        } else {
-          s.gems = Math.max(0, (s.gems ?? 300) - gemCost);
-        }
-        s.gold = (s.gold || 0) + goldAmt;
-      });
-
-      resultHtml = `
-        <div class="text-center space-y-3">
-          <div class="text-5xl">🪙</div>
-          <h3 class="text-lg font-black text-amber-800">훈련용 금화 (+${goldAmt} 🪙)</h3>
-          <p class="text-xs text-[#4a584e]">훈련소에서 강아지 기초 스탯 강화에 사용하세요!</p>
-          <button id="btn-gacha-ok" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-[#f8f5ec] font-black text-sm active:scale-95 transition">확인</button>
-        </div>
-      `;
-    }
-
-    audioEngine.playCorrect();
-    onResourcesChanged?.();
-    renderGearTab();
-
-    if (openModal) {
-      openModal(resultHtml);
-      document.getElementById('btn-gacha-ok')?.addEventListener('click', () => closeModal?.());
-    }
-  }
 
   function renderGearTab() {
     const save = getSave();
@@ -232,7 +129,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
     const ownedSet = new Set(save.costumes?.owned || []);
     const equipped = save.costumes?.equipped || {};
     const collectionBonus = getCostumeCollectionBonus(save.costumes?.owned || [], maxUnlocked);
-    const activeCompIds = save.companions?.active || [];
+    const activeCompIds = (save.companions?.active || []).slice(0, MAX_SUPPORTERS);
     const unlockedCompSet = new Set(save.companions?.unlocked || []);
 
     // 1. 쇼케이스용 장착 아이템 추출
@@ -288,9 +185,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
           <!-- 정중앙: 캐릭터 프리뷰 & 장착 합산 스탯 -->
           <div class="flex-1 flex flex-col items-center justify-center text-center">
             <div class="relative w-20 h-20 rounded-full bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center">
-              <div class="w-16 h-16 rounded-full bg-[#f0ebe0] border border-emerald-600/40 shadow-[0_0_16px_rgba(45,106,79,0.2)] flex items-center justify-center text-4xl">
-                ${stats.evoStage.icon || '🐶'}
-              </div>
+              <canvas id="gear-showcase-hero-canvas" width="128" height="128" class="w-16 h-16 rounded-full bg-[#f0ebe0] border border-emerald-600/40 shadow-[0_0_16px_rgba(45,106,79,0.2)] block"></canvas>
             </div>
             <div class="text-xs font-black text-[#1f2d24] mt-1.5">${dogName}</div>
             <div class="inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full bg-[#f0ebe0] border border-[#d2c8b4] text-[10px] font-extrabold">
@@ -383,152 +278,157 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
 
     const inventoryGridHtml = ownedGridHtml + emptySlotsHtml;
 
-    // 3. 동물 친구 슬롯 & 상세 카드
+    // 3. 수호견 & 동행 서포터 편성
     const curBreedId = save.selectedBreed || 'pomeranian';
-    const allFriends = [
-      ...BREEDS.map((b) => ({
-        id: b.id,
-        type: 'breed',
-        name: b.name,
-        icon: b.icon,
-        role: '플레이어블 수호견',
-        trait: b.trait || '고유 특성',
-        desc: b.desc || '',
-        unlockStage: b.unlockStage || 1,
-        isUnlocked: isBreedUnlocked(b.id, save),
-        isSelected: curBreedId === b.id,
-      })),
-      ...COMPANIONS.map((c) => ({
-        id: c.id,
-        type: 'companion',
-        name: c.name,
-        icon: c.icon,
-        role: c.role || '전투 서포터',
-        trait: c.buffText || c.role || '',
-        desc: c.desc || '',
-        unlockStage: c.unlockStage || 1,
-        isUnlocked: isCompanionUnlocked(c.id, save) || (save.companions?.unlocked || []).includes(c.id),
-        isActive: activeCompIds.includes(c.id),
-      })),
-    ];
+    const mainAff = getAffection(curBreedId, save);
+    const curBreedObj = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
 
-    const totalJoinedFriends = allFriends.filter((f) => f.isUnlocked).length;
+    // 서포터 슬롯 렌더링 (좌측 1, 우측 2)
+    const renderSupportSlot = (idx) => {
+      const compId = activeCompIds[idx];
+      const comp = compId ? COMPANIONS.find((c) => c.id === compId) : null;
+      if (comp) {
+        return `
+          <div class="relative w-full p-2 rounded-xl bg-[#faf6ee] border border-amber-500/50 flex flex-col items-center justify-center text-center shadow-xs">
+            <button type="button" data-comp-toggle="${comp.id}" class="comp-toggle-btn absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] flex items-center justify-center font-bold" title="휴식하기">✕</button>
+            <span class="text-2xl leading-none">${comp.icon}</span>
+            <span class="text-[10px] font-black text-[#1f2d24] truncate max-w-full mt-0.5">${comp.name.split(' ').pop()}</span>
+            <span class="text-[8px] font-bold text-amber-700">서포터 ${idx + 1}</span>
+            <div class="text-[8px] font-extrabold text-emerald-800 truncate max-w-full mt-0.5 leading-tight" title="${comp.buffText || comp.role || ''}">
+              ${comp.buffText || comp.role || ''}
+            </div>
+          </div>
+        `;
+      }
+      return `
+        <div class="w-full p-2 rounded-xl bg-[#efe9dc]/70 border border-dashed border-[#d2c8b4] flex flex-col items-center justify-center text-center text-[#a3b899]">
+          <span class="text-xl leading-none opacity-50">🐾</span>
+          <span class="text-[9px] font-bold mt-0.5">+ 서포터 ${idx + 1}</span>
+          <span class="text-[8px] text-[#a3b899] mt-0.5">미편성</span>
+        </div>
+      `;
+    };
 
-    const friendFilterDefs = [
-      { key: 'all', label: '전체' },
-      { key: 'breed', label: '🐶 수호견' },
-      { key: 'support', label: '🐾 서포터' },
-    ];
+    // 쇼케이스: 중앙 메인 무대(오직 주인공 강아지) + 좌/우 서포터 슬롯
+    const formationHtml = `
+      <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] space-y-2.5 mb-3">
+        <div class="flex items-center justify-between pb-1.5 border-b border-[#e6dec8]">
+          <div>
+            <div class="text-xs font-black text-[#1f2d24] flex items-center gap-1.5">
+              <span>🐾</span> 내 강아지 &amp; 서포터 동행
+            </div>
+            <div class="text-[10px] text-[#5f6c62]">주인공 1마리 + 서포터 최대 ${MAX_SUPPORTERS}마리 동행 편성</div>
+          </div>
+          <button id="btn-open-breed-book" type="button" class="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black text-xs shadow-xs active:scale-95 transition flex items-center gap-1 cursor-pointer">
+            <span>📖</span> 전체 도감
+          </button>
+        </div>
 
-    const currentFilteredFriends = allFriends.filter((f) => {
-      if (friendFilter === 'breed') return f.type === 'breed';
-      if (friendFilter === 'support') return f.type === 'companion';
-      return true;
-    });
+        <div class="grid grid-cols-[1fr_2.2fr_1fr] gap-2 items-start">
+          <!-- 중앙 상단: 현재 장착된 주인공 수호견 캔버스 -->
+          <div class="col-start-2 row-start-1 flex justify-center">
+            <canvas id="gear-formation-hero-canvas" width="240" height="150" class="w-40 h-24 rounded-2xl bg-[#f0ebe0] border border-emerald-600/40 shadow-[0_0_18px_rgba(45,106,79,0.2)] block"></canvas>
+          </div>
 
-    const joinedFriends = currentFilteredFriends.filter((f) => f.isUnlocked);
-    const unjoinedFriends = currentFilteredFriends.filter((f) => !f.isUnlocked);
+          <!-- 좌측 하단: 서포터 1 슬롯 -->
+          <div class="col-start-1 row-start-2 flex">${renderSupportSlot(0)}</div>
 
-    const joinedSlotsHtml = joinedFriends.map((f) => {
-      const isBreed = f.type === 'breed';
-      const isSelectedBreed = isBreed && f.isSelected;
-      const isActiveComp = !isBreed && f.isActive;
-      const isViewing = selectedFriendId === f.id;
+          <!-- 중앙 하단: 주인공 강아지 정보 (불필요한 버튼 없이 깔끔하게 표시) -->
+          <div class="col-start-2 row-start-2 text-center min-w-0 space-y-1 px-1">
+            <div class="flex items-center justify-center gap-1.5 flex-wrap">
+              <span class="text-xs font-black text-[#1f2d24] truncate">${curBreedObj.name}</span>
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-100 text-sky-800">대표 수호견</span>
+              <span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-800">${mainAff.hearts} Lv.${mainAff.level}</span>
+            </div>
+            <div class="text-[11px] font-bold text-emerald-800 leading-tight">${curBreedObj.trait || ''}</div>
+            <div class="text-[10px] text-[#4a584e] leading-tight">${curBreedObj.desc || ''}</div>
+          </div>
 
-      const badgeHtml = isSelectedBreed
-        ? `<span class="absolute top-1 right-1 px-1 py-0.2 rounded-full bg-[#2d6a4f] text-[#f8f5ec] text-[8px] font-black leading-tight">대표</span>`
-        : isActiveComp
-          ? `<span class="absolute top-1 right-1 px-1 py-0.2 rounded-full bg-amber-600 text-white text-[8px] font-black leading-tight">동행</span>`
-          : '';
+          <!-- 우측 하단: 서포터 2 슬롯 -->
+          <div class="col-start-3 row-start-2 flex">${renderSupportSlot(1)}</div>
+        </div>
+      </div>
+    `;
 
-      const activeStyle = isSelectedBreed || isActiveComp
-        ? 'bg-emerald-600/15 border-emerald-600 ring-2 ring-emerald-500/40'
-        : 'bg-[#faf6ee] shadow-sm border border-[#d2c8b4]';
+    // 3-2. 내 수호견 (주인공 강아지) 전용 그리드
+    const unlockedBreedsCount = BREEDS.filter((b) => isBreedUnlocked(b.id, save)).length;
+    const breedsGridHtml = BREEDS.map((b) => {
+      const isUnlocked = isBreedUnlocked(b.id, save);
+      const isCurrent = curBreedId === b.id;
+      const aff = getAffection(b.id, save);
 
-      const viewRing = isViewing ? 'ring-2 ring-amber-500' : '';
+      if (isUnlocked) {
+        const activeStyle = isCurrent
+          ? 'bg-emerald-600/15 border-emerald-600 ring-2 ring-emerald-500/40 shadow-[0_0_10px_rgba(45,106,79,0.25)]'
+          : 'bg-[#faf6ee] shadow-sm border border-[#d2c8b4] hover:border-emerald-600/50';
+
+        return `
+          <button type="button" data-breed-switch="${b.id}" class="breed-switch-btn aspect-square rounded-xl p-1.5 flex flex-col items-center justify-between text-center relative transition active:scale-95 cursor-pointer ${activeStyle}">
+            <span class="absolute top-1 left-1 text-[9px] leading-none opacity-80">🐶</span>
+            ${isCurrent ? '<span class="absolute top-1 right-1 px-1 py-0.2 rounded-full bg-[#2d6a4f] text-[#f8f5ec] text-[8px] font-black leading-tight">대표</span>' : ''}
+            <span class="text-2xl leading-none mt-2">${b.icon}</span>
+            <div class="w-full min-w-0">
+              <div class="text-[10px] font-extrabold text-[#1f2d24] truncate">${b.name.split(' ').pop()}</div>
+              <div class="text-[8px] text-rose-600 truncate font-bold">${aff.hearts} Lv.${aff.level}</div>
+            </div>
+          </button>
+        `;
+      }
 
       return `
-        <button type="button" data-friend-select="${f.id}" data-friend-type="${f.type}" class="friend-slot-btn aspect-square rounded-xl p-1.5 flex flex-col items-center justify-between text-center relative transition active:scale-95 cursor-pointer ${activeStyle} ${viewRing}">
-          <span class="absolute top-1 left-1 text-[10px] leading-none opacity-80">${isBreed ? '🐶' : '🐾'}</span>
-          ${badgeHtml}
-          <span class="text-2xl leading-none mt-2">${f.icon}</span>
-          <div class="w-full min-w-0">
-            <div class="text-[10px] font-extrabold text-[#1f2d24] truncate">${f.name.split(' ').pop()}</div>
-            <div class="text-[9px] text-[#4a584e] truncate leading-tight">${isBreed ? '수호견' : f.role.split(' ')[0]}</div>
-          </div>
+        <button type="button" class="btn-open-breed-book-lock aspect-square rounded-xl border border-dashed border-[#d2c8b4] bg-[#efe9dc]/50 flex flex-col items-center justify-center text-center p-1 relative active:scale-95 transition cursor-pointer" title="${b.name} (도감에서 보석 입양)">
+          <span class="text-xl opacity-30">${b.icon}</span>
+          <span class="text-[9px] font-bold text-[#8c9c8e] mt-1 truncate max-w-full">${b.name.split(' ').pop()}</span>
+          <span class="text-[8px] text-amber-700 font-extrabold mt-0.5">🔒 💎${b.gemCost || 80}</span>
         </button>
       `;
     }).join('');
 
-    // 미스터리 발자국 슬롯 (🐾) 1~2줄 (4~8칸)
-    const remainder = (4 - (joinedFriends.length % 4)) % 4;
-    const mysteryCount = Math.min(unjoinedFriends.length, Math.max(4, remainder + 4));
+    // 3-3. 서포터 동료 전용 그리드
+    const unlockedCompsCount = COMPANIONS.filter((c) => isCompanionUnlocked(c.id, save) || (save.companions?.unlocked || []).includes(c.id)).length;
+    const compsGridHtml = COMPANIONS.map((c) => {
+      const isUnlocked = isCompanionUnlocked(c.id, save) || (save.companions?.unlocked || []).includes(c.id);
+      const isActive = activeCompIds.includes(c.id);
 
-    const mysterySlotsHtml = Array.from({ length: mysteryCount }, () => `
-      <div class="aspect-square rounded-xl border border-dashed border-[#d2c8b4] bg-[#efe9dc]/50 flex flex-col items-center justify-center text-center select-none shadow-2xs">
-        <span class="text-xl opacity-25">🐾</span>
-      </div>
-    `).join('');
+      if (isUnlocked) {
+        const activeStyle = isActive
+          ? 'bg-amber-500/15 border-amber-600 ring-2 ring-amber-500/40 shadow-[0_0_10px_rgba(217,119,6,0.25)]'
+          : 'bg-[#faf6ee] shadow-sm border border-[#d2c8b4] hover:border-amber-600/50';
 
-    const friendsGridHtml = joinedSlotsHtml + mysterySlotsHtml;
-
-    // 선택된 친구 상세 정보 카드
-    const selFriend = allFriends.find((f) => f.id === selectedFriendId) || joinedFriends[0] || allFriends[0];
-    let detailActionBtnHtml = '';
-    if (selFriend.type === 'breed') {
-      const isCur = curBreedId === selFriend.id;
-      detailActionBtnHtml = isCur
-        ? `<button type="button" disabled class="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-700/20 text-emerald-800 border border-emerald-600/40 cursor-default">✓ 대표 수호견</button>`
-        : `<button type="button" data-breed-switch="${selFriend.id}" class="breed-switch-btn px-3 py-1.5 rounded-lg text-xs font-black bg-[#2d6a4f] hover:bg-[#245840] text-white active:scale-95 transition shadow-xs">🐶 대표 지정</button>`;
-    } else {
-      const isAct = activeCompIds.includes(selFriend.id);
-      detailActionBtnHtml = isAct
-        ? `<button type="button" data-comp-toggle="${selFriend.id}" class="comp-toggle-btn px-3 py-1.5 rounded-lg text-xs font-black bg-[#d97706] hover:bg-[#b45309] text-white active:scale-95 transition shadow-xs">휴식하기</button>`
-        : `<button type="button" data-comp-toggle="${selFriend.id}" class="comp-toggle-btn px-3 py-1.5 rounded-lg text-xs font-black bg-[#2d6a4f] hover:bg-[#245840] text-white active:scale-95 transition shadow-xs">🐾 동행하기</button>`;
-    }
-
-    const friendDetailHtml = `
-      <div class="p-3 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex items-center justify-between gap-2.5">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <div class="w-12 h-12 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-center text-3xl shrink-0">
-            ${selFriend.icon}
-          </div>
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5">
-              <span class="text-xs font-black text-[#1f2d24] truncate">${selFriend.name}</span>
-              <span class="px-1.5 py-0.2 rounded text-[9px] font-bold ${selFriend.type === 'breed' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}">${selFriend.type === 'breed' ? '수호견' : '서포터'}</span>
+        return `
+          <button type="button" data-comp-toggle="${c.id}" class="comp-toggle-btn aspect-square rounded-xl p-1.5 flex flex-col items-center justify-between text-center relative transition active:scale-95 cursor-pointer ${activeStyle}">
+            <span class="absolute top-1 left-1 text-[9px] leading-none opacity-80">🐾</span>
+            ${isActive ? '<span class="absolute top-1 right-1 px-1 py-0.2 rounded-full bg-amber-600 text-white text-[8px] font-black leading-tight">동행</span>' : ''}
+            <span class="text-2xl leading-none mt-2">${c.icon}</span>
+            <div class="w-full min-w-0">
+              <div class="text-[10px] font-extrabold text-[#1f2d24] truncate">${c.name.split(' ').pop()}</div>
+              <div class="text-[8px] text-emerald-800 truncate font-extrabold leading-tight">${c.buffText || c.role || ''}</div>
             </div>
-            <div class="text-[11px] font-bold text-emerald-800 truncate mt-0.5">${selFriend.trait}</div>
-            <div class="text-[10px] text-[#4a584e] truncate mt-0.5">${selFriend.desc}</div>
-          </div>
-        </div>
-        <div class="shrink-0">
-          ${detailActionBtnHtml}
-        </div>
-      </div>
-    `;
+          </button>
+        `;
+      }
 
-    const friendBannerHtml = `
-      <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-emerald-600/30 text-center space-y-1">
-        <div class="text-xs font-black text-[#2d6a4f] flex items-center justify-center gap-1">
-          <span>🐾</span> 새로운 모험 지역에서 더 많은 동물 친구들이 합류를 기다리고 있어요!
+      return `
+        <div class="aspect-square rounded-xl border border-dashed border-[#d2c8b4] bg-[#efe9dc]/50 flex flex-col items-center justify-center text-center p-1 select-none">
+          <span class="text-xl opacity-25">${c.icon}</span>
+          <span class="text-[9px] font-bold text-[#8c9c8e] mt-1 truncate max-w-full">${c.name.split(' ').pop()}</span>
+          <span class="text-[8px] text-[#a3b899] font-bold mt-0.5">🔒 Stage ${c.unlockStage || 1}</span>
         </div>
-        <div class="text-[10px] text-[#5f6c62]">스테이지를 클리어하고 월반에 도전하여 갇혀 있는 동물 친구들을 구출하세요.</div>
-      </div>
-    `;
+      `;
+    }).join('');
 
     // 4. 서브 탭 분리 HTML 구조
     const subTabHtml = `
       <div class="flex items-center p-1 bg-[#e6dec8] rounded-xl mb-3 text-xs font-bold gap-1">
+        <button type="button" data-gear-subtab="companion" class="flex-1 py-1.5 rounded-lg text-center transition-all ${
+          gearSubTab === 'companion' ? 'bg-[#faf6ee] text-emerald-800 font-black shadow-sm' : 'text-[#4a584e] hover:text-[#1f2d24]'
+        }">
+          🐾 내 강아지 & 서포터
+        </button>
         <button type="button" data-gear-subtab="costume" class="flex-1 py-1.5 rounded-lg text-center transition-all ${
           gearSubTab === 'costume' ? 'bg-[#faf6ee] text-[#1f2d24] font-black shadow-sm' : 'text-[#4a584e] hover:text-[#1f2d24]'
         }">
           🎒 장비·코스튬
-        </button>
-        <button type="button" data-gear-subtab="companion" class="flex-1 py-1.5 rounded-lg text-center transition-all ${
-          gearSubTab === 'companion' ? 'bg-[#faf6ee] text-emerald-800 font-black shadow-sm' : 'text-[#4a584e] hover:text-[#1f2d24]'
-        }">
-          🐾 동물 친구
         </button>
       </div>
     `;
@@ -560,29 +460,50 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
             </div>
           `
           : `
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <h3 class="text-xs font-extrabold text-emerald-800">🐾 동물 친구</h3>
-                <span class="text-[10px] font-bold text-[#4a584e]">함께하는 친구 ${totalJoinedFriends}마리</span>
+            <div class="space-y-3">
+              ${formationHtml}
+
+              <!-- 1. 수호견 (주인공 강아지) 전용 구역 -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xs font-extrabold text-emerald-800 flex items-center gap-1">
+                    <span>🐕</span> 내 수호견 (주인공 강아지)
+                  </h3>
+                  <span class="text-[10px] font-bold text-[#4a584e]">보유 ${unlockedBreedsCount}/${BREEDS.length}마리</span>
+                </div>
+                <div class="grid grid-cols-4 gap-2">${breedsGridHtml}</div>
               </div>
-              <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold">
-                ${friendFilterDefs.map((f) => `
-                  <button type="button" data-friend-filter="${f.key}" class="px-2.5 py-1 rounded-lg transition-all ${
-                    friendFilter === f.key
-                      ? 'bg-[#2d6a4f] text-[#f8f5ec] font-black shadow-xs'
-                      : 'bg-[#e6dec8] text-[#4a584e] hover:text-[#1f2d24]'
-                  }">
-                    ${f.label}
-                  </button>
-                `).join('')}
+
+              <!-- 2. 서포터 동료 전용 구역 -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xs font-extrabold text-amber-800 flex items-center gap-1">
+                    <span>🦉</span> 서포터 동료 (동행 ${activeCompIds.length}/${MAX_SUPPORTERS})
+                  </h3>
+                  <span class="text-[10px] font-bold text-[#4a584e]">보유 ${unlockedCompsCount}/${COMPANIONS.length}마리</span>
+                </div>
+                <div class="grid grid-cols-4 gap-2">${compsGridHtml}</div>
               </div>
-              <div class="grid grid-cols-4 gap-2">${friendsGridHtml}</div>
-              ${friendDetailHtml}
-              ${friendBannerHtml}
             </div>
           `
       }
     `;
+
+    // 캔버스 아바타 렌더링 (견종 비주얼 + 장착 스킨/무기)
+    renderDogToCanvas(document.getElementById('gear-showcase-hero-canvas'), {
+      save,
+      breedId: curBreedId,
+      scale: 1.0,
+      ratio: 2,
+    });
+    // 중앙 쇼케이스 캔버스는 항상 현재 선택된 대표 주인공 수호견만 렌더링
+    renderDogToCanvas(document.getElementById('gear-formation-hero-canvas'), {
+      save,
+      breedId: curBreedId,
+      scale: 1.45,
+      ratio: 1.5,
+      withEquipment: true,
+    });
 
     // 이벤트 리스너 등록
     gearPanel.querySelectorAll('[data-gear-subtab]').forEach((btn) => {
@@ -627,35 +548,21 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
         });
       });
     } else {
-      gearPanel.querySelectorAll('[data-friend-filter]').forEach((btn) => {
+      document.getElementById('btn-open-breed-book')?.addEventListener('click', () => {
+        openBreedBookModal();
+      });
+
+      gearPanel.querySelectorAll('.btn-open-breed-book-lock').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const filter = btn.getAttribute('data-friend-filter');
-          if (filter && filter !== friendFilter) {
-            friendFilter = filter;
-            renderGearTab();
-          }
+          openBreedBookModal();
         });
       });
 
-      gearPanel.querySelectorAll('.friend-slot-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const id = btn.getAttribute('data-friend-select');
-          const type = btn.getAttribute('data-friend-type');
-          selectedFriendId = id;
-          if (type === 'breed') {
-            updateSave((s) => {
-              s.selectedBreed = id;
-            });
-            audioEngine.playBark?.();
-            onResourcesChanged?.();
-          }
-          renderGearTab();
-        });
-      });
-
+      // 하단 수호견 카드 클릭 시 별도 확인 버튼 없이 즉시 대표 주인공으로 교체
       gearPanel.querySelectorAll('.breed-switch-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-breed-switch');
+          if (!id || id === save.selectedBreed) return;
           updateSave((s) => {
             s.selectedBreed = id;
           });
@@ -665,9 +572,11 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
         });
       });
 
+      // 서포터 목록 또는 서포터 슬롯 클릭 시 즉시 장착/해제 토글
       gearPanel.querySelectorAll('.comp-toggle-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-comp-toggle');
+          if (!id) return;
           updateSave((s) => {
             if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
             if (!s.companions.unlocked.includes(id)) {
@@ -678,7 +587,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
             if (idx >= 0) {
               active.splice(idx, 1);
             } else {
-              if (active.length >= (BALANCE.COMPANIONS?.MAX_ACTIVE || 2)) {
+              if (active.length >= MAX_SUPPORTERS) {
                 active.shift();
               }
               active.push(id);
@@ -693,118 +602,112 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
     }
   }
 
-  function openSupplyShopModal() {
+  function openBreedBookModal() {
     if (!openModal) return;
     const save = getSave();
-    const today = new Date().toISOString().slice(0, 10);
-    const isFree = save.lastFreeSupplyDate !== today;
-    const gemCost = BALANCE.SHOP.SUPPLY_BOX_GEM_COST || 50;
+
+    const breedsHtml = BREEDS.map((b) => {
+      const isUnlocked = isBreedUnlocked(b.id, save);
+      const isCurrent = (save.selectedBreed || 'pomeranian') === b.id;
+      const aff = getAffection(b.id, save);
+      const cost = b.gemCost || 80;
+
+      let actionHtml = '';
+      if (isCurrent) {
+        actionHtml = `<span class="px-2.5 py-1 rounded-lg bg-emerald-600/20 text-emerald-800 text-xs font-black border border-emerald-600/40">✓ 현재 대표견</span>`;
+      } else if (isUnlocked) {
+        actionHtml = `<button type="button" data-book-switch="${b.id}" class="book-switch-btn px-2.5 py-1 rounded-lg bg-[#2d6a4f] hover:bg-[#245840] text-white text-xs font-black active:scale-95 transition shadow-xs">🐶 대표 지정</button>`;
+      } else {
+        actionHtml = `<button type="button" data-book-adopt="${b.id}" data-book-cost="${cost}" class="book-adopt-btn px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black active:scale-95 transition shadow-xs flex items-center gap-1">💎 ${cost} 보석 입양</button>`;
+      }
+
+      return `
+        <div class="p-3 rounded-xl ${isUnlocked ? 'bg-[#faf6ee] border-[#d2c8b4]' : 'bg-[#efe9dc]/60 border-[#d2c8b4]/60'} border flex items-center justify-between gap-2.5 shadow-xs">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-12 h-12 rounded-xl ${isUnlocked ? 'bg-[#f0ebe0] border-[#d2c8b4]' : 'bg-[#e6dec8] border-dashed border-[#b8ab94] opacity-60'} border flex items-center justify-center text-3xl shrink-0">
+              ${b.icon}
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs font-black text-[#1f2d24] truncate">${b.name}</span>
+                <span class="text-[10px] text-[#5f6c62] truncate">(${b.subName})</span>
+                ${isUnlocked ? `<span class="px-1.5 py-0.2 rounded text-[8px] font-bold bg-rose-100 text-rose-800">${aff.hearts} Lv.${aff.level}</span>` : `<span class="px-1.5 py-0.2 rounded text-[8px] font-bold bg-slate-200 text-slate-700">미입양</span>`}
+              </div>
+              <div class="text-[11px] font-bold text-emerald-800 truncate mt-0.5">${b.trait}</div>
+              <div class="text-[10px] text-[#4a584e] truncate mt-0.5">${b.desc}</div>
+            </div>
+          </div>
+          <div class="shrink-0">
+            ${actionHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
 
     openModal(`
       <div class="space-y-3.5">
         <div class="flex items-center justify-between border-b border-[#d2c8b4] pb-2">
           <div class="flex items-center gap-2">
-            <span class="text-xl">🎁</span>
+            <span class="text-xl">📖</span>
             <div>
-              <h3 class="text-sm font-black text-emerald-800">일일 보급 상자</h3>
-              <div class="text-[10px] text-[#4a584e]">매일 1회 무료 지급되는 특별 보급품</div>
+              <h3 class="text-sm font-black text-[#1f2d24]">수호견 전체 도감 (12종)</h3>
+              <div class="text-[10px] text-[#4a584e]">보석으로 입양 시 초기 친밀도 보너스(Lv.2 💖) 즉시 부여!</div>
             </div>
           </div>
-          <button id="btn-close-supply-modal" type="button" class="w-7 h-7 rounded-full bg-[#f0ebe0] hover:bg-[#e6dec8] text-[#1f2d24] flex items-center justify-center text-xs font-black transition" title="닫기">✕</button>
-        </div>
-
-        <!-- 일일 무료 상태 배너 -->
-        <div class="p-3 rounded-2xl ${isFree ? 'bg-gradient-to-r from-emerald-600/15 via-teal-600/15 to-emerald-600/10 border border-emerald-500/50' : 'bg-[#f0ebe0] border border-[#d2c8b4]'} flex items-center justify-between">
-          <div class="flex items-center gap-2.5">
-            <div class="w-10 h-10 rounded-xl ${isFree ? 'bg-emerald-600 text-white' : 'bg-[#e6dec8] text-[#4a584e]'} flex items-center justify-center text-xl shadow-xs">
-              📦
-            </div>
-            <div>
-              <div class="text-xs font-black ${isFree ? 'text-emerald-900' : 'text-[#1f2d24]'}">
-                ${isFree ? '🎉 오늘 무료 오픈 가능!' : '오늘 무료 오픈 완료'}
-              </div>
-              <div class="text-[10px] ${isFree ? 'text-emerald-800' : 'text-[#4a584e]'}">
-                ${isFree ? '매일 0시 초기화 · 무료 보급을 받아가세요' : '보석을 사용하여 추가 오픈할 수 있습니다'}
-              </div>
-            </div>
-          </div>
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${isFree ? 'bg-emerald-600 text-white shadow-xs animate-pulse' : 'bg-[#d2c8b4] text-[#4a584e]'}">
-            ${isFree ? '무료' : `💎 ${gemCost}`}
-          </span>
-        </div>
-
-        <!-- 획득 가능한 보상 목록 -->
-        <div class="rounded-2xl bg-[#f0ebe0] border border-[#d2c8b4] p-3 space-y-2">
-          <div class="text-xs font-black text-[#1f2d24] flex items-center gap-1.5">
-            <span>📋</span>
-            <span>획득 가능한 보상 목록</span>
-          </div>
-          <div class="space-y-1.5 text-[11px]">
-            <div class="flex items-center justify-between p-2 rounded-xl bg-[#faf6ee] border border-[#d2c8b4]">
-              <div class="flex items-center gap-2">
-                <span class="text-base">👔</span>
-                <div>
-                  <div class="font-black text-[#1f2d24]">희귀 강아지 코스튬</div>
-                  <div class="text-[10px] text-[#4a584e]">일반~전설 코스튬 (중복 시 뼈다귀 변환)</div>
-                </div>
-              </div>
-              <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">35%</span>
-            </div>
-            <div class="flex items-center justify-between p-2 rounded-xl bg-[#faf6ee] border border-[#d2c8b4]">
-              <div class="flex items-center gap-2">
-                <span class="text-base">🦴</span>
-                <div>
-                  <div class="font-black text-[#1f2d24]">장비 강화 조각</div>
-                  <div class="text-[10px] text-[#4a584e]">뼈다귀 +2~3개 (동료 해금 & 승급전)</div>
-                </div>
-              </div>
-              <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">35%</span>
-            </div>
-            <div class="flex items-center justify-between p-2 rounded-xl bg-[#faf6ee] border border-[#d2c8b4]">
-              <div class="flex items-center gap-2">
-                <span class="text-base">🪙</span>
-                <div>
-                  <div class="font-black text-[#1f2d24]">훈련용 금화</div>
-                  <div class="text-[10px] text-[#4a584e]">금화 +60~100개 (스탯 기초 훈련)</div>
-                </div>
-              </div>
-              <span class="px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800 text-[10px] font-black">30%</span>
-            </div>
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-black text-amber-700">💎 ${save.gems || 0}</span>
+            <button id="btn-close-breed-book" type="button" class="w-7 h-7 rounded-full bg-[#efe9dc] hover:bg-[#e6dec8] text-[#1f2d24] text-xs font-bold flex items-center justify-center">✕</button>
           </div>
         </div>
 
-        <!-- 오픈 액션 버튼 -->
-        <button id="btn-open-supply-box" type="button" class="w-full py-3 rounded-2xl ${
-          isFree
-            ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-md'
-            : 'bg-gradient-to-r from-cyan-600 to-teal-700 hover:from-cyan-500 hover:to-teal-600 text-white shadow-md'
-        } font-black text-sm active:scale-95 transition flex items-center justify-center gap-1.5">
-          <span>${isFree ? '🎁 오늘 무료 오픈!' : `💎 ${gemCost} 보석으로 오픈`}</span>
-        </button>
+        <div class="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+          ${breedsHtml}
+        </div>
       </div>
     `);
 
-    document.getElementById('btn-close-supply-modal')?.addEventListener('click', () => closeModal?.());
+    document.getElementById('btn-close-breed-book')?.addEventListener('click', () => {
+      closeModal();
+    });
 
-    document.getElementById('btn-open-supply-box')?.addEventListener('click', () => {
-      const cur = getSave();
-      const freeNow = cur.lastFreeSupplyDate !== today;
-      const curGems = cur.gems ?? 300;
+    document.querySelectorAll('.book-switch-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-book-switch');
+        updateSave((s) => {
+          s.selectedBreed = id;
+        });
+        audioEngine.playBark?.();
+        onResourcesChanged?.();
+        closeModal();
+        renderGearTab();
+      });
+    });
 
-      if (!freeNow && curGems < gemCost) {
-        openModal(`
-          <div class="text-center space-y-3">
-            <div class="text-3xl">💎</div>
-            <h3 class="text-sm font-black text-rose-600">보석이 부족합니다</h3>
-            <p class="text-xs text-[#4a584e]">추가 오픈에 필요한 보석 ${gemCost - curGems}개가 부족해요.<br/>내일 무료 오픈을 기다리거나 상점에서 충전해 주세요.</p>
-            <button id="btn-supply-gem-fail" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-white font-bold text-xs active:scale-95 transition">확인</button>
-          </div>
-        `);
-        document.getElementById('btn-supply-gem-fail')?.addEventListener('click', () => closeModal?.());
-        return;
-      }
+    document.querySelectorAll('.book-adopt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-book-adopt');
+        const cost = parseInt(btn.getAttribute('data-book-cost'), 10) || 80;
+        const curSave = getSave();
 
-      rollSupplyBox({ isFree: freeNow, gemCost });
+        if ((curSave.gems || 0) < cost) {
+          audioEngine.playWrong?.();
+          alert(`💎 보석이 부족합니다! (필요: ${cost}개 / 보유: ${curSave.gems || 0}개)`);
+          return;
+        }
+
+        updateSave((s) => {
+          s.gems = Math.max(0, (s.gems || 0) - cost);
+          if (!s.unlockedBreeds) s.unlockedBreeds = ['pomeranian'];
+          if (!s.unlockedBreeds.includes(id)) {
+            s.unlockedBreeds.push(id);
+          }
+        });
+        addAffection(id, 50); // 초기 친밀도 보너스 부여
+        audioEngine.playPowerUp?.();
+        onResourcesChanged?.();
+        openBreedBookModal();
+        renderGearTab();
+      });
     });
   }
 
@@ -976,26 +879,14 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
       }
     `;
 
-    const canvas = document.getElementById('training-hero-canvas');
-    if (canvas) {
-      const curBreedId = save.selectedBreed || 'pomeranian';
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2 + 4);
-      const evo = getEvolutionStage(save);
-      drawDogCharacter(ctx, {
-        breedId: curBreedId,
-        scale: 1.25,
-        bodyY: 0,
-        lookX: 0,
-        isBipedal: evo.stage >= 2,
-      });
-      if (save.equippedSkin) {
-        drawDogSkin(ctx, save.equippedSkin, 1.25, 0);
-      }
-      ctx.restore();
-    }
+    renderDogToCanvas(document.getElementById('training-hero-canvas'), {
+      save,
+      breedId: save.selectedBreed || 'pomeranian',
+      scale: 1.25,
+      offsetY: 4,
+      withEquipment: true,
+      withWeapon: false,
+    });
   }
 
   // 훈련소 단일 이벤트 위임 핸들러
@@ -1062,7 +953,6 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
   return {
     renderGearTab,
     renderTrainingTab,
-    openSupplyShopModal,
   };
 }
 

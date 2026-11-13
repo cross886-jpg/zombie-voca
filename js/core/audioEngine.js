@@ -358,6 +358,15 @@ export const audioEngine = {
     setTimeout(() => playTone(660, 0.07, 'triangle', 0.08), 45);
   },
 
+  playHappyBark() {
+    // 경쾌하고 사랑스러운 강아지 기쁨 소리 (도-미-솔-도 아르페지오 + 통통 튀는 톤)
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+      setTimeout(() => playTone(f, 0.08, 'sine', 0.12), idx * 55);
+    });
+    setTimeout(() => playTone(880, 0.12, 'triangle', 0.14), 240);
+    this.triggerHaptic(35);
+  },
+
   playCaptureTick() {
     playTone(740, 0.05, 'sine', 0.07);
     this.triggerHaptic(12);

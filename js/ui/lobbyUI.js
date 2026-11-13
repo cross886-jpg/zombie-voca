@@ -4,22 +4,26 @@
  * 일일 미션 4종 모달, 7일 연속 출석부 모달, 설정(Base64 백업/복원, 튜토리얼 다시보기, 언어 스위치) 제어
  */
 
-import { BALANCE } from '../config/balance.js';
-import { BREEDS, COMPANIONS, COSTUMES } from '../data/catalog.js';
+import { BREEDS, COSTUMES, QUEST_DEFS } from '../data/catalog.js';
 import { CHAPTERS, getChapter, getChapterNumberForUnit } from '../data/chapters.js';
-import { SUPPORTED_LANGUAGES, applyI18nToDOM, detectDeviceLanguage, getLanguage, setLanguage, t } from '../data/i18n.js';
-import { getWords, getTotalUnits } from '../data/data_en.js?v=2';
+import { applyI18nToDOM, getLanguage, t } from '../data/i18n.js';
+import { getTotalUnits } from '../data/data_en.js?v=2';
+import { formatCourseBadge, getActiveCefrWords } from '../core/courseEngine.js';
 import {
   getSave,
   updateSave,
+  getAffection,
+  addAffection,
+  ensureQuestsState,
+  getTodayDateKey,
+  getPetDailyStatus,
+  recordPetAction,
+  MAX_SUPPORTERS,
 } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
-import {
-  computePlayerStats,
-  drawDogCharacter,
-  drawDogSkin,
-  getEvolutionStage,
-} from '../entities/player.js';
+import { computePlayerStats } from '../entities/player.js';
+import { createLobbyModals } from './lobbyModals.js';
+import { renderDogToCanvas } from '../render/dogRenderer.js';
 
 const DAILY_MISSION_DEFS = [
   { id: 'm_battle', key: 'battles', title: '전투 1회 출격', target: 1, gold: 100, snacks: 1 },
@@ -38,11 +42,29 @@ const ATTENDANCE_REWARDS = [
   { day: 7, gold: 700, snacks: 5 },
 ];
 
-function getTodayKey(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+export function formatCompactNumber(n) {
+  const num = Number(n) || 0;
+  if (num >= 1000000) return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (num >= 10000) return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return num.toLocaleString();
+}
+
+export function getProfileProgress(save) {
+  const curLevelWords = getActiveCefrWords();
+  const total = curLevelWords.length;
+  if (total <= 0) return { pct: 0, mastered: 0, total: 0 };
+
+  const statsObj = save?.wordStats || {};
+  let mastered = 0;
+  curLevelWords.forEach((w) => {
+    const st = statsObj[w.id];
+    if (st && ((st.correct || 0) >= 3 || st.mastered)) {
+      mastered++;
+    }
+  });
+
+  const pct = Math.max(0, Math.min(100, Math.round((mastered / total) * 100)));
+  return { pct, mastered, total };
 }
 
 export function createLobbyUI({
@@ -52,7 +74,6 @@ export function createLobbyUI({
   onRenderTraining,
   onRenderShop,
   onRenderChallenge,
-  onOpenSupplyShop,
 } = {}) {
   const lobbyLayer = document.getElementById('lobby-layer');
   const modalLayer = document.getElementById('modal-layer');
@@ -60,11 +81,11 @@ export function createLobbyUI({
 
   const evoBadge = document.getElementById('lobby-evo-badge');
   const playerTitle = document.getElementById('lobby-player-title');
-  const evoStageName = document.getElementById('lobby-evo-stage-name');
+  const certBadge = document.getElementById('lobby-cert-badge');
+  const headerXpBar = document.getElementById('lobby-header-xp-bar');
   const resGold = document.getElementById('res-gold');
   const resSnacks = document.getElementById('res-snacks');
   const resGems = document.getElementById('res-gems');
-  const btnOpenSettings = document.getElementById('btn-open-settings');
 
   const battlePanel = document.getElementById('tab-panel-battle');
   const tabPanels = {
@@ -79,7 +100,7 @@ export function createLobbyUI({
   let activeTab = 'battle';
 
   function ensureDailyReset() {
-    const today = getTodayKey();
+    const today = getTodayDateKey();
     const save = getSave();
     if (save.dailyMissions.date !== today) {
       updateSave((s) => {
@@ -113,44 +134,136 @@ export function createLobbyUI({
     modalCard.innerHTML = '';
   }
 
+  const {
+    openEditDogNameModal,
+    openQuestsModal,
+    openAirDropSupplyModal,
+    openCefrModal,
+    openAttendance30Modal,
+    openNoticeModal,
+    openProfileModal,
+    openSettingsModal,
+    openCourseSetupModal,
+  } = createLobbyModals({
+    openModal,
+    closeModal,
+    modalCard,
+    refreshHeader,
+    renderBattleTab,
+    renderActiveTab,
+    onStartBattle,
+    getProfileProgress,
+  });
+
+  let happyUntil = 0;
+  let happyAnimFrameId = null;
+  let petCooldownUntil = 0;
+  let petCooldownTimerId = null;
+
+  function triggerDogHappyReaction() {
+    happyUntil = Date.now() + 2500;
+    if (typeof window !== 'undefined' && window.cancelAnimationFrame && happyAnimFrameId) {
+      cancelAnimationFrame(happyAnimFrameId);
+    }
+    renderHeroPreview();
+
+    const stage = document.getElementById('lobby-hero-stage');
+    if (!stage) return;
+
+    // 1. 행복 말풍선
+    const oldBubble = stage.querySelector('.dog-speech-bubble');
+    if (oldBubble) oldBubble.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = 'dog-speech-bubble absolute -top-8 left-1/2 -translate-x-1/2 pointer-events-none bg-white text-emerald-950 border border-emerald-400 font-black text-[11px] px-2.5 py-1 rounded-xl shadow-lg whitespace-nowrap z-30 animate-bounce select-none';
+    const cheers = ['멍! 기분 최고예요! 💕', '와앙! 너무 좋아요! ✨', '꼬리 살랑살랑~ 💖', '헤헤 기분 짱이다 멍! 🐾'];
+    bubble.textContent = cheers[Math.floor(Math.random() * cheers.length)];
+    stage.appendChild(bubble);
+
+    setTimeout(() => {
+      bubble.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+      bubble.style.opacity = '0';
+      bubble.style.transform = 'translate(-50%, -10px)';
+      setTimeout(() => bubble.remove(), 400);
+    }, 1800);
+
+    // 2. 다채로운 하트 파티클 여러 개 솟아오름
+    const hearts = ['💕', '💖', '✨', '🐾', '🥰'];
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => {
+        const p = document.createElement('div');
+        const offsetX = (Math.random() - 0.5) * 80;
+        p.className = 'absolute -top-3 left-1/2 pointer-events-none text-xl animate-float-heart z-20 select-none';
+        p.style.transform = `translate(calc(-50% + ${offsetX}px), 0)`;
+        p.textContent = hearts[i % hearts.length];
+        stage.appendChild(p);
+        setTimeout(() => p.remove(), 900);
+      }, i * 160);
+    }
+  }
+
   function renderHeroPreview() {
     const canvas = document.getElementById('lobby-hero-canvas');
     if (!canvas) return;
     const save = getSave();
     const curBreedId = save.selectedBreed || 'pomeranian';
-    const evo = getEvolutionStage(save);
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
-    drawDogCharacter(ctx, {
+    const now = Date.now();
+    const isHappy = now < happyUntil;
+
+    renderDogToCanvas(canvas, {
+      save,
       breedId: curBreedId,
       scale: 1.45,
-      bodyY: 0,
-      lookX: 0,
-      isBipedal: evo.stage >= 2,
+      y: canvas.height / 2 + 6,
+      isHappy,
+      time: now,
+      companions: (save.companions?.active || []).slice(0, MAX_SUPPORTERS),
     });
-    if (save.equippedSkin) {
-      drawDogSkin(ctx, save.equippedSkin, 1.45, 0);
+
+    if (isHappy && typeof window !== 'undefined' && window.requestAnimationFrame) {
+      happyAnimFrameId = requestAnimationFrame(renderHeroPreview);
     }
-    ctx.restore();
   }
 
   function refreshHeader() {
     const save = getSave();
-    const evo = getEvolutionStage(save);
-    evoBadge.textContent = evo.icon;
-    playerTitle.textContent = save.dogName || t('app.playerDefaultName');
-    const certLevel = save.certifiedLevel || 'A1';
-    evoStageName.textContent = `${t(evo.key)} · ${certLevel}`;
-    resGold.textContent = String(save.gold || 0);
-    resSnacks.textContent = String(save.snacks || 0);
-    if (resGems) resGems.textContent = String(save.gems ?? 300);
-    const shopDot = document.getElementById('supply-shop-dot');
-    if (shopDot) {
-      const today = getTodayKey();
-      const hasFreeSupply = save.lastFreeSupplyDate !== today;
-      shopDot.classList.toggle('hidden', !hasFreeSupply);
+    const curBreedId = save.selectedBreed || 'pomeranian';
+    const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
+
+    if (evoBadge) {
+      let skinBadge = '';
+      if (save.equippedSkin === 'skin_crown') skinBadge = '<span class="absolute -top-1.5 -left-1 text-[11px] leading-none select-none">👑</span>';
+      else if (save.equippedSkin === 'skin_astronaut') skinBadge = '<span class="absolute -top-1.5 -left-1 text-[11px] leading-none select-none">🧑‍🚀</span>';
+      else if (save.equippedSkin === 'skin_detective') skinBadge = '<span class="absolute -top-1.5 -left-1 text-[11px] leading-none select-none">🕵️</span>';
+
+      const eqWeaponId = save.costumes?.equipped?.weapon;
+      const eqWeapon = COSTUMES.find((c) => c.id === eqWeaponId);
+      const weaponBadge = eqWeapon ? `<span class="absolute -top-1.5 -right-1 text-[10px] leading-none select-none">${eqWeapon.icon || '⚔️'}</span>` : '';
+
+      evoBadge.innerHTML = `
+        <span class="text-xl select-none leading-none">${curBreed.icon || '🐶'}</span>
+        ${skinBadge}
+        ${weaponBadge}
+      `;
+    }
+
+    if (playerTitle) playerTitle.textContent = save.dogName || t('app.playerDefaultName');
+    if (certBadge) certBadge.textContent = formatCourseBadge(save);
+
+    if (headerXpBar) {
+      const { pct, mastered, total } = getProfileProgress(save);
+      headerXpBar.style.width = `${pct}%`;
+      headerXpBar.parentElement?.setAttribute('title', `마스터 진행도: ${mastered}/${total} (${pct}%)`);
+    }
+
+    if (resGold) resGold.textContent = formatCompactNumber(save.gold || 0);
+    if (resSnacks) resSnacks.textContent = formatCompactNumber(save.snacks || 0);
+    if (resGems) resGems.textContent = formatCompactNumber(save.gems ?? 0);
+    const airdropDot = document.getElementById('airdrop-dot');
+    if (airdropDot) {
+      const today = getTodayDateKey();
+      const canClaimAirDrop = save.dailyAirDropDate !== today;
+      airdropDot.classList.toggle('hidden', !canClaimAirDrop);
     }
     renderHeroPreview();
   }
@@ -223,13 +336,14 @@ export function createLobbyUI({
   function renderBattleTab() {
     ensureDailyReset();
     const save = getSave();
-    const today = getTodayKey();
-    const canClaimAttendance = save.attendance.lastClaimDate !== today;
-    const claimableMissions = DAILY_MISSION_DEFS.filter(
-      (m) =>
-        (save.dailyMissions.progress[m.key] || 0) >= m.target &&
-        !save.dailyMissions.claimed.includes(m.id)
-    ).length;
+    const today = getTodayDateKey();
+    ensureQuestsState(save);
+    const canClaimAttendance = (save.attendance30?.lastClaimDate || save.attendance?.lastClaimDate) !== today;
+    const canClaimAirDrop = save.dailyAirDropDate !== today;
+    const dReady = (QUEST_DEFS.daily || []).filter((q) => (save.quests?.daily?.progress?.[q.key] || 0) >= q.target && !save.quests?.daily?.claimed?.includes(q.id)).length;
+    const wReady = (QUEST_DEFS.weekly || []).filter((q) => (save.quests?.weekly?.progress?.[q.key] || 0) >= q.target && !save.quests?.weekly?.claimed?.includes(q.id)).length;
+    const aReady = (QUEST_DEFS.achievements || []).filter((q) => (save.quests?.achievements?.progress?.[q.key] || 0) >= q.target && !save.quests?.achievements?.claimed?.includes(q.id)).length;
+    const claimableMissions = dReady + wReady + aReady;
 
     const stats = computePlayerStats(save);
     const curUnitNum = parseInt((save.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
@@ -238,20 +352,30 @@ export function createLobbyUI({
     const curChapterNum = getChapterNumberForUnit(curUnitNum, totalUnits);
     const ch = getChapter(curChapterNum);
 
-    const allWords = getWords();
-    const curUnitId = `unit_${String(curUnitNum).padStart(3, '0')}`;
-    const curUnitWords = allWords.filter((w) => w.unit === curUnitId);
-    const sample = curUnitWords.slice(0, 3).map((w) => w.word).join(', ');
-    const level = curUnitWords[0]?.level || 'A1';
-    const categoryName = level === 'A1' ? '기초 필수' : level === 'A2' ? '초급 실용' : level === 'B1' ? '중급 핵심' : level === 'B2' ? '중고급 도약' : '고급 심화';
-
+    // 스테이지는 순차 돌파 전용: 클리어한 과거 스테이지만 복습·파밍 이동 가능, 미개방 다음 스테이지는 잠금
     const canGoPrev = curUnitNum > 1;
-    const canGoNext = curUnitNum < totalUnits;
-    const isLockedCurrent = curUnitNum > maxUnlocked;
+    const canGoNext = curUnitNum < Math.min(maxUnlocked, totalUnits);
+    const nextIsLocked = !canGoNext && curUnitNum < totalUnits;
+    const isFarmStage = curUnitNum < maxUnlocked;
 
     const curBreedId = save.selectedBreed || 'pomeranian';
     const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
+    const aff = getAffection(curBreedId, save);
     const dogName = save.dogName || '우유';
+
+    const petStatus = getPetDailyStatus();
+    const now = Date.now();
+    const cooldownMs = Math.max(0, petCooldownUntil - now);
+    let petBadgeText = `쓰다듬기 💕 ${petStatus.remaining}/5`;
+    let petBadgeClass = 'absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black shadow animate-bounce select-none';
+
+    if (!petStatus.canPet) {
+      petBadgeText = '오늘 교감 완료 ✓';
+      petBadgeClass = 'absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-stone-500 text-white text-[9px] font-black shadow select-none';
+    } else if (cooldownMs > 0) {
+      petBadgeText = `⏳ ${Math.ceil(cooldownMs / 1000)}s`;
+      petBadgeClass = 'absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-amber-600 text-white text-[9px] font-black shadow select-none';
+    }
 
     let heroName = dogName;
     if (save.equippedSkin === 'skin_crown') {
@@ -264,97 +388,121 @@ export function createLobbyUI({
 
     battlePanel.className = 'flex flex-col justify-between min-h-full py-2';
     battlePanel.innerHTML = `
-      <!-- 오픈 스테이지 히어로 영역 (좌: 일일 미션 / 중: 우유 / 우: 7일 출석부) -->
-      <div class="flex-1 flex flex-col justify-center gap-4">
-        <div class="flex items-start justify-between gap-2">
-          <!-- 왼쪽 가장자리: 일일 미션 + 보급 상점 -->
-          <div class="flex flex-col gap-2 shrink-0 mt-2">
-            <button id="btn-open-missions" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition">
-              <span class="text-lg leading-none">📋</span>
-              <span class="text-[10px] font-bold text-[#1f2d24] leading-tight text-center">${t('lobby.dailyMissions')}</span>
+      <!-- 오픈 스테이지 히어로 영역 (상단 좌우 기능 버튼 + 중앙 수호견 오픈 스테이지) -->
+      <div class="flex-1 flex flex-col justify-start relative pt-1">
+        <!-- 상단 고정 좌우 사이드 버튼 행 (상단 녹색 헤더 바로 아래) -->
+        <div class="w-full flex items-start justify-between pointer-events-none z-10 px-0.5">
+          <!-- 좌측 상단 (프로필 위젯 바로 아래): 📜 퀘스트 -> 🪂 보급품 -->
+          <div class="flex flex-col gap-2 shrink-0 pointer-events-auto">
+            <button id="btn-open-missions" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer" title="퀘스트 목록">
+              <span class="text-lg leading-none">📜</span>
+              <span class="text-[10px] font-bold text-[#1f2d24] leading-tight text-center">${t('lobby.quests')}</span>
               ${claimableMissions > 0 ? `<span class="absolute -top-1.5 -right-1.5 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black shadow">${claimableMissions}</span>` : ''}
             </button>
-            <button id="btn-open-supply-shop" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition">
-              <span class="text-lg leading-none">🎁</span>
-              <span class="text-[10px] font-bold text-amber-700 leading-tight text-center">${t('lobby.shopTitle')}</span>
-              <span id="supply-shop-dot" class="${save.lastFreeSupplyDate !== today ? '' : 'hidden'} absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              ${save.lastFreeSupplyDate !== today ? '<span class="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-emerald-600 text-white text-[9px] font-black shadow">무료</span>' : ''}
+            <button id="btn-open-airdrop" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer" title="하늘에서 떨어지는 일일 보급품">
+              <span class="text-lg leading-none">🪂</span>
+              <span class="text-[10px] font-bold text-amber-800 leading-tight text-center">보급품</span>
+              <span id="airdrop-dot" class="${canClaimAirDrop ? '' : 'hidden'} absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse ring-2 ring-rose-300"></span>
+              ${canClaimAirDrop ? '<span class="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-emerald-600 text-white text-[9px] font-black shadow">무료</span>' : ''}
             </button>
           </div>
 
-          <!-- 정중앙: 강아지 오픈 스테이지 프리뷰 & 견종명 배지 & 순수 이름표 & 핵심 스탯 -->
-          <div class="flex-1 min-w-0 flex flex-col items-center text-center pt-1">
-            <!-- 캐릭터 프리뷰 원형 및 좌우 견종 전환 화살표 -->
-            <div class="flex items-center justify-center gap-2">
-              <button id="btn-breed-prev" type="button" class="w-8 h-8 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[#1f2d24] hover:bg-[#efe9dc] font-black text-xs flex items-center justify-center active:scale-90 transition shrink-0" title="이전 견종">
-                ◀
-              </button>
-
-              <div class="relative w-24 h-24 rounded-full bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center">
-                <canvas id="lobby-hero-canvas" width="88" height="88" class="w-20 h-20 rounded-full bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
+          <!-- 우측 상단 (보석 재화 바로 아래): ☰ 메뉴 -> 📅 30일 출석 (메뉴가 위, 30일 출석이 아래) -->
+          <div class="flex flex-col gap-2 shrink-0 pointer-events-auto relative">
+            <div class="relative">
+            <button id="btn-hamburger-menu" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer" title="더보기 메뉴">
+              <span class="text-lg leading-none">☰</span>
+              <span class="text-[10px] font-bold text-[#1f2d24] leading-tight text-center">메뉴</span>
+            </button>
+              <!-- 햄버거 드롭다운 팝업 (우측 정렬) -->
+              <div id="header-dropdown-menu" class="absolute right-0 top-full mt-1 w-36 rounded-xl bg-[#faf6ee] border border-[#d2c8b4] shadow-xl p-1.5 z-[60] flex flex-col gap-1 opacity-0 -translate-y-2 pointer-events-none invisible transition-all duration-200 ease-out">
+                <button id="btn-menu-notice" type="button" class="w-full px-2.5 py-2 rounded-lg hover:bg-[#efe9dc] text-xs font-bold text-[#1f2d24] flex items-center gap-2 text-left active:scale-95 transition cursor-pointer">
+                  <span>📢</span>
+                  <span>공지사항</span>
+                </button>
+                <button id="btn-menu-settings" type="button" class="w-full px-2.5 py-2 rounded-lg hover:bg-[#efe9dc] text-xs font-bold text-[#1f2d24] flex items-center gap-2 text-left active:scale-95 transition cursor-pointer">
+                  <span>⚙️</span>
+                  <span>${t('modal.settingsTitle') || '게임 설정'}</span>
+                </button>
               </div>
-
-              <button id="btn-breed-next" type="button" class="w-8 h-8 rounded-full bg-[#faf6ee] shadow-sm border border-[#d2c8b4] text-[#1f2d24] hover:bg-[#efe9dc] font-black text-xs flex items-center justify-center active:scale-90 transition shrink-0" title="다음 견종">
-                ▶
-              </button>
             </div>
+            <button id="btn-open-attendance" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition cursor-pointer" title="30일 출석부">
+              <span class="text-lg leading-none">📅</span>
+              <span class="text-[10px] font-bold text-[#1f2d24] leading-tight text-center">${t('lobby.attendance30d')}</span>
+              ${canClaimAttendance ? `<span class="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse ring-2 ring-emerald-300"></span>` : ''}
+            </button>
+          </div>
+        </div>
 
-            <!-- 현재 선택된 견종명 배지 & 진화 단계 -->
-            <div class="flex items-center justify-center gap-1.5 mt-2">
-              <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">
-                🐾 ${curBreed.name} · ${t(stats.evoStage.key)}
+        <!-- 중앙 무대 영역: 상단 버튼과 분리되어 중앙 여백이 넉넉해진 수호견 무대 -->
+        <div class="flex-1 flex flex-col items-center justify-center text-center my-auto -mt-6 pointer-events-auto">
+          <div id="lobby-hero-stage" class="relative group cursor-pointer active:scale-95 transition select-none" title="탭하여 쓰다듬기 💕">
+            <div class="relative w-40 h-24 rounded-2xl bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center p-1">
+              <canvas id="lobby-hero-canvas" width="160" height="96" class="w-40 h-24 rounded-2xl bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
+              <span id="pet-action-badge" class="${petBadgeClass}">
+                ${petBadgeText}
               </span>
-            </div>
-
-            <!-- 순수 강아지 이름표 (수정은 프로필 & 설정 모달에서 전담) -->
-            <div class="text-base font-black text-[#1f2d24] mt-1 tracking-tight">
-              ${heroName}
-            </div>
-
-            <!-- 핵심 4종 스탯 (전투력 · 공격력 · 체력 · 이동속도) -->
-            <div class="flex items-center justify-center gap-2 mt-2 text-xs font-extrabold">
-              <span class="text-amber-800">⚡ ${stats.combatPower}</span>
-              <span class="text-[#a3b899]">·</span>
-              <span class="text-emerald-800">⚔️ ${stats.atk}</span>
-              <span class="text-[#a3b899]">·</span>
-              <span class="text-rose-600">❤️ ${stats.maxHp}</span>
-              <span class="text-[#a3b899]">·</span>
-              <span class="text-teal-800">👟 ${Math.round(stats.speed)}</span>
             </div>
           </div>
 
-          <!-- 오른쪽 가장자리: 7일 출석부 -->
-          <button id="btn-open-attendance" type="button" class="relative w-16 py-2 px-1 rounded-xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] flex flex-col items-center justify-center gap-1 active:scale-95 transition shrink-0 mt-2">
-            <span class="text-lg leading-none">📅</span>
-            <span class="text-[10px] font-bold text-[#1f2d24] leading-tight text-center">${t('lobby.attendance7d')}</span>
-            ${canClaimAttendance ? `<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>` : ''}
-          </button>
+          <!-- 현재 선택된 견종명 배지 & 친밀도 5단계 게이지 -->
+          <div class="flex items-center justify-center gap-1.5 mt-2">
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">
+              🐾 ${curBreed.name} · ${t(stats.evoStage.key)}
+            </span>
+            <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black flex items-center gap-1">
+              ${aff.hearts} ${aff.title}
+            </span>
+          </div>
+
+          <!-- 친밀도 미니 게이지 바 -->
+          <div class="w-36 h-1.5 rounded-full bg-[#e6dec8] mt-1.5 overflow-hidden shadow-inner" title="친밀도 경험치: ${aff.levelXp}/${aff.targetXp} XP">
+            <div class="h-full rounded-full bg-gradient-to-r from-rose-400 to-pink-500 transition-all duration-300" style="width: ${Math.round(aff.ratio * 100)}%"></div>
+          </div>
+
+          <!-- 순수 강아지 이름표 (수정은 프로필 & 설정 모달에서 전담) -->
+          <div class="text-base font-black text-[#1f2d24] mt-1 tracking-tight">
+            ${heroName}
+          </div>
+
+          <!-- 핵심 4종 스탯 (전투력 · 공격력 · 체력 · 이동속도) -->
+          <div class="flex items-center justify-center gap-2 mt-2 text-xs font-extrabold">
+            <span class="text-amber-800">⚡ ${stats.combatPower}</span>
+            <span class="text-[#a3b899]">·</span>
+            <span class="text-emerald-800">⚔️ ${stats.atk}</span>
+            <span class="text-[#a3b899]">·</span>
+            <span class="text-rose-600">❤️ ${stats.maxHp}</span>
+            <span class="text-[#a3b899]">·</span>
+            <span class="text-teal-800">👟 ${Math.round(stats.speed)}</span>
+          </div>
         </div>
       </div>
 
-      <!-- 로비 하단 2단 스테이지 선택기 & 좌우 화살표/스와이프 제어 -->
-      <div id="lobby-stage-selector" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-2xl bg-[#faf6ee] border border-[#d2c8b4] shadow-xs select-none touch-pan-y cursor-grab active:cursor-grabbing">
-        <button id="btn-stage-prev" type="button" ${canGoPrev ? '' : 'disabled'} class="w-10 h-10 rounded-xl bg-[#efe9dc] shadow-2xs border border-[#d2c8b4] text-[#1f2d24] font-black text-sm flex items-center justify-center disabled:opacity-25 active:scale-95 transition shrink-0" title="이전 스테이지">◀</button>
+      <!-- 로비 하단 3단 스테이지 스냅 캐러셀 & 스와이프 제어 -->
+      <div id="lobby-stage-selector" class="relative w-full flex items-center justify-center gap-1.5 py-1 px-1 select-none overflow-hidden touch-pan-y cursor-grab active:cursor-grabbing">
+        <!-- 좌측 카드 (이전 스테이지 살짝 엿보기) -->
+        <div id="card-stage-prev" class="stage-peek-card ${canGoPrev ? 'cursor-pointer hover:opacity-75' : 'opacity-0 pointer-events-none'} flex flex-col items-center justify-center w-18 py-2 px-1 rounded-xl bg-[#faf6ee]/70 border border-[#d2c8b4] scale-85 opacity-50 shrink-0 transition-all duration-200" title="이전 스테이지">
+          <span class="text-[10px] font-black text-[#5c6e60]">STAGE</span>
+          <span class="text-xs font-black text-[#1f2d24]">◀ ${curUnitNum - 1}</span>
+        </div>
 
-        <div class="flex-1 min-w-0 text-center select-none py-0.5">
-          <!-- 위쪽 작은 글씨: 큰 카테고리/챕터 표기 -->
+        <!-- 중앙 카드 (현재 스테이지 메인) -->
+        <div id="card-stage-current" class="stage-current-card flex-1 min-w-0 rounded-2xl bg-[#faf6ee] border-2 border-emerald-600/40 shadow-md p-2 text-center transition-all duration-200">
           <div class="text-[11px] font-bold text-[#4a584e] truncate flex items-center justify-center gap-1.5">
             <span class="font-black" style="color:${ch.theme.accentColor}">CH.${ch.number} ${ch.title}</span>
             <span class="text-[#a3b899]">·</span>
-            <span class="text-emerald-800 font-extrabold">${categoryName}</span>
+            <span class="text-emerald-800 font-extrabold">${isFarmStage ? '복습·코인 파밍' : '순차 돌파'}</span>
           </div>
-
-          <!-- 가운데 큰 글씨: 현재 선택된 스테이지(유닛) 표기 및 대표 단어 미리보기 -->
           <div class="flex items-center justify-center gap-1.5 mt-0.5 min-w-0">
             <span class="text-sm font-black text-[#1f2d24] tracking-tight shrink-0">STAGE ${curUnitNum}</span>
-            ${isLockedCurrent ? `<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-600/30 text-[10px] font-black shrink-0">🔒 미해금</span>` : ''}
-            ${sample ? `<span class="text-[11px] text-[#4a584e] truncate font-medium">(${sample})</span>` : ''}
           </div>
         </div>
 
-        <button id="btn-stage-next" type="button" ${canGoNext ? '' : 'disabled'} class="w-10 h-10 rounded-xl bg-[#efe9dc] shadow-2xs border border-[#d2c8b4] text-[#1f2d24] font-black text-sm flex items-center justify-center disabled:opacity-25 active:scale-95 transition shrink-0" title="다음 스테이지">
-          ▶
-        </button>
+        <!-- 우측 카드 (다음 스테이지 살짝 엿보기) -->
+        <div id="card-stage-next" class="stage-peek-card ${canGoNext ? 'cursor-pointer hover:opacity-75' : nextIsLocked ? 'pointer-events-none' : 'opacity-0 pointer-events-none'} flex flex-col items-center justify-center w-18 py-2 px-1 rounded-xl bg-[#faf6ee]/70 border border-[#d2c8b4] scale-85 opacity-50 shrink-0 transition-all duration-200" title="${nextIsLocked ? '순차 돌파로 해금' : '다음 스테이지'}">
+          <span class="text-[10px] font-black text-[#5c6e60]">STAGE</span>
+          <span class="text-xs font-black text-[#1f2d24]">${nextIsLocked ? `🔒 ${curUnitNum + 1}` : `${curUnitNum + 1} ▶`}</span>
+        </div>
       </div>
     `;
 
@@ -366,45 +514,122 @@ export function createLobbyUI({
       const tot = getTotalUnits();
       const nextNum = curNum + delta;
 
-      if (nextNum < 1 || nextNum > tot) {
+      if (nextNum < 1 || nextNum > Math.min(cur.maxUnlockedUnit || 1, tot)) {
         return;
       }
 
       const nextUnitId = `unit_${String(nextNum).padStart(3, '0')}`;
       const nextCh = getChapterNumberForUnit(nextNum, tot);
-      const allW = getWords();
-      const uW = allW.filter((w) => w.unit === nextUnitId);
-      const lvl = uW[0]?.level || 'A1';
 
       updateSave((s) => {
         s.selectedUnit = nextUnitId;
         s.selectedChapter = nextCh;
-        if (lvl === 'A1') s.selectedCourse = 'lv1';
-        else if (lvl === 'A2') s.selectedCourse = 'lv2';
-        else if (lvl === 'B1' || lvl === 'B2') s.selectedCourse = 'lv3';
-        else s.selectedCourse = 'lv4';
       });
       viewedChapter = nextCh;
       audioEngine.playCaptureTick();
       renderBattleTab();
     };
 
-    const switchBreed = (delta) => {
-      const cur = getSave();
-      const id = cur.selectedBreed || 'pomeranian';
-      const idx = Math.max(0, BREEDS.findIndex((b) => b.id === id));
-      const nextIdx = (idx + delta + BREEDS.length) % BREEDS.length;
-      updateSave((s) => {
-        s.selectedBreed = BREEDS[nextIdx].id;
-      });
-      audioEngine.playCaptureTick();
-      renderBattleTab();
+    // 중앙 무대 쓰다듬기 인터랙션 뱃지 실시간 상태 갱신 함수
+    const updatePetBadge = () => {
+      const badgeEl = document.getElementById('pet-action-badge');
+      if (!badgeEl) return;
+      const status = getPetDailyStatus();
+      const now = Date.now();
+      const remainingCooldown = Math.max(0, petCooldownUntil - now);
+
+      if (!status.canPet) {
+        badgeEl.textContent = '오늘 교감 완료 ✓';
+        badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full border shadow-xs transition select-none bg-[#ece6d8]/90 text-[#7a8c7e] border-[#d2c8b4] cursor-default opacity-80';
+        if (petCooldownTimerId) {
+          clearInterval(petCooldownTimerId);
+          petCooldownTimerId = null;
+        }
+      } else if (remainingCooldown > 0) {
+        const sec = Math.ceil(remainingCooldown / 1000);
+        badgeEl.textContent = `⏳ ${sec}s`;
+        badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full border shadow-xs transition select-none bg-amber-100/90 text-amber-800 border-amber-300 animate-pulse';
+      } else {
+        badgeEl.textContent = `쓰다듬기 💕 ${status.remaining}/${status.max}`;
+        badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full border shadow-xs transition select-none bg-[#f8f5ec]/90 text-[#2d6a4f] border-[#d2c8b4] hover:bg-emerald-50 active:scale-95 cursor-pointer';
+        if (petCooldownTimerId) {
+          clearInterval(petCooldownTimerId);
+          petCooldownTimerId = null;
+        }
+      }
     };
 
-    document.getElementById('btn-breed-prev')?.addEventListener('click', () => switchBreed(-1));
-    document.getElementById('btn-breed-next')?.addEventListener('click', () => switchBreed(1));
-    document.getElementById('btn-stage-prev')?.addEventListener('click', () => moveStage(-1));
-    document.getElementById('btn-stage-next')?.addEventListener('click', () => moveStage(1));
+    // 중앙 무대 쓰다듬기 상호작용 (일일 5회 제한, 3초 쿨타임, 행복 반응 애니메이션 & 친밀도 상승)
+    const handlePetClick = (e) => {
+      e?.stopPropagation?.();
+      const status = getPetDailyStatus();
+
+      // 오늘 5회 모두 소진 시 안내
+      if (!status.canPet) {
+        const stage = document.getElementById('lobby-hero-stage');
+        if (stage && !stage.querySelector('.pet-limit-bubble')) {
+          const bubble = document.createElement('div');
+          bubble.className = 'pet-limit-bubble absolute -top-8 left-1/2 -translate-x-1/2 bg-[#1f2d24]/90 text-white text-[10px] font-black px-2.5 py-1 rounded-xl shadow-lg pointer-events-none whitespace-nowrap z-30 animate-bounce';
+          bubble.textContent = '오늘 교감 완료! 내일 또 만나요 🐾';
+          stage.appendChild(bubble);
+          setTimeout(() => bubble.remove(), 1800);
+        }
+        return;
+      }
+
+      const now = Date.now();
+      // 3초 쿨타임 검사
+      if (now < petCooldownUntil) {
+        return;
+      }
+
+      // 쿨타임 3초 설정
+      petCooldownUntil = now + 3000;
+
+      // 일일 횟수 & 일일 퀘스트 반영
+      recordPetAction();
+
+      const cur = getSave();
+      const breed = cur.selectedBreed || 'pomeranian';
+      addAffection(breed, 3);
+
+      // 효과음 & 햅틱 진동
+      if (typeof audioEngine?.playHappyBark === 'function') {
+        audioEngine.playHappyBark();
+      } else {
+        audioEngine.playCaptureTick?.();
+      }
+      try {
+        navigator.vibrate?.(35);
+      } catch (_) {}
+
+      // 강아지 행복 애니메이션 + 파티클 + 말풍선 트리거
+      const stage = document.getElementById('lobby-hero-stage');
+      triggerDogHappyReaction(stage, breed);
+
+      // 인터랙션 뱃지 즉시 갱신 및 쿨타임 인터벌 시작
+      updatePetBadge();
+      if (petCooldownTimerId) clearInterval(petCooldownTimerId);
+      petCooldownTimerId = setInterval(updatePetBadge, 500);
+
+      renderHeroPreview();
+      refreshHeader();
+    };
+
+    document.getElementById('lobby-hero-stage')?.addEventListener('click', handlePetClick);
+    document.getElementById('pet-action-badge')?.addEventListener('click', handlePetClick);
+
+    // 이전 턴 쿨타임이 남아있다면 인터벌 이어가기
+    if (cooldownMs > 0 && !petCooldownTimerId) {
+      petCooldownTimerId = setInterval(updatePetBadge, 500);
+    }
+
+    if (canGoPrev) {
+      document.getElementById('card-stage-prev')?.addEventListener('click', () => moveStage(-1));
+    }
+    if (canGoNext) {
+      document.getElementById('card-stage-next')?.addEventListener('click', () => moveStage(1));
+    }
 
     // 터치/마우스 좌우 스와이프(드래그) 지원
     const stageSelectorEl = document.getElementById('lobby-stage-selector');
@@ -432,7 +657,7 @@ export function createLobbyUI({
       let mouseStartX = 0;
       let isMouseDown = false;
       stageSelectorEl.addEventListener('mousedown', (e) => {
-        if (e.target.closest('button')) return;
+        if (e.target.closest('button') || e.target.closest('#card-stage-prev') || e.target.closest('#card-stage-next')) return;
         isMouseDown = true;
         mouseStartX = e.clientX;
       });
@@ -450,25 +675,50 @@ export function createLobbyUI({
       });
     }
 
-    document.getElementById('btn-open-missions')?.addEventListener('click', openDailyMissionsModal);
-    document.getElementById('btn-open-supply-shop')?.addEventListener('click', () => onOpenSupplyShop?.());
-    document.getElementById('btn-open-attendance')?.addEventListener('click', openAttendanceModal);
+    document.getElementById('btn-open-missions')?.addEventListener('click', () => openQuestsModal('daily'));
+    document.getElementById('btn-open-airdrop')?.addEventListener('click', openAirDropSupplyModal);
+    document.getElementById('btn-open-attendance')?.addEventListener('click', openAttendance30Modal);
+
+    const btnMenu = document.getElementById('btn-hamburger-menu');
+    const btnNotice = document.getElementById('btn-menu-notice');
+    const btnSettings = document.getElementById('btn-menu-settings');
+
+    btnMenu?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleHeaderDropdown();
+    });
+
+    btnNotice?.addEventListener('click', () => {
+      toggleHeaderDropdown(false);
+      openNoticeModal();
+    });
+
+    btnSettings?.addEventListener('click', () => {
+      toggleHeaderDropdown(false);
+      openSettingsModal();
+    });
+
     updateBattleCtaButton();
+  }
+
+  function toggleHeaderDropdown(forceOpen) {
+    const dropdown = document.getElementById('header-dropdown-menu');
+    if (!dropdown) return;
+    const isOpen = !dropdown.classList.contains('invisible');
+    const open = typeof forceOpen === 'boolean' ? forceOpen : !isOpen;
+    dropdown.classList.toggle('invisible', !open);
+    dropdown.classList.toggle('opacity-0', !open);
+    dropdown.classList.toggle('-translate-y-2', !open);
+    dropdown.classList.toggle('pointer-events-none', !open);
   }
 
   function updateBattleCtaButton() {
     const btn = document.getElementById('btn-start-battle');
     if (!btn) return;
     const save = getSave();
-    const curUnitNum = parseInt((save.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
-    const maxUnlocked = save.maxUnlockedUnit || 1;
-    const isLockedCurrent = curUnitNum > maxUnlocked;
     const isTutorialNeeded = !save.tutorialCompleted && !save.tutorialDone;
 
-    if (isLockedCurrent) {
-      btn.innerHTML = `🎓 <span>월반 도전 (STAGE ${curUnitNum})</span>`;
-      btn.className = 'w-[220px] mx-auto block py-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 text-white font-black text-sm shadow-[0_6px_20px_rgba(79,70,229,0.35)] active:scale-95 transition';
-    } else if (isTutorialNeeded) {
+    if (isTutorialNeeded) {
       btn.innerHTML = `🎓 <span data-i18n="lobby.startTutorial">${t('lobby.startTutorial')}</span>`;
       btn.className = 'w-[190px] mx-auto block py-3 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 text-white font-black text-sm shadow-[0_6px_20px_rgba(217,119,6,0.4)] active:scale-95 transition animate-pulse';
     } else {
@@ -477,93 +727,10 @@ export function createLobbyUI({
     }
   }
 
-  function openEditDogNameModal(options = {}) {
-    const onSaved = typeof options === 'function' ? options : options.onSaved;
-    const onCancel = options.onCancel;
-    const save = getSave();
-    const currentName = save.dogName || '우유';
-
-    openModal(`
-      <div class="space-y-3.5 text-center">
-        <div class="text-4xl">🐾</div>
-        <div>
-          <h3 class="text-base font-black text-emerald-800">강아지 이름 변경</h3>
-          <p class="text-xs text-[#4a584e] mt-0.5">내 강아지의 새 이름을 입력해 주세요 (최대 8자)</p>
-        </div>
-        <div>
-          <input
-            id="input-dog-name"
-            type="text"
-            maxlength="8"
-            value="${currentName}"
-            placeholder="이름 입력 (1~8자)"
-            class="w-full px-3 py-2.5 rounded-xl border border-emerald-600/40 bg-[#faf6ee] text-[#1f2d24] font-black text-center text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner"
-          />
-          <div id="dog-name-error" class="text-[11px] font-bold text-rose-600 mt-1.5 hidden">이름을 1~8글자로 입력해 주세요.</div>
-        </div>
-        <div class="flex gap-2 pt-1">
-          <button id="btn-cancel-dog-name" type="button" class="flex-1 py-2.5 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] text-[#1f2d24] font-bold text-xs active:scale-95 transition">
-            취소
-          </button>
-          <button id="btn-save-dog-name" type="button" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-xs shadow-md active:scale-95 transition">
-            저장
-          </button>
-        </div>
-      </div>
-    `);
-
-    const input = document.getElementById('input-dog-name');
-    input?.focus();
-    input?.select();
-
-    const doSave = () => {
-      const newName = input?.value?.trim() || '';
-      if (!newName || newName.length > 8) {
-        const err = document.getElementById('dog-name-error');
-        if (err) err.classList.remove('hidden');
-        return;
-      }
-      updateSave((s) => {
-        s.dogName = newName;
-      });
-      audioEngine.playCaptureTick();
-      closeModal();
-      refreshHeader();
-      renderBattleTab();
-      if (onSaved) onSaved();
-    };
-
-    input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        doSave();
-      }
-    });
-
-    document.getElementById('btn-cancel-dog-name')?.addEventListener('click', () => {
-      closeModal();
-      if (onCancel) onCancel();
-    });
-    document.getElementById('btn-save-dog-name')?.addEventListener('click', doSave);
-  }
-
   document.getElementById('btn-start-battle')?.addEventListener('click', () => {
-    console.log('[Lobby] Start Battle / Placement clicked');
     const cur = getSave();
     const curUnitNum = parseInt((cur.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
     const maxUnlocked = cur.maxUnlockedUnit || 1;
-
-    // 미해금 상위 스테이지인 경우 -> 실제 인게임 월반 전투 모드로 즉시 출격
-    if (curUnitNum > maxUnlocked) {
-      onStartBattle?.({
-        chapterNumber: cur.selectedChapter,
-        courseId: cur.selectedCourse,
-        unitId: cur.selectedUnit,
-        isPlacement: true,
-        targetUnitNum: curUnitNum,
-      });
-      return;
-    }
 
     if (!cur.tutorialCompleted && !cur.tutorialDone) {
       onStartTutorial?.();
@@ -585,459 +752,6 @@ export function createLobbyUI({
     });
   });
 
-  function openDailyMissionsModal() {
-    ensureDailyReset();
-    const save = getSave();
-
-    const rows = DAILY_MISSION_DEFS.map((m) => {
-      const prog = Math.min(m.target, save.dailyMissions.progress[m.key] || 0);
-      const claimed = save.dailyMissions.claimed.includes(m.id);
-      const ready = prog >= m.target && !claimed;
-
-      return `
-        <div class="p-3 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-xs font-extrabold text-[#1f2d24]">${m.title}</div>
-            <div class="text-[11px] text-[#4a584e] mt-0.5">${prog} / ${m.target} · +${m.gold}🪙 +${m.snacks}🦴</div>
-          </div>
-          <button type="button" data-mission-id="${m.id}" ${ready ? '' : 'disabled'} class="mission-claim-btn px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 ${
-            claimed
-              ? 'bg-[#e6dec8] text-[#4a584e]'
-              : ready
-                ? 'bg-[#2d6a4f] text-[#f8f5ec] active:scale-95'
-                : 'bg-[#e6dec8] text-[#4a584e] opacity-60'
-          }">
-            ${claimed ? t('lobby.claimed') : t('lobby.claimReward')}
-          </button>
-        </div>
-      `;
-    }).join('');
-
-    openModal(`
-      <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-black text-emerald-800">📋 ${t('lobby.dailyMissions')}</h2>
-          <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold">✕</button>
-        </div>
-        <div class="space-y-2">${rows}</div>
-      </div>
-    `);
-
-    document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-    modalCard.querySelectorAll('.mission-claim-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-mission-id');
-        const def = DAILY_MISSION_DEFS.find((d) => d.id === id);
-        if (!def) return;
-        updateSave((s) => {
-          if (!s.dailyMissions.claimed.includes(id)) {
-            s.dailyMissions.claimed.push(id);
-            s.gold += def.gold;
-            s.snacks += def.snacks;
-          }
-        });
-        refreshHeader();
-        openDailyMissionsModal();
-        renderBattleTab();
-      });
-    });
-  }
-
-  function openAttendanceModal() {
-    const save = getSave();
-    const today = getTodayKey();
-    const claimedToday = save.attendance.lastClaimDate === today;
-    const currentDay = save.attendance.streakDay || 0;
-    const nextDay = (currentDay % 7) + 1;
-
-    const grid = ATTENDANCE_REWARDS.map((item) => {
-      const isDone = item.day <= currentDay && (claimedToday || currentDay < 7);
-      const isNext = !claimedToday && item.day === nextDay;
-      return `
-        <div class="p-2.5 rounded-xl border text-center ${
-          isNext
-            ? 'bg-emerald-600/15 border-emerald-600 text-[#1f2d24] ring-2 ring-emerald-500/40'
-            : isDone
-              ? 'bg-[#faf6ee] border-[#d2c8b4] text-[#4a584e]'
-              : 'bg-[#f0ebe0] border-[#d2c8b4] text-[#4a584e]'
-        }">
-          <div class="text-[11px] font-black">DAY ${item.day}</div>
-          <div class="text-xs font-bold text-amber-700 mt-1">+${item.gold}🪙</div>
-          <div class="text-[11px] text-rose-600">+${item.snacks}🦴</div>
-          <div class="text-[10px] mt-1">${isDone ? '✅' : isNext ? '🎁' : '·'}</div>
-        </div>
-      `;
-    }).join('');
-
-    openModal(`
-      <div class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-black text-amber-700">📅 ${t('lobby.attendance7d')}</h2>
-          <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold">✕</button>
-        </div>
-        <div class="grid grid-cols-4 gap-2">${grid}</div>
-        <button id="btn-claim-attendance" type="button" ${claimedToday ? 'disabled' : ''} class="w-full py-3 rounded-xl font-black text-sm ${
-          claimedToday
-            ? 'bg-[#e6dec8] text-[#4a584e]'
-            : 'bg-[#2d6a4f] text-[#f8f5ec] active:scale-95 transition'
-        }">
-          ${claimedToday ? t('lobby.claimed') : `${t('lobby.claimReward')} (DAY ${nextDay})`}
-        </button>
-      </div>
-    `);
-
-    document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-    document.getElementById('btn-claim-attendance')?.addEventListener('click', () => {
-      if (getSave().attendance.lastClaimDate === today) return;
-      const reward = ATTENDANCE_REWARDS.find((r) => r.day === nextDay) || ATTENDANCE_REWARDS[0];
-      updateSave((s) => {
-        s.attendance.lastClaimDate = today;
-        s.attendance.streakDay = nextDay;
-        s.gold += reward.gold;
-        s.snacks += reward.snacks;
-      });
-      refreshHeader();
-      openAttendanceModal();
-      renderBattleTab();
-    });
-  }
-
-  function openSettingsModal() {
-    const save = getSave();
-    const curLang = getLanguage();
-    const curBreedId = save.selectedBreed || 'pomeranian';
-    const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
-    const evo = getEvolutionStage(save);
-    const certLevel = save.certifiedLevel || 'A1';
-    const dogName = save.dogName || '우유';
-
-    const hapticOn = save.haptic !== false;
-    const lowFxOn = Boolean(save.lowFx);
-
-    openModal(`
-      <div class="space-y-3.5">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-black text-[#1f2d24]">⚙️ ${t('modal.settingsTitle')}</h2>
-          <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold">✕</button>
-        </div>
-
-        <!-- 강아지 프로필 카드 -->
-        <div class="p-3 rounded-2xl bg-gradient-to-r from-[#234735] to-[#1b3b2b] text-[#f8f5ec] shadow-sm flex items-center gap-3 border border-[#2d5a43]">
-          <div class="w-16 h-16 rounded-xl bg-[#142c20]/60 border border-[#2d5a43] flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
-            <canvas id="settings-dog-canvas" width="64" height="64" class="w-16 h-16"></canvas>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-sm font-black text-amber-200 truncate">${dogName}</span>
-              <button id="btn-settings-edit-name" type="button" class="px-1.5 py-0.5 rounded-md bg-[#2d5a43] hover:bg-[#386d52] text-[10px] font-bold text-white active:scale-95 transition" title="이름 변경">
-                ✏️ 수정
-              </button>
-            </div>
-            <div class="text-[11px] font-medium text-emerald-200/80 mt-0.5">
-              ${curBreed.name} · ${t(evo.key)}
-            </div>
-            <div class="mt-1 flex items-center gap-1.5">
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-[10px] font-black text-amber-300">
-                🏅 공인 등급: ${certLevel}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 1. 언어 선택 (1줄 컴팩트 드롭다운) -->
-        <div class="p-2.5 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] flex items-center justify-between gap-2">
-          <div class="text-xs font-bold text-[#1f2d24] flex items-center gap-1.5">
-            <span>🌐</span>
-            <span>${t('modal.languageLabel')}</span>
-          </div>
-          <select id="select-settings-lang" class="py-1 px-2.5 rounded-lg bg-[#faf6ee] border border-[#d2c8b4] text-xs font-bold text-[#1f2d24] focus:outline-none focus:ring-1 focus:ring-[#2d6a4f] cursor-pointer">
-            ${SUPPORTED_LANGUAGES.map((l) => `<option value="${l.code}" ${curLang === l.code ? 'selected' : ''}>${l.label}</option>`).join('')}
-          </select>
-        </div>
-
-        <!-- 2. 사운드 조절 -->
-        <div class="space-y-1.5">
-          <div class="text-xs font-bold text-[#4a584e] flex items-center gap-1">
-            <span>🔊</span>
-            <span>${t('modal.sfxLabel')} & ${t('modal.bgmLabel')}</span>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button id="btn-toggle-bgm" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
-              save.audio.bgmEnabled
-                ? 'bg-[#f0ebe0] border-[#2d6a4f] text-[#1f2d24]'
-                : 'bg-[#e6dec8] border-[#d2c8b4] text-[#7d8c80]'
-            }">
-              <span>${t('modal.bgmLabel')}</span>
-              <span class="font-black ${save.audio.bgmEnabled ? 'text-[#2d6a4f]' : 'text-stone-500'}">${save.audio.bgmEnabled ? '🔊 ON' : '🔇 OFF'}</span>
-            </button>
-            <button id="btn-toggle-sfx" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
-              save.audio.sfxEnabled
-                ? 'bg-[#f0ebe0] border-[#2d6a4f] text-[#1f2d24]'
-                : 'bg-[#e6dec8] border-[#d2c8b4] text-[#7d8c80]'
-            }">
-              <span>${t('modal.sfxLabel')}</span>
-              <span class="font-black ${save.audio.sfxEnabled ? 'text-[#2d6a4f]' : 'text-stone-500'}">${save.audio.sfxEnabled ? '🔊 ON' : '🔇 OFF'}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 3. 진동 & 저사양 모드 -->
-        <div class="space-y-1.5">
-          <div class="text-xs font-bold text-[#4a584e] flex items-center gap-1">
-            <span>📳</span>
-            <span>디바이스 & 그래픽</span>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button id="btn-toggle-haptic" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
-              hapticOn
-                ? 'bg-[#f0ebe0] border-[#2d6a4f] text-[#1f2d24]'
-                : 'bg-[#e6dec8] border-[#d2c8b4] text-[#7d8c80]'
-            }">
-              <span>${t('modal.hapticLabel')}</span>
-              <span class="font-black ${hapticOn ? 'text-[#2d6a4f]' : 'text-stone-500'}">${hapticOn ? '📳 ON' : 'OFF'}</span>
-            </button>
-            <button id="btn-toggle-lowfx" type="button" class="p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition active:scale-95 ${
-              lowFxOn
-                ? 'bg-amber-100 border-amber-600/50 text-amber-900'
-                : 'bg-[#f0ebe0] border-[#d2c8b4] text-[#1f2d24]'
-            }">
-              <span>${t('modal.lowFxLabel')}</span>
-              <span class="font-black ${lowFxOn ? 'text-amber-700' : 'text-stone-500'}">${lowFxOn ? '⚡ ON' : 'OFF'}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- 4. 계정 연동 & 피드백 -->
-        <div class="space-y-2 pt-2 border-t border-[#d2c8b4]">
-          <div class="p-2.5 rounded-xl bg-[#ece5d8] border border-[#d2c8b4] flex items-center justify-between text-xs font-bold text-[#4a584e]">
-            <span class="flex items-center gap-1.5">☁️ ${t('modal.accountLabel')}</span>
-            <span class="px-2 py-0.5 rounded-full bg-[#ded4c1] text-[#606d62] text-[10px] font-extrabold">${t('modal.accountComingSoon')}</span>
-          </div>
-
-          <button id="btn-feedback" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition shadow-xs">
-            <span>${t('modal.sendFeedback')}</span>
-          </button>
-        </div>
-      </div>
-    `);
-
-    const drawSettingsDog = () => {
-      const canvas = document.getElementById('settings-dog-canvas');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2 + 5);
-      drawDogCharacter(ctx, {
-        breedId: curBreedId,
-        scale: 1.15,
-        bodyY: 0,
-        lookX: 0,
-        isBipedal: false,
-      });
-      if (save.equippedSkin) {
-        drawDogSkin(ctx, save.equippedSkin, 1.15, 0);
-      }
-      ctx.restore();
-    };
-
-    drawSettingsDog();
-
-    document.getElementById('btn-settings-edit-name')?.addEventListener('click', () => {
-      openEditDogNameModal({
-        onSaved: () => openSettingsModal(),
-        onCancel: () => openSettingsModal(),
-      });
-    });
-
-    document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-
-    document.getElementById('select-settings-lang')?.addEventListener('change', (e) => {
-      const lang = e.target.value;
-      if (lang && lang !== getLanguage()) {
-        audioEngine.playCorrect?.();
-        setLanguage(lang);
-        updateSave((s) => {
-          s.language = lang;
-          s.lang = lang;
-          s.langConfirmed = true;
-        });
-        applyI18nToDOM();
-        refreshHeader();
-        renderActiveTab();
-        openSettingsModal();
-      }
-    });
-
-    document.getElementById('btn-toggle-bgm')?.addEventListener('click', () => {
-      updateSave((s) => {
-        s.audio.bgmEnabled = !s.audio.bgmEnabled;
-      });
-      audioEngine.refreshSettings();
-      openSettingsModal();
-    });
-
-    document.getElementById('btn-toggle-sfx')?.addEventListener('click', () => {
-      updateSave((s) => {
-        s.audio.sfxEnabled = !s.audio.sfxEnabled;
-      });
-      audioEngine.refreshSettings();
-      openSettingsModal();
-    });
-
-    document.getElementById('btn-toggle-haptic')?.addEventListener('click', () => {
-      updateSave((s) => {
-        s.haptic = s.haptic === false ? true : false;
-      });
-      audioEngine.triggerHaptic?.(25);
-      openSettingsModal();
-    });
-
-    document.getElementById('btn-toggle-lowfx')?.addEventListener('click', () => {
-      updateSave((s) => {
-        s.lowFx = !s.lowFx;
-      });
-      openSettingsModal();
-    });
-
-    document.getElementById('btn-feedback')?.addEventListener('click', () => {
-      const email = 'support@zombievoca.com';
-      const subject = encodeURIComponent(`[Zombie Voca Feedback] ${save.dogName} (Lv.${save.certifiedLevel})`);
-      window.open(`mailto:${email}?subject=${subject}`, '_blank');
-    });
-  }
-
-  function openInitialLanguageModal(onConfirm) {
-    const save = getSave();
-    let selectedLang = save.language || save.lang || detectDeviceLanguage();
-    if (!['ko', 'en', 'es'].includes(selectedLang)) {
-      selectedLang = 'en';
-    }
-
-    const LANG_OPTIONS = [
-      {
-        code: 'ko',
-        flag: '🇰🇷',
-        nativeName: '한국어',
-        subName: 'Korean',
-        desc: '모든 미션과 인터페이스를 한국어로 진행합니다.',
-      },
-      {
-        code: 'en',
-        flag: '🇺🇸',
-        nativeName: 'English',
-        subName: '영어',
-        desc: 'Play missions and interface in English.',
-      },
-      {
-        code: 'es',
-        flag: '🇪🇸',
-        nativeName: 'Español',
-        subName: '스페인어',
-        desc: 'Juega todas las misiones y la interfaz en español.',
-      },
-    ];
-
-    const CONFIRM_TEXTS = {
-      ko: '시작하기 ➜',
-      en: 'Start Game ➜',
-      es: 'Comenzar ➜',
-    };
-
-    function renderContent() {
-      const detected = detectDeviceLanguage();
-      const cardsHtml = LANG_OPTIONS.map((opt) => {
-        const isSelected = opt.code === selectedLang;
-        const isDetected = opt.code === detected;
-        return `
-          <button type="button" data-lang-code="${opt.code}" class="initial-lang-btn w-full p-3.5 rounded-2xl border text-left transition-all duration-150 flex items-center justify-between group ${
-            isSelected
-              ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#52b788] shadow-md ring-2 ring-[#52b788]/60'
-              : 'bg-[#f0ebe0] text-[#1f2d24] border-[#d2c8b4] hover:bg-[#e6dfd1]'
-          }">
-            <div class="flex items-center gap-3">
-              <span class="text-3xl">${opt.flag}</span>
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-base font-black ${isSelected ? 'text-white' : 'text-[#1f2d24]'}">${opt.nativeName}</span>
-                  <span class="text-xs font-semibold ${isSelected ? 'text-emerald-200' : 'text-[#5f6c62]'}">(${opt.subName})</span>
-                  ${
-                    isDetected
-                      ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-black ${
-                          isSelected ? 'bg-amber-400 text-stone-900' : 'bg-emerald-700 text-white'
-                        }">★ Device</span>`
-                      : ''
-                  }
-                </div>
-                <div class="text-xs mt-0.5 ${isSelected ? 'text-emerald-100' : 'text-[#5f6c62]'}">${opt.desc}</div>
-              </div>
-            </div>
-            <div class="w-6 h-6 rounded-full flex items-center justify-center font-bold text-sm ${
-              isSelected ? 'bg-white text-[#2d6a4f]' : 'border-2 border-[#b8ae9c] text-transparent'
-            }">
-              ✓
-            </div>
-          </button>
-        `;
-      }).join('');
-
-      openModal(`
-        <div class="space-y-4 py-1">
-          <div class="text-center space-y-1">
-            <div class="text-3xl animate-bounce">🌐</div>
-            <h2 class="text-xl font-black text-[#1f2d24] tracking-tight">언어 선택 · Language</h2>
-            <p class="text-xs text-[#5f6c62]">원하시는 언어를 선택해 주세요.<br><span class="text-[11px] text-[#7d8c80]">(게임 내 프로필/설정에서 언제든 변경할 수 있습니다)</span></p>
-          </div>
-
-          <div class="space-y-2.5">
-            ${cardsHtml}
-          </div>
-
-          <div class="pt-2">
-            <button id="btn-confirm-initial-lang" type="button" class="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#2d6a4f] to-[#1b4332] text-white font-black text-base shadow-lg shadow-[#2d6a4f]/30 active:scale-[0.98] transition hover:brightness-110 flex items-center justify-center gap-2">
-              <span>${CONFIRM_TEXTS[selectedLang] || CONFIRM_TEXTS.en}</span>
-            </button>
-          </div>
-        </div>
-      `);
-
-      // 언어 카드 선택 이벤트 바인딩
-      modalCard.querySelectorAll('.initial-lang-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const code = btn.getAttribute('data-lang-code');
-          if (code && code !== selectedLang) {
-            audioEngine.playCaptureTick?.();
-            selectedLang = code;
-            renderContent();
-          }
-        });
-      });
-
-      // 시작하기 버튼 바인딩
-      document.getElementById('btn-confirm-initial-lang')?.addEventListener('click', () => {
-        audioEngine.playCorrect?.();
-        setLanguage(selectedLang);
-        updateSave((s) => {
-          s.language = selectedLang;
-          s.lang = selectedLang;
-          s.langConfirmed = true;
-          if (!s.dogName || s.dogName === '우유' || s.dogName === 'Milk' || s.dogName === 'Leche') {
-            s.dogName = selectedLang === 'es' ? 'Leche' : selectedLang === 'en' ? 'Milk' : '우유';
-          }
-        });
-        applyI18nToDOM();
-        refreshHeader();
-        renderActiveTab();
-        closeModal();
-        if (typeof onConfirm === 'function') {
-          onConfirm(selectedLang);
-        }
-      });
-    }
-
-    renderContent();
-  }
-
   // 탭 버튼 이벤트 바인딩
   tabButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1046,12 +760,21 @@ export function createLobbyUI({
     });
   });
 
-  // 상단 헤더 프로필 & 재화 바로가기 바인딩
-  document.getElementById('btn-header-profile')?.addEventListener('click', openSettingsModal);
+  // 상단 헤더 프로필 & CEFR 승급 & 재화 바로가기 바인딩
+  document.getElementById('btn-header-profile')?.addEventListener('click', openProfileModal);
+  certBadge?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openCourseSetupModal();
+  });
   document.getElementById('btn-header-gold')?.addEventListener('click', () => switchTab('training'));
   document.getElementById('btn-header-snacks')?.addEventListener('click', () => switchTab('training'));
   document.getElementById('btn-header-gems')?.addEventListener('click', () => switchTab('shop'));
-  btnOpenSettings?.addEventListener('click', openSettingsModal);
+
+  window.addEventListener('click', (e) => {
+    if (!e.target.closest('#header-dropdown-menu') && !e.target.closest('#btn-hamburger-menu')) {
+      toggleHeaderDropdown(false);
+    }
+  });
 
   return {
     showLobby,
@@ -1061,7 +784,11 @@ export function createLobbyUI({
     renderActiveTab,
     openModal,
     closeModal,
-    openInitialLanguageModal,
+    openProfileModal,
+    openSettingsModal,
+    openNoticeModal,
+    openCefrModal,
+    openAirDropSupplyModal,
   };
 }
 

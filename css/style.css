@@ -45,97 +45,165 @@ body {
   height: 0;
 }
 
-/* 상단 포레스트 그린 네온 LED 전광판 */
-.led-board {
-  background:
-    radial-gradient(circle at 50% 0%, rgba(52, 211, 153, 0.22), transparent 70%),
-    linear-gradient(180deg, rgba(14, 32, 23, 0.98) 0%, rgba(20, 48, 34, 0.96) 100%);
-  border: 2px solid #34d399;
-  box-shadow:
-    0 0 16px rgba(52, 211, 153, 0.45),
-    0 4px 18px rgba(10, 30, 20, 0.6),
-    inset 0 0 12px rgba(52, 211, 153, 0.18);
-  position: relative;
-  overflow: hidden;
-}
-
-.led-board::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 4px 4px;
-  pointer-events: none;
-}
-
-/* 네온 영단어 텍스트 글로우 */
+/* 네온 영단어 텍스트 글로우 (g, y, p, q, j 상하단 잘림 방지 line-height 1.3 확보) */
 .neon-word-glow {
+  line-height: 1.3;
   text-shadow:
     0 0 10px rgba(52, 211, 153, 0.7),
     0 0 22px rgba(16, 185, 129, 0.45);
 }
 
-/* 4방향 비석 네온 화살표 인디케이터 */
-.edge-arrow {
-  position: absolute;
-  width: 34px;
-  height: 34px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background: rgba(27, 59, 43, 0.88);
-  border: 1.5px solid rgba(52, 211, 153, 0.8);
-  color: #a7f3d0;
-  font-size: 13px;
-  font-weight: 800;
-  box-shadow: 0 0 12px rgba(45, 106, 79, 0.55);
-  animation: arrowPulse 1.1s ease-in-out infinite;
-  transform: translate(-50%, -50%);
-}
-
-@keyframes arrowPulse {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.92;
+@keyframes floatHeart {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(0.8);
   }
   50% {
-    transform: translate(-50%, -50%) scale(1.12);
     opacity: 1;
-  }
-}
-
-/* 필살기 버튼 팝업 애니메이션 */
-.ult-btn-pop {
-  animation: ultPop 0.35s cubic-bezier(0.22, 1, 0.36, 1), ultGlow 1.3s ease-in-out infinite;
-}
-
-@keyframes ultPop {
-  0% {
-    transform: scale(0.6) translateY(16px);
-    opacity: 0;
+    transform: translate(-50%, -24px) scale(1.25);
   }
   100% {
-    transform: scale(1) translateY(0);
-    opacity: 1;
+    opacity: 0;
+    transform: translate(-50%, -44px) scale(1.0);
   }
 }
 
-@keyframes ultGlow {
-  0%, 100% {
-    box-shadow: 0 0 18px rgba(249, 115, 22, 0.75);
+.animate-float-heart {
+  animation: floatHeart 0.8s ease-out forwards;
+}
+
+/* 스테이지 3단 스냅 캐러셀 */
+.stage-peek-card {
+  transform: scale(0.85);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.stage-peek-card:hover:not(.pointer-events-none) {
+  transform: scale(0.9);
+}
+.stage-current-card {
+  transform: scale(1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* 튜토리얼 제스처 & 강조 애니메이션 */
+@keyframes tutorialInfinityLoop {
+  0% {
+    transform: translate(-50%, -50%) translate(0px, 0px) rotate(-10deg);
+  }
+  12.5% {
+    transform: translate(-50%, -50%) translate(48px, -22px) rotate(12deg);
+  }
+  25% {
+    transform: translate(-50%, -50%) translate(74px, 0px) rotate(0deg);
+  }
+  37.5% {
+    transform: translate(-50%, -50%) translate(48px, 22px) rotate(-12deg);
   }
   50% {
-    box-shadow: 0 0 32px rgba(251, 146, 60, 0.98);
+    transform: translate(-50%, -50%) translate(0px, 0px) rotate(10deg);
+  }
+  62.5% {
+    transform: translate(-50%, -50%) translate(-48px, -22px) rotate(-12deg);
+  }
+  75% {
+    transform: translate(-50%, -50%) translate(-74px, 0px) rotate(0deg);
+  }
+  87.5% {
+    transform: translate(-50%, -50%) translate(-48px, 22px) rotate(12deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) translate(0px, 0px) rotate(-10deg);
   }
 }
 
-/* 3지선다 스킬 카드 피드백 */
-.skill-choice-card {
-  transition: transform 0.12s ease, border-color 0.15s ease, background-color 0.15s ease;
+.tutorial-infinity-paw {
+  animation: tutorialInfinityLoop 2.4s linear infinite;
 }
-.skill-choice-card:active {
-  transform: scale(0.97);
+
+@keyframes tutorialScoreboardPoke {
+  0%, 100% {
+    transform: translateY(6px) scale(1);
+  }
+  35% {
+    transform: translateY(-8px) scale(1.1);
+  }
+  65% {
+    transform: translateY(-2px) scale(1.04);
+  }
 }
+
+.tutorial-scoreboard-paw {
+  animation: tutorialScoreboardPoke 0.9s ease-in-out infinite;
+}
+
+@keyframes tutorialDoubleTapPaw {
+  0%, 100% {
+    transform: translateY(8px) scale(1);
+  }
+  18% {
+    transform: translateY(-6px) scale(0.82);
+  }
+  32% {
+    transform: translateY(4px) scale(1);
+  }
+  48% {
+    transform: translateY(-6px) scale(0.82);
+  }
+  65% {
+    transform: translateY(8px) scale(1);
+  }
+}
+
+.tutorial-doubletap-paw {
+  animation: tutorialDoubleTapPaw 1.3s ease-in-out infinite;
+}
+
+@keyframes tutorialTapRipple {
+  0%, 12% {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  20% {
+    transform: scale(0.85);
+    opacity: 0.95;
+  }
+  42% {
+    transform: scale(1.38);
+    opacity: 0;
+  }
+  48% {
+    transform: scale(0.75);
+    opacity: 0.95;
+  }
+  78%, 100% {
+    transform: scale(1.48);
+    opacity: 0;
+  }
+}
+
+.tutorial-doubletap-ripple {
+  animation: tutorialTapRipple 1.3s ease-out infinite;
+}
+
+.tutorial-doubletap-ripple-delay {
+  animation: tutorialTapRipple 1.3s ease-out infinite 0.08s;
+}
+
+@keyframes tutorialPulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.55), 0 0 28px rgba(245, 158, 11, 0.35);
+    border-color: rgba(251, 191, 36, 0.95);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(251, 191, 36, 0.95), 0 0 42px rgba(245, 158, 11, 0.75);
+    border-color: #fde047;
+  }
+}
+
+.tutorial-highlight-pulse {
+  animation: tutorialPulseGlow 1.1s ease-in-out infinite;
+}
+
+
+
 
