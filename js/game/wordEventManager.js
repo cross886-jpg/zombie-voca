@@ -194,10 +194,12 @@ export class WordEventManager {
       if (engine.runStats.isTutorial) {
         // 튜토리얼 Step 3 오답 시: 다정하게 재시도 유도, 같은 단어 즉시 재도전
         audioEngine.playWrong();
+        engine.combat.spawnDamageText(monolith.x, monolith.y - 36, '❌ 오답 벙커!', '#ef4444', 1.25);
+        engine.camera?.shake(6, 0.2);
         engine.tutorial.onMonolithAnswer(false);
         engine.handlers.onWrongFeedback?.();
         this.waitingRespawn = true;
-        this.respawnTimer = 0.8;
+        this.respawnTimer = 1.0;
         return;
       }
 

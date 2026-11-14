@@ -26,6 +26,7 @@ export function drawDogPreview(ctx, options = {}) {
     isBipedal = null,
     equippedSkin = save?.equippedSkin || null,
     equippedWeapon = null,
+    equippedHat = null,
     withEquipment = true,
     withWeapon = true,
     isHappy = false,
@@ -112,6 +113,44 @@ export function drawDogPreview(ctx, options = {}) {
   // 4. 장착 스킨 그리기
   if (withEquipment && equippedSkin) {
     drawDogSkin(ctx, equippedSkin, scale, 0);
+  }
+
+  // 4-1. 장착 모자 코스튬 그리기 (네온 야구모자, 베레모, 헬멧 등)
+  if (withEquipment) {
+    let hatDef = null;
+    if (equippedHat && typeof equippedHat === 'object') {
+      hatDef = equippedHat;
+    } else if (typeof equippedHat === 'string') {
+      hatDef = COSTUMES.find((c) => c.id === equippedHat);
+    } else if (save?.costumes?.equipped?.hat) {
+      hatDef = COSTUMES.find((c) => c.id === save.costumes.equipped.hat);
+    }
+
+    if (hatDef) {
+      ctx.save();
+      const hatY = -21 * scale;
+      if (hatDef.icon) {
+        const fontSize = Math.max(14, Math.round(18 * scale));
+        ctx.font = `${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        if (hatDef.color) {
+          ctx.shadowColor = hatDef.color;
+          ctx.shadowBlur = Math.round(6 * scale);
+        }
+        ctx.fillText(hatDef.icon, 0, hatY);
+      } else {
+        ctx.fillStyle = hatDef.color || '#38bdf8';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(-9 * scale, (hatY - 4) * scale, 18 * scale, 8 * scale, 3 * scale);
+        } else {
+          ctx.rect(-9 * scale, (hatY - 4) * scale, 18 * scale, 8 * scale);
+        }
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   }
 
   // 5. 장착 무기 그리기

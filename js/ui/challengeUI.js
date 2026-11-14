@@ -42,13 +42,6 @@ export function createChallengeUI({ onResourcesChanged, openModal, closeModal, o
     return new Date().toISOString().slice(0, 10);
   }
 
-  function getNextLevel(curLevel) {
-    const idx = CEFR_LEVELS.indexOf(curLevel);
-    if (idx === -1) return 'A2';
-    if (idx >= CEFR_LEVELS.length - 1) return null; // 최고 등급
-    return CEFR_LEVELS[idx + 1];
-  }
-
   function renderChallengeTab() {
     const targetPanel = panel || document.getElementById('tab-panel-challenge');
     if (!targetPanel) return;
@@ -63,12 +56,6 @@ export function createChallengeUI({ onResourcesChanged, openModal, closeModal, o
     save = getSave();
 
     const certLevel = save.certifiedLevel || 'A1';
-    const nextLevel = getNextLevel(certLevel);
-    const isMaster = !nextLevel;
-
-    const todayStr = getTodayString();
-    const isFree = save.challenge.dailyFreeUsedDate !== todayStr;
-    const curSnacks = save.snacks || 0;
 
     const leagueTier = save.challenge.leagueTier || 'bronze';
     const tierMeta = LEAGUE_META[leagueTier] || LEAGUE_META.bronze;
@@ -96,60 +83,8 @@ export function createChallengeUI({ onResourcesChanged, openModal, closeModal, o
     const { days, hours, minutes } = getTimeUntilNextWeeklyReset();
 
     targetPanel.innerHTML = `
-      <!-- 🎓 상단 구역: 언어 등급 승급전 -->
-      <div class="rounded-2xl bg-gradient-to-br from-[#1b3b2b] via-[#234735] to-[#12281d] border border-emerald-600/40 p-4 text-[#f8f5ec] shadow-md space-y-3">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="text-xl">🎓</span>
-            <h2 class="text-sm font-black text-emerald-200">언어 등급 승급전</h2>
-          </div>
-          <span class="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-[10px] font-black text-amber-300">
-            공인 CEFR 표준
-          </span>
-        </div>
-
-        <div class="bg-[#12281d]/80 border border-emerald-700/50 rounded-xl p-3 flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400/50 flex flex-col items-center justify-center">
-              <span class="text-base font-black text-amber-300">${certLevel}</span>
-              <span class="text-[9px] font-bold text-amber-200/80">현재 등급</span>
-            </div>
-            <div>
-              <div class="text-xs font-bold text-emerald-100 flex items-center gap-1.5">
-                <span>${myDogName}의 언어 등급</span>
-              </div>
-              <div class="text-[11px] text-emerald-300/80 mt-0.5">
-                ${isMaster ? '최고 등급 마스터 달성!' : `다음 목표: <b class="text-amber-300 font-black">${nextLevel}</b> 등급`}
-              </div>
-            </div>
-          </div>
-
-          <div class="text-right">
-            <div class="text-[10px] font-semibold text-emerald-300/70">합격 기준</div>
-            <div class="text-xs font-black text-amber-300">20문제 중 85% (17개)</div>
-          </div>
-        </div>
-
-        ${
-          isMaster
-            ? `
-          <div class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 to-yellow-600 text-white font-black text-xs text-center shadow-sm">
-            👑 최고 언어 등급(C2 마스터)에 도달했습니다!
-          </div>
-        `
-            : `
-          <button id="btn-start-promotion" type="button" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-2">
-            <span>🔥 ${nextLevel} 승급전 도전하기</span>
-            <span class="px-2 py-0.5 rounded-full ${isFree ? 'bg-amber-400 text-emerald-950 font-black' : 'bg-emerald-900/80 text-amber-300 border border-amber-400/40'} text-[10px]">
-              ${isFree ? '오늘 1회 무료' : '🦴 1 소모'}
-            </span>
-          </button>
-        `
-        }
-      </div>
-
-      <!-- 🏆 하단 구역: 주간 20인 리그 순위표 -->
-      <div class="rounded-2xl bg-[#faf6ee] border border-[#d2c8b4] p-4 text-[#1f2d24] shadow-sm space-y-3.5">
+      <!-- 🏆 주간 20인 리그 순위표 -->
+      <div id="challenge-league-roster-card" class="rounded-2xl bg-[#faf6ee] border border-[#d2c8b4] p-4 text-[#1f2d24] shadow-sm space-y-3.5">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="text-2xl">${tierMeta.icon}</span>
@@ -242,78 +177,6 @@ export function createChallengeUI({ onResourcesChanged, openModal, closeModal, o
         </div>
       </div>
     `;
-
-    // 승급전 도전 이벤트 바인딩
-    document.getElementById('btn-start-promotion')?.addEventListener('click', () => {
-      handleStartPromotion(nextLevel, isFree, curSnacks);
-    });
-  }
-
-  function handleStartPromotion(targetLevel, isFree, curSnacks) {
-    if (!targetLevel) return;
-
-    if (!isFree && curSnacks < 1) {
-      openModal(`
-        <div class="text-center space-y-3">
-          <div class="text-3xl">🦴</div>
-          <h3 class="text-base font-black text-rose-700">뼈다귀 부족</h3>
-          <p class="text-xs text-[#4a584e] leading-relaxed">
-            오늘 1회 무료 도전을 이미 사용했습니다.<br/>
-            추가 도전에는 <b>🦴 1 뼈다귀</b>가 필요합니다.
-          </p>
-          <button id="btn-close-snack-err" type="button" class="w-full py-2.5 rounded-xl bg-[#2d6a4f] text-white font-bold text-xs">
-            확인
-          </button>
-        </div>
-      `);
-      document.getElementById('btn-close-snack-err')?.addEventListener('click', closeModal);
-      return;
-    }
-
-    const costText = isFree ? '오늘 1회 무료 도전' : '🦴 1 뼈다귀 소모';
-
-    openModal(`
-      <div class="text-center space-y-4">
-        <div class="text-4xl">🔥</div>
-        <div>
-          <h3 class="text-base font-black text-[#1f2d24]">${targetLevel} 승급전 입장</h3>
-          <p class="text-xs text-[#4a584e] mt-1 leading-relaxed">
-            ${targetLevel} 등급 단어 <b>20문제</b>가 연속 출제됩니다.<br/>
-            정답률 <b>85% 이상(17문제 정답)</b> 달성 시 즉시 승급 및 <b>+3 🦴 보상</b>을 획득합니다!
-          </p>
-        </div>
-
-        <div class="p-2.5 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] text-xs font-extrabold text-emerald-800">
-          입장 비용: ${costText}
-        </div>
-
-        <div class="flex gap-2">
-          <button id="btn-cancel-promo" type="button" class="flex-1 py-2.5 rounded-xl bg-[#e6dec8] text-[#1f2d24] font-bold text-xs active:scale-95 transition">
-            취소
-          </button>
-          <button id="btn-confirm-promo" type="button" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-xs shadow-md active:scale-95 transition">
-            도전 시작 ⚔️
-          </button>
-        </div>
-      </div>
-    `);
-
-    document.getElementById('btn-cancel-promo')?.addEventListener('click', closeModal);
-    document.getElementById('btn-confirm-promo')?.addEventListener('click', () => {
-      closeModal();
-      // 비용 차감 및 세이브 갱신
-      updateSave((s) => {
-        if (!s.challenge) s.challenge = {};
-        if (isFree) {
-          s.challenge.dailyFreeUsedDate = getTodayString();
-        } else {
-          s.snacks = Math.max(0, (s.snacks || 0) - 1);
-        }
-      });
-      audioEngine.unlock();
-      onResourcesChanged?.();
-      onStartPromotion?.({ targetLevel });
-    });
   }
 
   function showSettlementModal(res) {

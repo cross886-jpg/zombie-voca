@@ -657,6 +657,7 @@ export const QUEST_DEFS = Object.freeze({
     { id: 'w_quests', title: '일일 퀘스트 15회 완료', key: 'questsCompleted', target: 15, gold: 1000, gems: 100, box: 'box_tactical', icon: '📜', desc: '일일 퀘스트를 누적 15회 수령합니다.' },
   ],
   achievements: [
+    { id: 'ach_tutorial_clear', title: '신입 특공대 튜토리얼 수료', key: 'stageReached', target: 1, gold: 100, gems: 20, snacks: 1, icon: '🎓', desc: '전투 튜토리얼을 완수하고 첫 파트너와 모험을 시작합니다.' },
     { id: 'ach_first_step', title: '챕터 1 클리어 (스테이지 10)', key: 'stageReached', target: 10, gold: 200, gems: 30, icon: '🚩', desc: '미국 횡단 챕터 1을 완료합니다.' },
     { id: 'ach_zombie_1', title: '좀비 300마리 처치', key: 'totalKills', target: 300, gems: 50, icon: '🧟', desc: '누적 좀비 300마리를 격파합니다.' },
     { id: 'ach_zombie_2', title: '좀비 2,000마리 처치', key: 'totalKills', target: 2000, gems: 150, icon: '💀', desc: '누적 좀비 2,000마리를 처치합니다.' },

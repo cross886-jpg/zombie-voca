@@ -48,10 +48,25 @@ export function computePlayerStats(saveData, skills = {}) {
   const passiveSpeedMult = 1 + (skills.passive_zoomies || 0) * (SKILLS.find((s) => s.id === 'passive_zoomies')?.perLevel || 0.05);
   const passivePickupMult = 1 + (skills.passive_magnet || 0) * (SKILLS.find((s) => s.id === 'passive_magnet')?.perLevel || 0.15);
 
-  const maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus + shopHp + skinHp) * evoStage.hpMult * passiveHpMult);
-  const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus + skinAtk) * evoStage.atkMult * passiveAtkMult);
-  const speed = BALANCE.PLAYER.BASE_SPEED * (1 + trainSpeedBonus) * passiveSpeedMult;
-  const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus + shopMagnet) * passivePickupMult;
+  const curBreedId = safeSave.selectedBreed || 'pomeranian';
+  const breedHpMult = curBreedId === 'french_bulldog' ? 1.3
+    : curBreedId === 'retriever' ? 1.25
+    : curBreedId === 'corgi' ? 1.15
+    : curBreedId === 'pomeranian' ? 1.05
+    : curBreedId === 'beagle' ? 0.85
+    : 1.0;
+  const breedAtkMult = curBreedId === 'doberman' ? 1.2 : curBreedId === 'shiba' ? 1.1 : 1.0;
+  const breedSpeedMult = curBreedId === 'husky' ? 1.2
+    : curBreedId === 'beagle' ? (138 / 115)
+    : curBreedId === 'pomeranian' ? (125 / 115)
+    : curBreedId === 'french_bulldog' ? 1.0
+    : 1.0;
+  const breedPickupMult = curBreedId === 'beagle' ? 1.15 : curBreedId === 'pomeranian' ? 1.1 : 1.0;
+
+  const maxHp = Math.round((BALANCE.PLAYER.BASE_HP + trainHp + collectionBonus.hpBonus + shopHp + skinHp) * evoStage.hpMult * breedHpMult * passiveHpMult);
+  const atk = Math.round((BALANCE.PLAYER.BASE_ATK + trainAtk + collectionBonus.atkBonus + skinAtk) * evoStage.atkMult * breedAtkMult * passiveAtkMult);
+  const speed = BALANCE.PLAYER.BASE_SPEED * (1 + trainSpeedBonus) * breedSpeedMult * passiveSpeedMult;
+  const pickupRadius = (BALANCE.PLAYER.PICKUP_RADIUS + trainMagnetBonus + shopMagnet) * breedPickupMult * passivePickupMult;
   // 인게임 회피 조작감 및 시야 확장을 위한 히트박스 약 18% 축소 (0.82배율)
   const radius = BALANCE.PLAYER.RADIUS * evoStage.scale * 0.82;
   // 초기 기준 전투력 100 (공격력 10 * 5 + 체력 100 * 0.5) 및 추가 스피드 가산

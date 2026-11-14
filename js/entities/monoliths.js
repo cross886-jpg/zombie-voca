@@ -11,13 +11,15 @@ export class MonolithManager {
     this.drops = [];
     this.riseProgress = 0;
     this.revealOnly = false;
+    this.isTutorial = false;
   }
 
-  resetForBattle() {
+  resetForBattle(isTutorial = false) {
     this.monoliths = [];
     this.drops = [];
     this.riseProgress = 0;
     this.revealOnly = false;
+    this.isTutorial = isTutorial;
   }
 
   /**
@@ -128,6 +130,8 @@ export class MonolithManager {
         const entryX = m.x;
         const entryY = m.y + (m.entryOffsetY || 38);
         const distToEntry = Math.hypot(player.x - entryX, player.y - entryY);
+        const distToCenter = Math.hypot(player.x - m.x, player.y - m.y);
+        m.playerApproachDist = Math.min(distToEntry, distToCenter);
         const inEntryZone = distToEntry <= (m.entryRadius || 28) + player.radius * 0.35;
 
         if (inEntryZone) {
@@ -209,7 +213,7 @@ export class MonolithManager {
     return { resolvedMonolith, pickedGems, pickedGemCharge, pickedSnacks, pickedMedkits, captureTicking };
   }
 
-  render(ctx, time, highlightRing = false, camera = null, viewW = 0, viewH = 0) {
+  render(ctx, time, highlightRing = false, camera = null, viewW = 0, viewH = 0, isTutorial = false) {
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.006);
 
     // 1. 전장 드롭 3종 렌더링 (단일 통일 💎 보석, 🦴 뼈다귀, 💊 구급상자)
@@ -289,19 +293,23 @@ export class MonolithManager {
       ctx.ellipse(0, footY + 4, footW / 2 + 2, footH / 2, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // 튜토리얼 Step 3: 벙커 해치 원 주변 강조 펄스 링
-      if (highlightRing) {
+      // 튜토리얼 Step 3(정답 해치 강조) 또는 플레이어가 반경 140px 이내로 접근 시 진입 원 강조 펄스 링
+      const isPlayerNear = !this.revealOnly && m.playerApproachDist !== undefined && m.playerApproachDist <= 140;
+      const isTutorialTarget = Boolean(highlightRing && m.isCorrect);
+      if (isTutorialTarget || isPlayerNear || highlightRing) {
         ctx.save();
         const ringExpand = (performance.now() * 0.0018) % 1;
         const ringR = footR + 6 + ringExpand * 22;
-        ctx.strokeStyle = `rgba(250, 204, 21, ${(1 - ringExpand) * 0.9})`;
-        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = isTutorialTarget
+          ? `rgba(251, 191, 36, ${(1 - ringExpand) * 0.95})`
+          : `rgba(52, 211, 153, ${(1 - ringExpand) * 0.85})`;
+        ctx.lineWidth = isTutorialTarget ? 4.0 : 3.0;
         ctx.beginPath();
         ctx.arc(0, footY, ringR, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.strokeStyle = 'rgba(52, 211, 153, 0.85)';
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isTutorialTarget ? 'rgba(250, 204, 21, 0.95)' : 'rgba(52, 211, 153, 0.85)';
+        ctx.lineWidth = isTutorialTarget ? 3.0 : 2.5;
         ctx.beginPath();
         ctx.arc(0, footY, footR + 4 + pulse * 4, 0, Math.PI * 2);
         ctx.stroke();
@@ -536,6 +544,50 @@ export class MonolithManager {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(m.meaning, 10, bannerY);
+
+        // [D. 튜토리얼 Step 3 정답 해치 전용: 통통 튀는 큰 강아지 발바닥(🐾) 포인터]
+        if (isTutorialTarget) {
+          const bounceY = Math.sin(performance.now() * 0.0085) * 6;
+          const pawY = bannerY - 40 + bounceY;
+          ctx.save();
+          ctx.shadowColor = 'rgba(251, 191, 36, 0.95)';
+          ctx.shadowBlur = 14;
+          ctx.font = '32px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🐾', 0, pawY);
+
+          ctx.font = '900 11px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.fillStyle = '#fef08a';
+          ctx.fillText('▼', 0, pawY + 20);
+          ctx.restore();
+        }
+
+        // [E. 해치 접근 시(반경 140px 이내) 입구 체류 안내 배지 (튜토리얼 진행 중에만 표시)]
+        const showStayGuide = Boolean(isTutorial || this.isTutorial);
+        if (isPlayerNear && showStayGuide) {
+          const guideY = footY + footH / 2 + 22;
+          const guideW = 214;
+          const guideH = 24;
+          ctx.save();
+          ctx.shadowColor = isHacking ? 'rgba(251, 191, 36, 0.85)' : 'rgba(16, 185, 129, 0.75)';
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = 'rgba(10, 24, 17, 0.94)';
+          ctx.strokeStyle = isHacking ? '#facc15' : '#34d399';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.roundRect(-guideW / 2, guideY - guideH / 2, guideW, guideH, 12);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = isHacking ? '#fde047' : '#a7f3d0';
+          ctx.font = '800 11.5px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('🐾 해치 입구 원 안에 잠시 머무르세요!', 0, guideY + 0.5);
+          ctx.restore();
+        }
       }
 
       ctx.restore();

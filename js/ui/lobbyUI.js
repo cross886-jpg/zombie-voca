@@ -113,14 +113,18 @@ export function createLobbyUI({
 
   let viewedChapter = null;
 
+  let onboardingTour = null;
+
   function showLobby() {
     lobbyLayer.classList.remove('hidden');
     viewedChapter = getSave().selectedChapter || 1;
     refreshHeader();
     renderActiveTab();
+    onboardingTour?.syncTour();
   }
 
   function hideLobby() {
+    onboardingTour?.hideTour();
     lobbyLayer.classList.add('hidden');
   }
 
@@ -144,6 +148,7 @@ export function createLobbyUI({
     openProfileModal,
     openSettingsModal,
     openCourseSetupModal,
+    createLobbyOnboardingTour,
   } = createLobbyModals({
     openModal,
     closeModal,
@@ -153,6 +158,11 @@ export function createLobbyUI({
     renderActiveTab,
     onStartBattle,
     getProfileProgress,
+  });
+
+  onboardingTour = createLobbyOnboardingTour({
+    switchTab,
+    getActiveTab: () => activeTab,
   });
 
   let happyUntil = 0;
@@ -213,11 +223,13 @@ export function createLobbyUI({
     renderDogToCanvas(canvas, {
       save,
       breedId: curBreedId,
-      scale: 1.45,
-      y: canvas.height / 2 + 6,
+      scale: 1.95,
+      y: canvas.height / 2 + 10,
       isHappy,
       time: now,
       companions: (save.companions?.active || []).slice(0, MAX_SUPPORTERS),
+      withEquipment: true,
+      withWeapon: true,
     });
 
     if (isHappy && typeof window !== 'undefined' && window.requestAnimationFrame) {
@@ -312,6 +324,7 @@ export function createLobbyUI({
     });
 
     renderActiveTab();
+    onboardingTour?.syncTour();
   }
 
   function renderActiveTab() {
@@ -366,15 +379,15 @@ export function createLobbyUI({
     const petStatus = getPetDailyStatus();
     const now = Date.now();
     const cooldownMs = Math.max(0, petCooldownUntil - now);
-    let petBadgeText = `쓰다듬기 💕 ${petStatus.remaining}/5`;
-    let petBadgeClass = 'absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black shadow animate-bounce select-none';
+    let petBadgeInner = '<span class="text-sm leading-none drop-shadow-xs">🩷</span>';
+    let petBadgeClass = 'absolute -top-2 -right-2 w-8 h-8 rounded-full bg-[#faf6ee] hover:bg-rose-50 border-2 border-rose-400/80 shadow-md flex items-center justify-center text-sm active:scale-90 hover:scale-105 transition cursor-pointer select-none';
 
     if (!petStatus.canPet) {
-      petBadgeText = '오늘 교감 완료 ✓';
-      petBadgeClass = 'absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-stone-500 text-white text-[9px] font-black shadow select-none';
+      petBadgeInner = '<span class="text-xs leading-none grayscale opacity-60">🤍</span>';
+      petBadgeClass = 'absolute -top-2 -right-2 w-7 h-7 rounded-full bg-[#f0ebe0] border border-[#d2c8b4] shadow-xs flex items-center justify-center cursor-default opacity-70 select-none';
     } else if (cooldownMs > 0) {
-      petBadgeText = `⏳ ${Math.ceil(cooldownMs / 1000)}s`;
-      petBadgeClass = 'absolute -top-1.5 -right-1.5 px-2 py-0.5 rounded-full bg-amber-600 text-white text-[9px] font-black shadow select-none';
+      petBadgeInner = `<span class="text-[10px] font-bold text-amber-700">${Math.ceil(cooldownMs / 1000)}s</span>`;
+      petBadgeClass = 'absolute -top-2 -right-2 w-7 h-7 rounded-full bg-amber-50 border border-amber-300 shadow-xs flex items-center justify-center animate-pulse select-none';
     }
 
     let heroName = dogName;
@@ -434,19 +447,19 @@ export function createLobbyUI({
           </div>
         </div>
 
-        <!-- 중앙 무대 영역: 상단 버튼과 분리되어 중앙 여백이 넉넉해진 수호견 무대 -->
-        <div class="flex-1 flex flex-col items-center justify-center text-center my-auto -mt-6 pointer-events-auto">
-          <div id="lobby-hero-stage" class="relative group cursor-pointer active:scale-95 transition select-none" title="탭하여 쓰다듬기 💕">
-            <div class="relative w-40 h-24 rounded-2xl bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center p-1">
-              <canvas id="lobby-hero-canvas" width="160" height="96" class="w-40 h-24 rounded-2xl bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
-              <span id="pet-action-badge" class="${petBadgeClass}">
-                ${petBadgeText}
-              </span>
+        <!-- 중앙 무대 영역: 상단 버튼과 분리되어 중앙 여백이 넉넉해진 수호견 무대 (전체 프로필 카드 id 부여) -->
+        <div id="lobby-hero-profile-card" class="flex flex-col items-center justify-center text-center my-auto -mt-4 pointer-events-auto w-full max-w-[260px] mx-auto">
+          <div id="lobby-hero-stage" class="relative group cursor-pointer active:scale-95 transition select-none" title="탭하여 쓰다듬기 🩷">
+            <div class="relative w-44 h-[116px] rounded-2xl bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center p-1">
+              <canvas id="lobby-hero-canvas" width="176" height="116" class="w-44 h-[116px] rounded-2xl bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
+              <button id="pet-action-badge" type="button" class="${petBadgeClass}" title="우유 쓰다듬기 (터치하여 교감)">
+                ${petBadgeInner}
+              </button>
             </div>
           </div>
 
           <!-- 현재 선택된 견종명 배지 & 친밀도 5단계 게이지 -->
-          <div class="flex items-center justify-center gap-1.5 mt-2">
+          <div class="flex items-center justify-center gap-1.5 mt-1.5">
             <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-600/30 text-[10px] font-black">
               🐾 ${curBreed.name} · ${t(stats.evoStage.key)}
             </span>
@@ -456,17 +469,17 @@ export function createLobbyUI({
           </div>
 
           <!-- 친밀도 미니 게이지 바 -->
-          <div class="w-36 h-1.5 rounded-full bg-[#e6dec8] mt-1.5 overflow-hidden shadow-inner" title="친밀도 경험치: ${aff.levelXp}/${aff.targetXp} XP">
-            <div class="h-full rounded-full bg-gradient-to-r from-rose-400 to-pink-500 transition-all duration-300" style="width: ${Math.round(aff.ratio * 100)}%"></div>
+          <div class="w-36 h-1.5 rounded-full bg-[#e6dec8] mt-1 overflow-hidden shadow-inner" title="친밀도 경험치: ${aff.levelXp}/${aff.targetXp} XP">
+            <div id="lobby-affection-bar" class="h-full rounded-full bg-gradient-to-r from-rose-400 to-pink-500 transition-all duration-300" style="width: ${Math.round(aff.ratio * 100)}%"></div>
           </div>
 
           <!-- 순수 강아지 이름표 (수정은 프로필 & 설정 모달에서 전담) -->
-          <div class="text-base font-black text-[#1f2d24] mt-1 tracking-tight">
+          <div class="text-base font-black text-[#1f2d24] mt-0.5 tracking-tight">
             ${heroName}
           </div>
 
           <!-- 핵심 4종 스탯 (전투력 · 공격력 · 체력 · 이동속도) -->
-          <div class="flex items-center justify-center gap-2 mt-2 text-xs font-extrabold">
+          <div class="flex items-center justify-center gap-2 mt-1 text-xs font-extrabold">
             <span class="text-amber-800">⚡ ${stats.combatPower}</span>
             <span class="text-[#a3b899]">·</span>
             <span class="text-emerald-800">⚔️ ${stats.atk}</span>
@@ -539,19 +552,19 @@ export function createLobbyUI({
       const remainingCooldown = Math.max(0, petCooldownUntil - now);
 
       if (!status.canPet) {
-        badgeEl.textContent = '오늘 교감 완료 ✓';
-        badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full border shadow-xs transition select-none bg-[#ece6d8]/90 text-[#7a8c7e] border-[#d2c8b4] cursor-default opacity-80';
+        badgeEl.innerHTML = '<span class="text-xs leading-none grayscale opacity-60">🤍</span>';
+        badgeEl.className = 'absolute -top-2 -right-2 w-7 h-7 rounded-full bg-[#f0ebe0] border border-[#d2c8b4] shadow-xs flex items-center justify-center cursor-default opacity-70 select-none';
         if (petCooldownTimerId) {
           clearInterval(petCooldownTimerId);
           petCooldownTimerId = null;
         }
       } else if (remainingCooldown > 0) {
         const sec = Math.ceil(remainingCooldown / 1000);
-        badgeEl.textContent = `⏳ ${sec}s`;
-        badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full border shadow-xs transition select-none bg-amber-100/90 text-amber-800 border-amber-300 animate-pulse';
+        badgeEl.innerHTML = `<span class="text-[10px] font-bold text-amber-700">${sec}s</span>`;
+        badgeEl.className = 'absolute -top-2 -right-2 w-7 h-7 rounded-full bg-amber-50 border border-amber-300 shadow-xs flex items-center justify-center animate-pulse select-none';
       } else {
-        badgeEl.textContent = `쓰다듬기 💕 ${status.remaining}/${status.max}`;
-        badgeEl.className = 'text-[9px] font-black px-2 py-0.5 rounded-full border shadow-xs transition select-none bg-[#f8f5ec]/90 text-[#2d6a4f] border-[#d2c8b4] hover:bg-emerald-50 active:scale-95 cursor-pointer';
+        badgeEl.innerHTML = '<span class="text-sm leading-none drop-shadow-xs">🩷</span>';
+        badgeEl.className = 'absolute -top-2 -right-2 w-8 h-8 rounded-full bg-[#faf6ee] hover:bg-rose-50 border-2 border-rose-400/80 shadow-md flex items-center justify-center text-sm active:scale-90 hover:scale-105 transition cursor-pointer select-none';
         if (petCooldownTimerId) {
           clearInterval(petCooldownTimerId);
           petCooldownTimerId = null;
@@ -591,7 +604,18 @@ export function createLobbyUI({
 
       const cur = getSave();
       const breed = cur.selectedBreed || 'pomeranian';
-      addAffection(breed, 3);
+      const isOnboardingPet = !cur.onboardingCompleted && cur.onboardingStep === 4;
+
+      // 튜토리얼 4단계 쓰다듬기 시에는 친밀도 게이지가 눈에 띄게 쑥 차오르도록 25점 부여
+      const affBonus = isOnboardingPet ? 25 : 3;
+      addAffection(breed, affBonus);
+
+      // 하트 친밀도 게이지 바 즉시 폭 갱신
+      const affBar = document.getElementById('lobby-affection-bar');
+      if (affBar) {
+        const affData = getAffection(breed);
+        affBar.style.width = `${Math.round(affData.ratio * 100)}%`;
+      }
 
       // 효과음 & 햅틱 진동
       if (typeof audioEngine?.playHappyBark === 'function') {
@@ -606,6 +630,11 @@ export function createLobbyUI({
       // 강아지 행복 애니메이션 + 파티클 + 말풍선 트리거
       const stage = document.getElementById('lobby-hero-stage');
       triggerDogHappyReaction(stage, breed);
+
+      // 온보딩 쓰다듬기 완료 시 축하 및 투어 종료 연동
+      if (isOnboardingPet) {
+        onboardingTour?.completeWithPet?.();
+      }
 
       // 인터랙션 뱃지 즉시 갱신 및 쿨타임 인터벌 시작
       updatePetBadge();

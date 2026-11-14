@@ -140,6 +140,8 @@ export class TutorialController {
     updateSave((s) => {
       s.tutorialCompleted = true;
       s.tutorialDone = true;
+      s.onboardingCompleted = false;
+      s.onboardingStep = 0;
     });
   }
 
@@ -160,7 +162,7 @@ export class TutorialController {
       const wordStr = currentWord?.word || '';
       const meaningStr = currentWord?.meaning || '';
       text = this.retryHintActive
-        ? t('tutorial.step3Retry', { word: wordStr, meaning: meaningStr })
+        ? (t('tutorial.step3Retry', { word: wordStr, meaning: meaningStr }) || "앗, 그건 오답 벙커야! 위 전광판 단어와 맞는 발바닥(🐾) 표시 해치로 들어가 봐!")
         : t('tutorial.step3', { word: wordStr, meaning: meaningStr, current: this.solvedCount, target: BALANCE.TUTORIAL.QUESTION_COUNT });
       countText = `${this.solvedCount} / ${BALANCE.TUTORIAL.QUESTION_COUNT}`;
     } else if (this.step === 4) {
@@ -186,7 +188,7 @@ export class TutorialController {
       showDoubleTapGesture: this.step === 6 && !this.ultTriggered,
       highlightScoreboard: this.step === 2,
       highlightMonoliths: this.step === 3,
-      highlightUltGauge: this.step === 5 || (this.step === 6 && !this.ultTriggered),
+      highlightUltGauge: this.step === 2 || this.step === 5 || (this.step === 6 && !this.ultTriggered),
     };
   }
 

@@ -63,7 +63,9 @@ function createDefaultSave() {
     },
     tutorialCompleted: false,
     tutorialDone: false,
-    gold: 0,
+    onboardingCompleted: false,
+    onboardingStep: 0,
+    gold: 30,
     snacks: 0,
     gems: 0,
     ownedItems: [],
@@ -234,6 +236,12 @@ function mergeWithDefaults(defaults, saved, isRoot = true) {
   result.lang = effectiveLang;
   result.tutorialCompleted = Boolean(saved?.tutorialCompleted || saved?.tutorialDone);
   result.tutorialDone = result.tutorialCompleted;
+  result.onboardingCompleted = typeof saved?.onboardingCompleted === 'boolean'
+    ? saved.onboardingCompleted
+    : Boolean(result.tutorialCompleted);
+  result.onboardingStep = typeof saved?.onboardingStep === 'number'
+    ? saved.onboardingStep
+    : (result.onboardingCompleted ? 5 : 0);
   result.haptic = saved && typeof saved.haptic === 'boolean' ? saved.haptic : true;
   result.lowFx = saved && typeof saved.lowFx === 'boolean' ? saved.lowFx : false;
   if (saved && typeof saved.langConfirmed === 'boolean') {
@@ -315,7 +323,10 @@ export function loadSave() {
         Object.keys(state.wordStats || {}).length > 0;
       if (hasHistory) {
         state.tutorialCompleted = true;
+        state.tutorialDone = true;
         state.langSelected = true;
+        state.onboardingCompleted = true;
+        state.onboardingStep = 5;
         persistSave();
       }
     }

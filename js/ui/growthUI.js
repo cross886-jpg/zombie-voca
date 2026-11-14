@@ -169,7 +169,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
     }
 
     const showcaseHtml = `
-      <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
+      <div id="gear-showcase-card" class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
         <div class="flex items-center justify-between pb-2 mb-2.5 border-b border-[#e6dec8] text-xs">
           <span class="font-extrabold text-[#1f2d24]">${dogName} 장착 쇼케이스</span>
           <span class="text-[11px] font-bold text-amber-700">도감 +${collectionBonus.atkBonus} ATK / +${collectionBonus.hpBonus} HP</span>
@@ -495,6 +495,8 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
       breedId: curBreedId,
       scale: 1.0,
       ratio: 2,
+      withEquipment: true,
+      withWeapon: true,
     });
     // 중앙 쇼케이스 캔버스는 항상 현재 선택된 대표 주인공 수호견만 렌더링
     renderDogToCanvas(document.getElementById('gear-formation-hero-canvas'), {
@@ -722,20 +724,35 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
 
     function renderStatBox(s) {
       const isFlashed = statBoostFlash.key === s.key;
+      const isAtkHighlight = s.key === 'atkLevel' && (isFlashed || (save.onboardingStep === 2 && (training.atkLevel || 0) >= 1));
+      let valHtml = `<span class="text-xs font-black text-[#1f2d24] mt-1 leading-none whitespace-nowrap">${s.val}</span>`;
+      if (isAtkHighlight) {
+        const curAtk = Math.round(stats.atk);
+        const prevAtk = Math.max(1, curAtk - 1);
+        valHtml = `
+          <div class="flex items-center gap-0.5 justify-center mt-1 leading-none">
+            <span class="text-[10px] text-[#4a584e] font-bold">${prevAtk}</span>
+            <span class="text-[9px] text-[#a3b899]">→</span>
+            <span class="text-xs font-black text-emerald-800">${curAtk}</span>
+          </div>
+          <span class="text-[8px] font-black text-amber-700 leading-none mt-0.5">(Lv.${training.atkLevel || 1})</span>
+        `;
+      }
+
       return `
         <div class="relative w-full max-w-[68px] aspect-square rounded-2xl bg-[#f0ebe0] border border-[#d2c8b4] flex flex-col items-center justify-center text-center p-1 shadow-2xs transition-all ${
-          isFlashed ? 'ring-2 ring-emerald-600 bg-emerald-500/20' : ''
+          isFlashed || isAtkHighlight ? 'ring-2 ring-emerald-600 bg-emerald-500/20' : ''
         }">
           <span class="text-base leading-none">${s.icon}</span>
           <span class="text-[10px] text-[#4a584e] font-bold mt-1 leading-none whitespace-nowrap">${s.label}</span>
-          <span class="text-xs font-black text-[#1f2d24] mt-1 leading-none whitespace-nowrap">${s.val}</span>
-          ${isFlashed ? '<span class="absolute top-1 right-1.5 text-emerald-700 font-black text-[9px] animate-pulse">▲</span>' : ''}
+          ${valHtml}
+          ${isFlashed || isAtkHighlight ? '<span class="absolute top-1 right-1.5 text-emerald-700 font-black text-[9px] animate-pulse">▲</span>' : ''}
         </div>
       `;
     }
 
     const statSummaryHtml = `
-      <div class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
+      <div id="training-stat-summary-card" class="p-3 rounded-2xl bg-[#faf6ee] shadow-sm border border-[#d2c8b4] mb-3">
         <!-- 상단 헤더: 가운데 정렬 -->
         <div class="flex flex-wrap items-center justify-center gap-2 pb-2 mb-2.5 border-b border-[#e6dec8] text-center">
           <span class="text-xs font-black text-[#1f2d24]">${dogName} 실시간 상태</span>
@@ -927,7 +944,7 @@ export function createGrowthUI({ onResourcesChanged, openModal, closeModal } = {
           statBoostFlash.isLevelUp = false;
           statBoostFlash.timer = null;
           renderTrainingTab();
-        }, 1000);
+        }, 2500);
       }
       onResourcesChanged?.();
       renderTrainingTab();

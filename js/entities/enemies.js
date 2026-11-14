@@ -52,11 +52,13 @@ export class EnemyManager {
   }
 
   spawnTutorialZombies(playerX, playerY) {
-    this.enemies = [];
-    const count = BALANCE.TUTORIAL.INITIAL_ZOMBIES;
-    for (let i = 0; i < count; i++) {
-      const ang = (Math.PI * 2 * i) / count;
-      this.spawnEnemy('walker', playerX + Math.cos(ang) * 210, playerY + Math.sin(ang) * 210, 0.7, 0.7, 0.85);
+    const targetCount = BALANCE.TUTORIAL.INITIAL_ZOMBIES || 18;
+    const toSpawn = Math.max(0, targetCount - this.enemies.length);
+    for (let i = 0; i < toSpawn; i++) {
+      const ang = (Math.PI * 2 * i) / Math.max(1, toSpawn) + (Math.random() - 0.5) * 0.35;
+      const dist = 160 + (i % 3) * 28;
+      const typeKey = i % 4 === 0 ? 'conehead' : 'walker';
+      this.spawnEnemy(typeKey, playerX + Math.cos(ang) * dist, playerY + Math.sin(ang) * dist, 0.8, 0.5, 0.9);
     }
   }
 
@@ -258,7 +260,7 @@ export class EnemyManager {
       }
     }
 
-    // 웨이브 자동 스폰 (튜토리얼 제외: 8~16마리 밀도 유지 및 최대 1.8초마다 증원)
+    // 웨이브 자동 스폰 (일반 모드 vs 튜토리얼 모드 물량 스폰)
     if (!isTutorial) {
       const wave = getWaveForQuestion(chapter, questionNumber);
       this.spawnTimer -= dt;
@@ -282,6 +284,23 @@ export class EnemyManager {
             chapter.enemyAtkMult,
             chapter.enemySpeedMult * getQuestionSpeedMult(questionNumber)
           );
+        }
+      }
+    } else {
+      // 튜토리얼 전용 좀비 지속 증원: 14~20마리 밀도 유지 & 시원한 타격감을 위한 빠른 스폰
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0) {
+        const targetDensity = 16;
+        const isLow = this.enemies.length < targetDensity;
+        this.spawnTimer = isLow ? 0.6 : 1.2;
+        const batchCount = isLow ? 3 : 2;
+        for (let b = 0; b < batchCount; b++) {
+          const typeKey = Math.random() < 0.75 ? 'walker' : 'conehead';
+          const angle = Math.random() * Math.PI * 2;
+          const spawnDist = 240 + Math.random() * 120;
+          const sx = Math.max(80, Math.min(arenaWidth - 80, player.x + Math.cos(angle) * spawnDist));
+          const sy = Math.max(80, Math.min(arenaHeight - 80, player.y + Math.sin(angle) * spawnDist));
+          this.spawnEnemy(typeKey, sx, sy, 0.75, 0.5, 0.88);
         }
       }
     }

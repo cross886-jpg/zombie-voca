@@ -51,7 +51,7 @@ export class StageDirector {
     engine.player.resetForBattle(startX, startY, save);
     engine.companions.resetForBattle(engine.player, save);
     engine.enemies.resetForBattle();
-    engine.monoliths.resetForBattle();
+    engine.monoliths.resetForBattle(Boolean(isTutorial));
     engine.obstacles.resetForBattle(engine.arenaWidth, engine.arenaHeight, startX, startY);
     engine.combat.reset(engine.player, engine.enemies, engine.monoliths);
     engine.camera.reset(startX, startY);

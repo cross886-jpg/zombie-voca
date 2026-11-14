@@ -328,6 +328,12 @@ export class GameEngine {
   }
 
   _update(dt) {
+    // 튜토리얼 Step 2 (전광판 설명 및 [알겠어!] 대기 중): 모달 없이 게임 루프(좀비 이동, 사격, 타이머)만 일시정지
+    if (this.runStats.isTutorial && this.tutorial.active && this.tutorial.step === 2) {
+      this._emitHudUpdate();
+      return;
+    }
+
     // 오답 확인 브레이크(1.2초): 좀비 이동·공격·스폰 및 전투 일시 정지
     if (this.wordEvents.updateWrongReview(dt)) {
       this._emitHudUpdate();
@@ -371,6 +377,9 @@ export class GameEngine {
       this.monoliths.monoliths,
       this.obstacles.obstacles
     );
+    if (this.runStats.isTutorial) {
+      this.player.hp = Math.max(Math.round(this.player.maxHp * 0.5), this.player.hp);
+    }
     const compRes = this.companions.update(dt, this.player, this.enemies.enemies, this.enemies.boss, this.combat);
     if (compRes?.cleanedPoop) {
       const curBreed = getSave().selectedBreed || 'pomeranian';
@@ -414,12 +423,19 @@ export class GameEngine {
       this._handleMonolithResolved(monoRes.resolvedMonolith);
     }
 
-    // 튜토리얼 6단계 진행 제어 (전 구간 좀비 지속 스폰 유지)
+    // 튜토리얼 6단계 진행 제어 (전 구간 8~10마리 수준 좀비 지속 스폰 & 체력 50% 하한 보호)
     if (this.runStats.isTutorial && this.tutorial.active) {
       if (this.tutorial.step === 1) {
         this.player.ultGauge = 0;
-        if (this.enemies.enemies.length < 3) {
-          this.enemies.spawnTutorialZombies(this.player.x, this.player.y);
+        if (this.enemies.enemies.length < 8) {
+          const need = 9 - this.enemies.enemies.length;
+          for (let i = 0; i < need; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const dist = 165 + Math.random() * 50;
+            const zx = Math.max(80, Math.min(this.arenaWidth - 80, this.player.x + Math.cos(ang) * dist));
+            const zy = Math.max(80, Math.min(this.arenaHeight - 80, this.player.y + Math.sin(ang) * dist));
+            this.enemies.spawnEnemy('walker', zx, zy, 0.85, 0.65, 0.92);
+          }
         }
         if (this.tutorial.checkStep1Advance(this.combat.kills)) {
           if (this.deck[0]?.word) {
@@ -428,13 +444,14 @@ export class GameEngine {
         }
       } else if (this.tutorial.step === 2 || this.tutorial.step === 3 || this.tutorial.step === 4) {
         this.player.ultGauge = 0;
-        if (this.enemies.enemies.length < 3) {
-          for (let i = 0; i < 3; i++) {
-            const ang = (Math.PI * 2 * i) / 3 + Math.random() * 0.5;
-            const dist = 215 + Math.random() * 55;
+        if (this.enemies.enemies.length < 8) {
+          const need = 9 - this.enemies.enemies.length;
+          for (let i = 0; i < need; i++) {
+            const ang = (Math.PI * 2 * i) / Math.max(1, need) + Math.random() * 0.5;
+            const dist = 195 + Math.random() * 55;
             const zx = Math.max(80, Math.min(this.arenaWidth - 80, this.player.x + Math.cos(ang) * dist));
             const zy = Math.max(80, Math.min(this.arenaHeight - 80, this.player.y + Math.sin(ang) * dist));
-            this.enemies.spawnEnemy('walker', zx, zy, 0.55, 0.45, 0.78);
+            this.enemies.spawnEnemy('walker', zx, zy, 0.65, 0.5, 0.82);
           }
         }
       } else if (this.tutorial.step === 5) {
@@ -442,22 +459,25 @@ export class GameEngine {
         if (newKills > 0) {
           this.player.addUltGauge(newKills * (BALANCE.TUTORIAL.STEP5_KILL_ULT_CHARGE || 12));
         }
-        if (this.enemies.enemies.length < 4) {
-          for (let i = 0; i < 4; i++) {
-            const ang = (Math.PI * 2 * i) / 4 + Math.random() * 0.4;
-            const dist = 175 + Math.random() * 45;
+        if (this.enemies.enemies.length < 8) {
+          const need = 10 - this.enemies.enemies.length;
+          for (let i = 0; i < need; i++) {
+            const ang = (Math.PI * 2 * i) / Math.max(1, need) + Math.random() * 0.4;
+            const dist = 170 + Math.random() * 50;
             const zx = Math.max(80, Math.min(this.arenaWidth - 80, this.player.x + Math.cos(ang) * dist));
             const zy = Math.max(80, Math.min(this.arenaHeight - 80, this.player.y + Math.sin(ang) * dist));
-            this.enemies.spawnEnemy('walker', zx, zy, 0.55, 0.5, 0.85);
+            this.enemies.spawnEnemy('walker', zx, zy, 0.6, 0.5, 0.85);
           }
         }
       } else if (this.tutorial.step === 6 && !this.tutorial.ultTriggered) {
-        if (this.enemies.enemies.length < 5) {
-          for (let i = 0; i < 5; i++) {
-            const ang = (Math.PI * 2 * i) / 5;
-            const zx = Math.max(80, Math.min(this.arenaWidth - 80, this.player.x + Math.cos(ang) * 160));
-            const zy = Math.max(80, Math.min(this.arenaHeight - 80, this.player.y + Math.sin(ang) * 160));
-            this.enemies.spawnEnemy('walker', zx, zy, 0.6, 0.5, 0.75);
+        if (this.enemies.enemies.length < 8) {
+          const need = 10 - this.enemies.enemies.length;
+          for (let i = 0; i < need; i++) {
+            const ang = (Math.PI * 2 * i) / Math.max(1, need) + Math.random() * 0.35;
+            const dist = 155 + Math.random() * 45;
+            const zx = Math.max(80, Math.min(this.arenaWidth - 80, this.player.x + Math.cos(ang) * dist));
+            const zy = Math.max(80, Math.min(this.arenaHeight - 80, this.player.y + Math.sin(ang) * dist));
+            this.enemies.spawnEnemy('walker', zx, zy, 0.6, 0.5, 0.8);
           }
         }
       }
@@ -467,13 +487,14 @@ export class GameEngine {
         this.player.ultGauge = 0;
         this.monoliths.clearMonoliths();
         this.monoliths.drops = [];
-        const waveCount = BALANCE.TUTORIAL.STEP5_WAVE_ZOMBIES || 6;
-        for (let i = 0; i < waveCount; i++) {
-          const ang = (Math.PI * 2 * i) / waveCount;
-          const dist = 175 + (i % 2) * 35;
+        const waveCount = BALANCE.TUTORIAL.STEP5_WAVE_ZOMBIES || 9;
+        const need = Math.max(0, waveCount - this.enemies.enemies.length);
+        for (let i = 0; i < need; i++) {
+          const ang = (Math.PI * 2 * i) / Math.max(1, need);
+          const dist = 170 + (i % 2) * 35;
           const zx = Math.max(80, Math.min(this.arenaWidth - 80, this.player.x + Math.cos(ang) * dist));
           const zy = Math.max(80, Math.min(this.arenaHeight - 80, this.player.y + Math.sin(ang) * dist));
-          this.enemies.spawnEnemy('walker', zx, zy, 0.55, 0.5, 0.85);
+          this.enemies.spawnEnemy('walker', zx, zy, 0.6, 0.5, 0.85);
         }
       }
       if (tutTick.completedAll) {
@@ -481,10 +502,8 @@ export class GameEngine {
         return;
       }
 
-      // 튜토리얼 중에는 플레이어 체력 바닥 방지
-      if (this.player.hp < Math.round(this.player.maxHp * 0.35)) {
-        this.player.hp = Math.round(this.player.maxHp * 0.6);
-      }
+      // 튜토리얼 중 플레이어 HP가 최대 체력의 50% 아래로는 절대 내려가지 않도록 보호
+      this.player.hp = Math.max(Math.round(this.player.maxHp * 0.5), this.player.hp);
     }
 
     // 사망 판정
@@ -508,7 +527,7 @@ export class GameEngine {
     const edgeArrows = this.monoliths.monoliths.map((m) => {
       const scr = this.camera.worldToScreen(m.x, m.y, this.viewW, this.viewH);
       const outOfView = isMonolithOffscreen(scr.x, scr.y, this.viewW, this.viewH);
-      return { id: m.id, meaning: m.meaning, screenX: scr.x, screenY: scr.y, outOfView };
+      return { id: m.id, meaning: m.meaning, isCorrect: Boolean(m.isCorrect), screenX: scr.x, screenY: scr.y, outOfView };
     });
 
     const milestoneXp = this.runStats.isTutorial ? Math.min(3, this.tutorial.solvedCount) : (this.runStats.correctCount % 3);
@@ -544,7 +563,7 @@ export class GameEngine {
     this.camera.renderArena(ctx, this.chapter, this.arenaWidth, this.arenaHeight, this.elapsedTime);
     this.obstacles.render(ctx);
     this.enemies.render(ctx);
-    this.monoliths.render(ctx, this.elapsedTime, highlightMonoliths, this.camera, this.viewW, this.viewH);
+    this.monoliths.render(ctx, this.elapsedTime, highlightMonoliths, this.camera, this.viewW, this.viewH, Boolean(this.runStats.isTutorial && this.tutorial.active));
     this.companions.render(ctx, this.elapsedTime);
     this.player.render(ctx, this.elapsedTime);
     this.combat.render(ctx);

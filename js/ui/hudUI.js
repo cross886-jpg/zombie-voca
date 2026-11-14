@@ -27,12 +27,9 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   const ledScoreboard = document.getElementById('led-scoreboard');
   const ledWordText = document.getElementById('led-word-text');
 
-  const skillSparks = [
-    document.getElementById('skill-spark-0'),
-    document.getElementById('skill-spark-1'),
-    document.getElementById('skill-spark-2'),
-  ];
-  const skillSparksWrap = document.getElementById('hud-skill-sparks');
+  const hudUltVertFill = document.getElementById('hud-ult-vert-fill');
+  const hudUltVertTrack = document.getElementById('hud-ult-vert-track');
+  const hudUltVertIcon = document.getElementById('hud-ult-vert-icon');
 
   const edgeArrowsWrap = document.getElementById('edge-arrows');
   const hudLeftWidget = document.getElementById('hud-left-widget');
@@ -95,10 +92,10 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     tutorialScoreboardPointer?.classList.add('hidden');
     hudUltActionWrap?.classList.add('hidden');
     ledScoreboard?.classList.remove('tutorial-highlight-pulse');
-    hudLeftWidget?.classList.remove('tutorial-highlight-pulse');
-    skillSparks.forEach((el) => {
-      if (el) el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95';
-    });
+    hudLeftWidget?.classList.remove('tutorial-highlight-pulse', 'border-amber-300', 'shadow-[0_0_16px_rgba(251,191,36,0.9)]');
+    if (hudUltVertFill) {
+      hudUltVertFill.style.height = '0%';
+    }
   }
 
   function openModal(html) {
@@ -216,13 +213,26 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
   });
 
   // === 버튼 이벤트 ===
-  btnPause?.addEventListener('click', () => {
+  btnPause?.addEventListener('click', (e) => {
+    e.stopPropagation();
     if (engine.state === GAME_STATES.PLAYING) {
       engine.pause();
     }
   });
 
-  btnTutorialCoachAck?.addEventListener('click', () => {
+  // 튜토리얼 코칭 배너 터치가 캔버스/뒤쪽 버튼으로 관통하지 않도록 이벤트 전파 차단
+  ['pointerdown', 'pointerup', 'click', 'touchstart', 'touchend'].forEach((evt) => {
+    hudTutorialCoach?.addEventListener(evt, (e) => {
+      e.stopPropagation();
+    });
+    btnTutorialCoachAck?.addEventListener(evt, (e) => {
+      e.stopPropagation();
+    });
+  });
+
+  btnTutorialCoachAck?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
     resetJoystick();
     engine.acknowledgeTutorialStep2();
   });
@@ -266,6 +276,7 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
     const ox = Math.max(minX + 1, Math.min(maxXBound - 1, playerScr.x));
     const oy = Math.max(minY + 1, Math.min(maxYBound - 1, playerScr.y));
 
+    const isTutStep3 = Boolean(engine.runStats?.isTutorial && engine.tutorial?.step === 3);
     const htmlParts = [];
     for (const item of edgeArrows) {
       if (!item.outOfView || !isMonolithOffscreen(item.screenX, item.screenY, viewW, viewH)) continue;
@@ -285,20 +296,34 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       const hand = getSave().dominantHand || 'right';
       const { x: ax, y: ay } = clampIndicatorToThumbSafeZone(rawAx, rawAy, viewW, viewH, hand);
       const deg = (angle * 180) / Math.PI + 90;
+      const arrowDeg = (angle * 180) / Math.PI;
       const ptrX = cos * 28;
       const ptrY = sin * 20;
       const meaningText = item.meaning || '';
+      const isTutCorrectTarget = Boolean(isTutStep3 && item.isCorrect);
 
-      htmlParts.push(`
-        <div class="absolute pointer-events-none" style="left:${ax.toFixed(1)}px;top:${ay.toFixed(1)}px;transform:translate(-50%,-50%);">
-          <div class="relative flex items-center justify-center px-3.5 py-1.5 rounded-full bg-[#08150f]/98 border-2 border-[#10b981] shadow-[0_0_14px_rgba(16,185,129,0.7),0_2px_8px_rgba(0,0,0,0.85)]">
-            <svg width="16" height="16" viewBox="0 0 16 16" style="position:absolute;left:50%;top:50%;transform:translate(calc(-50% + ${ptrX.toFixed(1)}px),calc(-50% + ${ptrY.toFixed(1)}px)) rotate(${deg.toFixed(1)}deg);filter:drop-shadow(0 0 4px #34d399) drop-shadow(0 1px 2px rgba(0,0,0,0.9));">
-              <polygon points="8,0 15,14 8,11 1,14" fill="#34d399" stroke="#042f1a" stroke-width="1.2" />
-            </svg>
-            ${meaningText ? `<span class="text-[14px] font-bold text-[#f8f5ec] whitespace-nowrap leading-none tracking-tight drop-shadow-sm">${meaningText}</span>` : ''}
+      if (isTutCorrectTarget) {
+        htmlParts.push(`
+          <div class="absolute pointer-events-none z-25" style="left:${ax.toFixed(1)}px;top:${ay.toFixed(1)}px;transform:translate(-50%,-50%);">
+            <div class="relative flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-full bg-[#13261b]/98 border-2 border-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.95),0_2px_10px_rgba(0,0,0,0.9)] tutorial-highlight-pulse">
+              <span class="text-xl leading-none select-none drop-shadow-[0_2px_6px_rgba(251,191,36,0.9)]">🐾</span>
+              ${meaningText ? `<span class="text-[14px] font-black text-amber-200 whitespace-nowrap leading-none tracking-tight drop-shadow-sm">${meaningText}</span>` : ''}
+              <span class="text-base font-black text-amber-300 leading-none inline-block select-none drop-shadow-[0_0_6px_rgba(251,191,36,0.95)]" style="transform:rotate(${arrowDeg.toFixed(1)}deg);">➤</span>
+            </div>
           </div>
-        </div>
-      `);
+        `);
+      } else {
+        htmlParts.push(`
+          <div class="absolute pointer-events-none" style="left:${ax.toFixed(1)}px;top:${ay.toFixed(1)}px;transform:translate(-50%,-50%);">
+            <div class="relative flex items-center justify-center px-3.5 py-1.5 rounded-full bg-[#08150f]/98 border-2 border-[#10b981] shadow-[0_0_14px_rgba(16,185,129,0.7),0_2px_8px_rgba(0,0,0,0.85)]">
+              <svg width="16" height="16" viewBox="0 0 16 16" style="position:absolute;left:50%;top:50%;transform:translate(calc(-50% + ${ptrX.toFixed(1)}px),calc(-50% + ${ptrY.toFixed(1)}px)) rotate(${deg.toFixed(1)}deg);filter:drop-shadow(0 0 4px #34d399) drop-shadow(0 1px 2px rgba(0,0,0,0.9));">
+                <polygon points="8,0 15,14 8,11 1,14" fill="#34d399" stroke="#042f1a" stroke-width="1.2" />
+              </svg>
+              ${meaningText ? `<span class="text-[14px] font-bold text-[#f8f5ec] whitespace-nowrap leading-none tracking-tight drop-shadow-sm">${meaningText}</span>` : ''}
+            </div>
+          </div>
+        `);
+      }
     }
     edgeArrowsWrap.innerHTML = htmlParts.join('');
   }
@@ -368,18 +393,25 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       .map((choice, idx) => {
         if (choice.kind === 'skill') {
           const sk = choice.skill;
-          const isAwakening = choice.nextLevel === 5 && sk.category === 'bark';
+          const isAttackWeapon = sk.category === 'bark';
+          const isAwakening = choice.nextLevel === 5 && isAttackWeapon;
           const name = isAwakening && sk.awakenedName ? sk.awakenedName : sk.name;
           const desc = isAwakening && sk.awakenedDesc ? sk.awakenedDesc : sk.desc;
+          const roleBadgeHtml = isAttackWeapon
+            ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-rose-500/15 border border-rose-400/50 text-rose-800 text-[10px] font-black shrink-0">[ ⚔️ 공격 무기 ]</span>`
+            : `<span class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-900 text-[10px] font-black shrink-0">[ ✨ 능력 강화 ]</span>`;
           const badgeHtml = isAwakening
             ? `<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-white shadow-xs animate-pulse">🔥 Lv.5 각성 진화!</span>`
             : `<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-800">Lv.${choice.nextLevel}</span>`;
           return `
-            <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl ${isAwakening ? 'bg-amber-50/90 hover:bg-amber-100/90 border-2 border-amber-400 shadow-md' : 'bg-[#f0ebe0] hover:bg-[#e6dec8] border border-[#d2c8b4]'} flex items-center gap-3 active:scale-98 transition">
+            <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl ${isAwakening ? 'bg-amber-50/90 hover:bg-amber-100/90 border-2 border-amber-400 shadow-md' : 'bg-[#f0ebe0] hover:bg-[#e6dec8] border border-[#d2c8b4]'} flex items-center gap-3 active:scale-98 transition cursor-pointer">
               <div class="w-11 h-11 rounded-xl ${isAwakening ? 'bg-amber-200/80 border border-amber-400' : 'bg-[#faf6ee] border border-[#d2c8b4]'} flex items-center justify-center text-2xl shrink-0">${sk.icon}</div>
               <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="font-extrabold text-sm ${isAwakening ? 'text-amber-950 font-black' : 'text-[#1f2d24]'} truncate">${name}</span>
+                <div class="flex items-center justify-between gap-1.5 flex-wrap">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="font-extrabold text-sm ${isAwakening ? 'text-amber-950 font-black' : 'text-[#1f2d24]'} truncate">${name}</span>
+                    ${roleBadgeHtml}
+                  </div>
                   ${badgeHtml}
                 </div>
                 <p class="text-xs ${isAwakening ? 'text-amber-900 font-medium' : 'text-[#4a584e]'} mt-0.5 line-clamp-2">${desc}</p>
@@ -389,11 +421,14 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
         }
         const comp = choice.companion;
         return `
-          <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-[#f0ebe0] hover:bg-[#e6dec8] border border-amber-600/40 flex items-center gap-3 active:scale-98 transition">
+          <button type="button" data-choice-idx="${idx}" class="skill-pick-btn w-full text-left p-3.5 rounded-xl bg-[#f0ebe0] hover:bg-[#e6dec8] border border-amber-600/40 flex items-center gap-3 active:scale-98 transition cursor-pointer">
             <div class="w-11 h-11 rounded-xl bg-[#faf6ee] border border-[#d2c8b4] flex items-center justify-center text-2xl shrink-0">${comp.icon}</div>
             <div class="flex-1 min-w-0">
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-extrabold text-sm text-amber-900 truncate">${comp.name}</span>
+              <div class="flex items-center justify-between gap-1.5 flex-wrap">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="font-extrabold text-sm text-amber-900 truncate">${comp.name}</span>
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/50 text-amber-900 text-[10px] font-black shrink-0">[ ✨ 능력 강화 ]</span>
+                </div>
                 <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800">Lv.${choice.nextLevel}</span>
               </div>
               <p class="text-xs text-[#4a584e] mt-0.5">${comp.role} 공격력 +20%</p>
@@ -608,6 +643,8 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       if (hudTutorialCoach) {
         if (tutorialCoaching && tutorialCoaching.active) {
           hudTutorialCoach.classList.remove('hidden');
+          hudTutorialCoach.style.bottom = '16px';
+          hudTutorialCoach.style.top = 'auto';
           if (tutorialCoachStep) {
             tutorialCoachStep.textContent = `STEP ${tutorialCoaching.step} / ${tutorialCoaching.totalSteps}`;
           }
@@ -668,25 +705,27 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
         }
       }
 
-      // 스킬 인디케이터 (번개 3개 아이콘)
-      const step = xpToNext === 3 ? Math.max(0, Math.min(3, xp)) : Math.min(3, Math.floor((xp / Math.max(1, xpToNext)) * 3));
-      skillSparks.forEach((el, idx) => {
-        if (!el) return;
-        if (idx < step) {
-          el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-100 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.95)] scale-110';
-        } else {
-          el.className = 'text-xs leading-none select-none transition-all duration-300 opacity-25 grayscale scale-95';
-        }
-      });
-
-      if (prevSkillStep !== -1 && step > prevSkillStep && skillSparksWrap) {
-        skillSparksWrap.classList.add('shadow-[0_0_14px_rgba(251,191,36,0.8)]', 'border-amber-400');
-        clearTimeout(skillFlashTimer);
-        skillFlashTimer = setTimeout(() => {
-          skillSparksWrap.classList.remove('shadow-[0_0_14px_rgba(251,191,36,0.8)]', 'border-amber-400');
-        }, 400);
+      // 상단 좌측 세로형 슬림 필살기 게이지 바 (아래에서 위로 황금/노란색 차오름 & 100% 반짝임)
+      const ultPct = Math.max(0, Math.min(100, (ultGauge / Math.max(1, BALANCE.COMBAT.ULT_MAX_GAUGE)) * 100));
+      const isUltFull = ultPct >= 100;
+      const shouldPulseLeft = isUltFull || Boolean(tutorialCoaching && tutorialCoaching.highlightUltGauge);
+      if (hudUltVertFill) {
+        hudUltVertFill.style.height = `${ultPct}%`;
+        hudUltVertFill.classList.toggle('shadow-[0_0_10px_rgba(253,224,71,0.95)]', isUltFull);
       }
-      prevSkillStep = step;
+      if (hudUltVertTrack) {
+        hudUltVertTrack.classList.toggle('border-yellow-200', isUltFull);
+        hudUltVertTrack.classList.toggle('border-amber-400/45', !isUltFull);
+      }
+      if (hudUltVertIcon) {
+        hudUltVertIcon.classList.toggle('scale-125', isUltFull);
+        hudUltVertIcon.classList.toggle('drop-shadow-[0_0_6px_rgba(251,191,36,0.95)]', isUltFull);
+      }
+      if (hudLeftWidget) {
+        hudLeftWidget.classList.toggle('border-amber-300', shouldPulseLeft);
+        hudLeftWidget.classList.toggle('shadow-[0_0_16px_rgba(251,191,36,0.9)]', shouldPulseLeft);
+        hudLeftWidget.classList.toggle('tutorial-highlight-pulse', shouldPulseLeft);
+      }
 
       if (hudUltActionWrap) {
         const isTutorialActive = Boolean(tutorialCoaching && tutorialCoaching.active);
