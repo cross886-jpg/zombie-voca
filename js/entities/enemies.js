@@ -32,7 +32,7 @@ export class EnemyManager {
     this.explosions = [];
   }
 
-  spawnInitialWave(chapter, courseEnemyMult, playerX, playerY, arenaWidth, arenaHeight, count = 10) {
+  spawnInitialWave(chapter, courseEnemyMult, playerX, playerY, arenaWidth, arenaHeight, count = 15) {
     const wave = getWaveForQuestion(chapter, 1);
     for (let i = 0; i < count; i++) {
       const typeKey = wave.types[Math.floor(Math.random() * wave.types.length)];
@@ -265,10 +265,11 @@ export class EnemyManager {
       const wave = getWaveForQuestion(chapter, questionNumber);
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
-        const interval = Math.min(1.8, wave.spawnInterval);
-        this.spawnTimer = this.enemies.length < 8 ? Math.min(0.45, interval) : interval;
+        // 일반 스테이지 초반 썰렁함 방지 및 핵앤슬래시 손맛을 위해 웨이브 스폰 속도 및 동시 출현 물량 약 1.4~1.5배 상향
+        const interval = Math.min(1.35, wave.spawnInterval * 0.72);
+        this.spawnTimer = this.enemies.length < 12 ? Math.min(0.35, interval) : interval;
 
-        const batchCount = this.enemies.length < 8 ? 2 : 1;
+        const batchCount = this.enemies.length < 12 ? 3 : (Math.random() < 0.45 ? 2 : 1);
         for (let b = 0; b < batchCount; b++) {
           const typeKey = wave.types[Math.floor(Math.random() * wave.types.length)];
           const angle = Math.random() * Math.PI * 2;

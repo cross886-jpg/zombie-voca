@@ -143,15 +143,15 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
           </div>
 
           <div class="my-1.5 relative flex items-center justify-center">
-            <div class="relative w-[80px] h-[68px] flex items-center justify-center">
+            <div class="relative w-[84px] h-[72px] flex items-center justify-center">
               ${
                 isSelected
-                  ? '<div class="absolute -inset-1 rounded-xl bg-gradient-to-r from-emerald-400/40 via-amber-300/40 to-emerald-400/40 blur-sm animate-pulse pointer-events-none"></div>'
+                  ? '<div class="absolute -inset-2 rounded-2xl bg-gradient-to-r from-emerald-400/50 via-amber-300/40 to-teal-400/50 blur-md animate-pulse pointer-events-none"></div>'
                   : ''
               }
               <canvas data-starter-canvas="${opt.id}" width="80" height="68" class="relative z-10 w-[80px] h-[68px] rounded-xl ${
                 isSelected
-                  ? 'bg-gradient-to-b from-emerald-100/90 to-[#f0ebe0] border-2 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                  ? 'bg-gradient-to-b from-emerald-100/90 to-[#f0ebe0] border-2 border-emerald-500 shadow-[0_0_16px_rgba(16,185,129,0.55)] ring-2 ring-emerald-400/50'
                   : 'bg-[#f0ebe0] border border-[#d2c8b4]'
               } block"></canvas>
               ${

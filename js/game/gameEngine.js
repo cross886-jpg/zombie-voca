@@ -189,8 +189,14 @@ export class GameEngine {
         pool.push({ kind: 'skill', skill: sk, nextLevel: lv + 1 });
       }
     }
-    for (const comp of this.companions.activeCompanions) {
-      pool.push({ kind: 'companion', companion: comp.def, nextLevel: comp.runLv + 1 });
+
+    // 현재 장착 중인 동료(companions.active)가 1마리 이상 있을 때만 동료 카드 풀에 포함
+    const save = getSave();
+    const hasEquippedCompanions = (save.companions?.active?.length || 0) > 0 && (this.companions?.activeCompanions?.length || 0) > 0;
+    if (hasEquippedCompanions) {
+      for (const comp of this.companions.activeCompanions) {
+        pool.push({ kind: 'companion', companion: comp.def, nextLevel: comp.runLv + 1 });
+      }
     }
 
     // 3지선다 랜덤 추출
@@ -734,7 +740,7 @@ export class GameEngine {
     ctx.fillStyle = '#d97706';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('🎉 신규 동료 최초 구출!', cx, cy - cardH / 2 + 28);
+    ctx.fillText('🎉 새 동료 구출 완료!', cx, cy - cardH / 2 + 28);
 
     // 동료 아이콘
     ctx.font = '46px sans-serif';
@@ -748,7 +754,7 @@ export class GameEngine {
     // 특성 & 역할
     ctx.fillStyle = '#059669';
     ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(comp.role || comp.buffText || '전투 지원 동행', cx, cy + 49);
+    ctx.fillText('로비 [내 강아지]에서 장착할 수 있습니다', cx, cy + 49);
 
     // 자동 복귀 타이머 텍스트
     ctx.fillStyle = '#64748b';

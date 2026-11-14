@@ -142,6 +142,10 @@ export class TutorialController {
       s.tutorialDone = true;
       s.onboardingCompleted = false;
       s.onboardingStep = 0;
+      // 튜토리얼 훈련소 1회 강화(15금화) 후 약 20금화 여유가 남도록 초기 금화 35 보장
+      if (typeof s.gold !== 'number' || s.gold <= 0) {
+        s.gold = 35;
+      }
     });
   }
 

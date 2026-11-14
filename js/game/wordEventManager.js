@@ -167,33 +167,34 @@ export class WordEventManager {
 
       // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품 (튜토리얼, 월반, 실력 진단 테스트 제외)
       if (!engine.runStats.isTutorial && !engine.runStats.isPlacementTest && !engine.runStats.isPlacement) {
+        // 스테이지당 동료 구출은 최대 1회(1마리)로 제한
+        const canRescue = (engine.runStats.rescuedCompanionCount || 0) < 1;
+        const curSave = getSave();
+        const unrescuedCompanions = COMPANIONS.filter((c) => !curSave.companions?.unlocked?.includes(c.id));
+        const hasUnrescued = unrescuedCompanions.length > 0;
         const surpriseRoll = Math.random();
-        if (surpriseRoll < 0.5) {
-          // 1. 깜짝 아기 동물 구출 지원 (Surprise Animal Rescue)
-          const compPool = COMPANIONS;
-          const rescuedDef = compPool[Math.floor(Math.random() * compPool.length)];
-          const curSave = getSave();
-          const isFirstRescue = !curSave.companions?.unlocked?.includes(rescuedDef.id);
 
-          if (isFirstRescue) {
-            // 최초 구출: 1.8초 자동 슬로우 쇼케이스 카드 표출 + save 해금 등록
-            updateSave((s) => {
-              if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
-              if (!s.companions.unlocked.includes(rescuedDef.id)) {
-                s.companions.unlocked.push(rescuedDef.id);
-              }
-            });
-            engine.autoRescueTimer = 1.8;
-            engine.rescuedCompanion = rescuedDef;
-            engine.companions.addTemporaryCompanion(rescuedDef, engine.player, 25);
-            audioEngine.playPowerUp?.();
-          } else {
-            // 이미 보유한 동료: 상단 2.5초 배너 표출 + 지원 사격 합류
-            engine.companions.addTemporaryCompanion(rescuedDef, engine.player, 18);
-            engine.handlers.onBanner?.(`🐾 [${rescuedDef.name}] 전투 지원 합류! (지원 사격 개시)`);
-            engine.combat.spawnDamageText(monolith.x, monolith.y - 42, `🐾 ${rescuedDef.name} 지원 사격 합류!`, '#34d399', 1.3);
-            audioEngine.playPowerUp?.();
-          }
+        if (canRescue && hasUnrescued && surpriseRoll < 0.5) {
+          // 1. 깜짝 아기 동물 구출 (스테이지당 최대 1마리 제한, 즉시 전장 합류 제거 → 로비 장착형)
+          engine.runStats.rescuedCompanionCount = (engine.runStats.rescuedCompanionCount || 0) + 1;
+          const rescuedDef = unrescuedCompanions[Math.floor(Math.random() * unrescuedCompanions.length)];
+
+          updateSave((s) => {
+            if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
+            if (!s.companions.unlocked) s.companions.unlocked = [];
+            if (!s.companions.unlocked.includes(rescuedDef.id)) {
+              s.companions.unlocked.push(rescuedDef.id);
+            }
+            s.unlockedCompanions = s.companions.unlocked;
+          });
+
+          // 1.8초 자동 슬로우 쇼케이스 카드 표출 (전투 즉시 합류 없이 해금만 진행)
+          engine.autoRescueTimer = 1.8;
+          engine.rescuedCompanion = rescuedDef;
+          const bannerMsg = `🎉 새 동료 [${rescuedDef.name}] 구출 완료! 로비 [내 강아지]에서 장착할 수 있습니다`;
+          engine.handlers.onBanner?.(bannerMsg);
+          engine.combat.spawnDamageText(monolith.x, monolith.y - 42, `🎉 ${rescuedDef.name} 구출 성공!`, '#34d399', 1.5);
+          audioEngine.playPowerUp?.();
         } else {
           // 2. 특수 전술 보급품 (경험치 보석 다발, 희귀 구급상자, 폭탄 충격파 폭발)
           engine.combat.spawnDamageText(monolith.x, monolith.y - 42, '📦 특수 전술 보급품 캡슐 해금!', '#22d3ee', 1.3);

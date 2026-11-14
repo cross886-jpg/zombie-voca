@@ -92,6 +92,7 @@ export class StageDirector {
       targetUnitNum: resolvedTargetUnitNum,
       placementLives: isPlacementTest ? null : (isPlacement ? 3 : null),
       placementPassed: false,
+      rescuedCompanionCount: 0, // 스테이지당 동료 구출 최대 1회 제한 카운터
     };
 
     if (isTutorial) {
@@ -150,7 +151,8 @@ export class StageDirector {
 
   spawnInitialWave(type, startX, startY) {
     const engine = this.engine;
-    const count = type === 'placement' ? 8 : 10;
+    // 일반 스테이지 초반 좀비 초기 스폰 물량 약 1.4~1.5배 상향 (기존 8/10 -> 12/15)
+    const count = type === 'placement' ? 12 : 15;
     engine.enemies.spawnInitialWave(
       engine.chapter,
       1.0,

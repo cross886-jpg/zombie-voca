@@ -330,50 +330,21 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath, onStartBattl
 
   // === 모달 렌더러 ===
   function showPauseModal() {
-    const save = getSave();
-    const isRight = (save.dominantHand || 'right') === 'right';
-
     openModal(`
       <div class="text-center space-y-4">
         <div class="text-3xl">⏸️</div>
         <h2 class="text-xl font-black text-[#1f2d24]">${t('modal.pauseTitle')}</h2>
 
-        <div class="p-3 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4] space-y-2 text-left">
-          <div class="text-xs font-bold text-[#4a584e] flex items-center justify-between">
-            <span>🖐️ 조작 손 설정</span>
-            <span class="text-[11px] font-semibold text-emerald-800">${isRight ? '필살기: 왼쪽 하단' : '필살기: 오른쪽 하단'}</span>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <button type="button" class="pause-hand-btn py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition active:scale-95 ${isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#faf6ee] text-[#4a584e] border-[#d2c8b4]'}" data-hand="right">
-              👉 오른손잡이
-            </button>
-            <button type="button" class="pause-hand-btn py-2 px-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1 transition active:scale-95 ${!isRight ? 'bg-[#2d6a4f] text-[#f8f5ec] border-[#2d6a4f] shadow-xs' : 'bg-[#faf6ee] text-[#4a584e] border-[#d2c8b4]'}" data-hand="left">
-              👈 왼손잡이
-            </button>
-          </div>
-        </div>
-
         <div class="space-y-2.5 pt-1">
-          <button id="btn-modal-resume" type="button" class="w-full py-3 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition">
+          <button id="btn-modal-resume" type="button" class="w-full py-3 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm active:scale-95 transition cursor-pointer">
             ${t('modal.resume')}
           </button>
-          <button id="btn-modal-quit" type="button" class="w-full py-3 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] border border-[#d2c8b4] text-[#1f2d24] font-bold text-sm active:scale-95 transition">
+          <button id="btn-modal-quit" type="button" class="w-full py-3 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] border border-[#d2c8b4] text-[#1f2d24] font-bold text-sm active:scale-95 transition cursor-pointer">
             ${t('modal.quitToLobby')}
           </button>
         </div>
       </div>
     `);
-
-    modalCard.querySelectorAll('.pause-hand-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const hand = btn.getAttribute('data-hand');
-        updateSave((s) => {
-          s.dominantHand = hand;
-        });
-        updateUltButtonPosition();
-        showPauseModal();
-      });
-    });
 
     document.getElementById('btn-modal-resume')?.addEventListener('click', () => {
       closeModal();

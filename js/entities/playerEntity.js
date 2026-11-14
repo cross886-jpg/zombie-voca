@@ -177,7 +177,8 @@ export class Player {
   }
 
   addUltGauge(amount) {
-    this.ultGauge = Math.min(BALANCE.COMBAT.ULT_MAX_GAUGE, this.ultGauge + amount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    this.ultGauge = Math.min(BALANCE.COMBAT.ULT_MAX_GAUGE, Math.round((this.ultGauge + amount) * 10) / 10);
   }
 
   consumeUltGauge() {

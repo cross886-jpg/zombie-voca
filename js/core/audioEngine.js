@@ -64,6 +64,8 @@ function isBlockedNoveltyVoice(voice) {
 function selectCleanSpanishVoice() {
   if (!('speechSynthesis' in window)) return null;
   const voices = window.speechSynthesis.getVoices?.() || [];
+  if (voices.length === 0) return null;
+
   const cleanEsVoices = voices.filter(
     (v) => (v.lang?.toLowerCase().startsWith('es') || v.lang?.toLowerCase().includes('spanish')) && !isBlockedNoveltyVoice(v)
   );
@@ -71,14 +73,19 @@ function selectCleanSpanishVoice() {
     return voices.find((v) => v.lang?.toLowerCase().startsWith('es')) || null;
   }
 
+  // 1. Google español, Monica, Paulina, Jorge 등 원어민 대표 음성 최우선 매칭
   for (const preferred of PREFERRED_ES_VOICE_NAMES) {
-    const match = cleanEsVoices.find((v) => v.name?.includes(preferred));
+    const match = cleanEsVoices.find((v) => v.name?.toLowerCase().includes(preferred.toLowerCase()));
     if (match) return match;
   }
 
+  // 2. es-ES 또는 es-MX 원어민 음성 매칭
+  const esES = cleanEsVoices.find((v) => v.lang === 'es-ES' || v.lang === 'es_ES');
+  if (esES) return esES;
+  const esMX = cleanEsVoices.find((v) => v.lang === 'es-MX' || v.lang === 'es_MX');
+  if (esMX) return esMX;
+
   return (
-    cleanEsVoices.find((v) => v.lang === 'es-ES') ||
-    cleanEsVoices.find((v) => v.lang === 'es-MX') ||
     cleanEsVoices.find((v) => v.lang?.toLowerCase().startsWith('es')) ||
     cleanEsVoices[0]
   );

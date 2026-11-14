@@ -238,6 +238,31 @@ export function openProfileModal(ctx) {
   const totalCostumesCount = COSTUMES.length;
   const collectionPct = Math.round((ownedCostumesCount / Math.max(1, totalCostumesCount)) * 100);
 
+  const unlocked = save.unlockedBreeds || ['pomeranian'];
+  const availableBreeds = BREEDS.filter((b) => unlocked.includes(b.id) || b.id === 'pomeranian');
+
+  const avatarListHtml = availableBreeds.map((b) => {
+    const isSelected = b.id === curBreedId;
+    return `
+      <button
+        type="button"
+        data-quick-avatar-breed="${b.id}"
+        class="relative shrink-0 p-1.5 rounded-xl border-2 flex flex-col items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer ${
+          isSelected
+            ? 'bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/40 shadow-xs'
+            : 'bg-[#faf6ee] border-[#d2c8b4] hover:bg-[#f3ede0]'
+        }"
+        title="${b.name}"
+      >
+        <div class="relative w-11 h-11 flex items-center justify-center">
+          <canvas data-quick-avatar-canvas="${b.id}" width="44" height="44" class="w-11 h-11 rounded-lg bg-[#f0ebe0] block"></canvas>
+          ${isSelected ? '<span class="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-600 text-white text-[8px] font-black flex items-center justify-center shadow">✓</span>' : ''}
+        </div>
+        <span class="text-[9.5px] font-black text-[#1f2d24] mt-1 max-w-[50px] truncate text-center">${b.name}</span>
+      </button>
+    `;
+  }).join('');
+
   openModal(`
     <div class="space-y-3.5">
       <div class="flex items-center justify-between pb-1 border-b border-[#d2c8b4]">
@@ -278,6 +303,20 @@ export function openProfileModal(ctx) {
               <span class="text-[10px] font-black text-emerald-300 tabular-nums">${progressPct}%</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 프로필 대표 사진 직접 선택 UI -->
+      <div class="p-2.5 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4] space-y-1.5">
+        <div class="flex items-center justify-between px-0.5">
+          <div class="flex items-center gap-1.5 text-xs font-bold text-[#4a584e]">
+            <span>🖼️</span>
+            <span>프로필 대표 사진</span>
+          </div>
+          <span class="text-[9.5px] font-semibold text-[#5c6e60]">터치하여 즉시 아바타 변경</span>
+        </div>
+        <div class="flex items-center gap-2 overflow-x-auto py-1 px-0.5 no-scrollbar">
+          ${avatarListHtml}
         </div>
       </div>
 
@@ -359,6 +398,33 @@ export function openProfileModal(ctx) {
     scale: 1.15,
     offsetY: 5,
     isBipedal: false,
+  });
+
+  document.querySelectorAll('[data-quick-avatar-canvas]').forEach((cvs) => {
+    const bId = cvs.getAttribute('data-quick-avatar-canvas');
+    renderDogToCanvas(cvs, {
+      save: { ...save, selectedBreed: bId },
+      breedId: bId,
+      scale: 1.0,
+      offsetY: 3,
+      isBipedal: false,
+    });
+  });
+
+  document.querySelectorAll('[data-quick-avatar-breed]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const bId = btn.getAttribute('data-quick-avatar-breed');
+      if (bId && bId !== curBreedId) {
+        updateSave((s) => {
+          s.profileAvatarBreedId = bId;
+        });
+        audioEngine.playPowerUp?.();
+        refreshHeader();
+        renderActiveTab?.();
+        renderBattleTab?.();
+        openProfileModal(ctx);
+      }
+    });
   });
 
   function openAvatarSelectModal() {

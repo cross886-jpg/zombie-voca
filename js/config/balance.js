@@ -82,13 +82,13 @@ export const BALANCE = Object.freeze({
   COMBAT: {
     AUTO_BARK_INTERVAL: 0.72,
     ULT_MAX_GAUGE: 100,
-    ULT_CHARGE_PER_KILL: 4,
-    ULT_CHARGE_PER_CORRECT: 18,
+    ULT_CHARGE_PER_KILL: 1.5,     // 기존 4 대비 37.5%로 대폭 하향 (판당 1~2회 전략적 충전)
+    ULT_CHARGE_PER_CORRECT: 7,    // 기존 18 대비 38.8%로 대폭 하향
     ULT_DAMAGE_MULT: 6.5,
     ULT_RADIUS: 340,
     DAMAGE_TEXT_TTL: 0.65,
     GEM_XP_VALUE: 10,
-    GEM_CHARGE_VALUE: 2,
+    GEM_CHARGE_VALUE: 0.8,        // 기존 2 대비 40%로 대폭 하향
     GEM_TTL: 14,               // 14초 후 자연 소멸 (자석 스탯 가치 유지)
     BONE_DROP_CHANCE: 0.015,   // 희소 드롭 (🦴 뼈다귀: 로비 성장·친밀도 재화)
     MEDKIT_DROP_CHANCE: 0.005, // 극희소 드롭 (💊 구급상자: 즉시 체력 회복)
@@ -97,8 +97,8 @@ export const BALANCE = Object.freeze({
 
   ENEMIES: {
     MAX_ACTIVE: 48,
-    SPAWN_INTERVAL_BASE: 1.35,
-    SPAWN_INTERVAL_MIN: 0.45,
+    SPAWN_INTERVAL_BASE: 0.95, // 초반 썰렁함 방지 및 1.4~1.5배 물량 상향
+    SPAWN_INTERVAL_MIN: 0.32,
     RENDER_SCALE: 1.05,
     SPEED_CURVE: {
       EARLY_END_Q: 10,
