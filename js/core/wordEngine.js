@@ -4,7 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { getActiveWords as getWords, getActiveTotalUnits as getTotalUnits, getActiveCefrWords, getCurrentStudyUnitId } from './courseEngine.js';
+import { getActiveWords as getWords, getActiveTotalUnits as getTotalUnits, getActiveCefrWords, getCurrentStudyUnitId, getEffectiveStudyUnitId } from './courseEngine.js';
 import { getSave, getWordStat, recordWordResult } from './saveStore.js';
 
 function shuffleArray(arr) {
@@ -66,7 +66,7 @@ export const wordEngine = {
    * @returns {Array<object>}
    */
   getUnitWords(unitId) {
-    const id = unitId || getCurrentStudyUnitId();
+    const id = unitId || getEffectiveStudyUnitId();
     const all = getWords();
     const filtered = all.filter((w) => w.unit === id);
     return filtered.length > 0 ? filtered : this.getCourseWords();
@@ -91,16 +91,18 @@ export const wordEngine = {
   buildBattleDeck(options) {
     let pool = [];
     if (typeof options === 'string') {
-      pool = options.startsWith('unit_') ? this.getUnitWords(options) : this.getCourseWords(options);
+      const targetUnit = options.startsWith('unit_') ? getEffectiveStudyUnitId(options) : options;
+      pool = options.startsWith('unit_') ? this.getUnitWords(targetUnit) : this.getCourseWords(options);
     } else if (options && typeof options === 'object') {
       if (options.unitId) {
-        pool = this.getUnitWords(options.unitId);
+        const targetUnit = getEffectiveStudyUnitId(options.unitId);
+        pool = this.getUnitWords(targetUnit);
       } else if (options.courseId) {
         pool = this.getCourseWords(options.courseId);
       }
     }
     if (!pool || !pool.length) {
-      pool = this.getUnitWords();
+      pool = this.getUnitWords(getEffectiveStudyUnitId());
     }
     if (!pool.length) return [];
 

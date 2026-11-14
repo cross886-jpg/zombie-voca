@@ -104,10 +104,14 @@ export class Player {
     this.evoStage = BALANCE.EVOLUTION_STAGES[0];
     this.equipped = { hat: null, outfit: null, weapon: null, aura: null };
     this._saveRef = null;
+    this.isProtectedMode = false;
+    this.protectedMinHpRatio = 0.2;
   }
 
-  resetForBattle(centerX, centerY, saveData) {
+  resetForBattle(centerX, centerY, saveData, { isProtected = false, minHpRatio = 0.2 } = {}) {
     this._saveRef = saveData;
+    this.isProtectedMode = Boolean(isProtected);
+    this.protectedMinHpRatio = minHpRatio;
     this.x = centerX;
     this.y = centerY;
     this.vx = 0;
@@ -207,12 +211,25 @@ export class Player {
 
     this.x = Math.max(minBoundX, Math.min(maxBoundX, this.x));
     this.y = Math.max(minBoundY, Math.min(maxBoundY, this.y));
+
+    if (this.isProtectedMode) {
+      const minRatio = this.protectedMinHpRatio ?? 0.2;
+      const minHp = Math.ceil(this.maxHp * minRatio);
+      if (this.hp < minHp) this.hp = minHp;
+    }
   }
 
   takeDamage(amount) {
-    if (this.invulnTimer > 0 || this.hp <= 0) return 0;
+    if (this.invulnTimer > 0) return 0;
     const dmg = Math.max(1, Math.round(amount));
-    this.hp = Math.max(0, this.hp - dmg);
+    if (this.isProtectedMode) {
+      const minRatio = this.protectedMinHpRatio ?? 0.2;
+      const minHp = Math.ceil(this.maxHp * minRatio);
+      this.hp = Math.max(minHp, this.hp - dmg);
+    } else {
+      if (this.hp <= 0) return 0;
+      this.hp = Math.max(0, this.hp - dmg);
+    }
     this.invulnTimer = BALANCE.PLAYER.INVULN_DURATION;
     return dmg;
   }

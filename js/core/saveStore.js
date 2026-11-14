@@ -50,6 +50,7 @@ function createDefaultSave() {
     langConfirmed: true,
     dogName: detected === 'es' ? 'Leche' : detected === 'en' ? 'Milk' : '우유',
     selectedBreed: 'pomeranian',
+    profileAvatarBreedId: 'pomeranian',
     unlockedBreeds: ['pomeranian'],
     affection: {
       pomeranian: { level: 1, xp: 0 },
@@ -65,7 +66,8 @@ function createDefaultSave() {
     tutorialDone: false,
     onboardingCompleted: false,
     onboardingStep: 0,
-    gold: 30,
+    gold: 35,
+    keys: 1,
     snacks: 0,
     gems: 0,
     ownedItems: [],
@@ -84,6 +86,10 @@ function createDefaultSave() {
     langSelected: false,
     studyLang: 'en',
     courseOnboardingDone: false,
+    hasSelectedWordLevel: false,
+    selectedLevelLabel: '초급 Lv.1',
+    wordLevelTier: 'beginner_lv1',
+    wordUnitOffset: 0,
     courseProgress: {
       en: createDefaultLangProgress(),
       es: createDefaultLangProgress(),
@@ -251,6 +257,8 @@ function mergeWithDefaults(defaults, saved, isRoot = true) {
   }
   if (!result.dogName) result.dogName = effectiveLang === 'es' ? 'Leche' : effectiveLang === 'en' ? 'Milk' : '우유';
   if (!result.selectedBreed) result.selectedBreed = 'pomeranian';
+  if (!result.profileAvatarBreedId) result.profileAvatarBreedId = result.selectedBreed || 'pomeranian';
+  result.keys = typeof saved?.keys === 'number' ? saved.keys : 1;
   if (!Array.isArray(result.unlockedBreeds) || result.unlockedBreeds.length === 0) {
     result.unlockedBreeds = ['pomeranian'];
   }
@@ -1098,6 +1106,25 @@ export function claimDailyAirDrop(reward = {}) {
   });
 
   return { ok: true, gold, snacks, gems };
+}
+
+export function openAirDropWithKey(reward = {}) {
+  const save = getSave();
+  if ((save.keys || 0) < 1) {
+    return { ok: false, error: 'not_enough_keys' };
+  }
+  const gold = Number(reward.gold) || 0;
+  const snacks = Number(reward.snacks) || 0;
+  const gems = Number(reward.gems) || 0;
+
+  updateSave((s) => {
+    s.keys = Math.max(0, (s.keys || 0) - 1);
+    if (gold > 0) s.gold = (s.gold || 0) + gold;
+    if (snacks > 0) s.snacks = (s.snacks || 0) + snacks;
+    if (gems > 0) s.gems = (s.gems || 0) + gems;
+  });
+
+  return { ok: true, gold, snacks, gems, remainingKeys: getSave().keys || 0 };
 }
 
 export function getPetDailyStatus() {

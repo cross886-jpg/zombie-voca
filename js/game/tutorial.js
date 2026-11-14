@@ -129,7 +129,7 @@ export class TutorialController {
   onUltUsed() {
     if (!this.active || this.step !== 6 || this.ultTriggered) return false;
     this.ultTriggered = true;
-    this.completeTimer = BALANCE.TUTORIAL.STEP6_COMPLETE_SEC || 1.4;
+    this.completeTimer = BALANCE.TUTORIAL.STEP6_COMPLETE_SEC || 1.55;
     return true;
   }
 

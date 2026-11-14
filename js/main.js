@@ -44,6 +44,17 @@ async function bootstrap() {
       hudUI.hideHud();
       lobbyUI?.showLobby();
     },
+    onStartBattle(opts) {
+      hudUI.closeModal();
+      hudUI.hideHud();
+      startBattleFlow(opts);
+    },
+    onOpenWordLevelSelect() {
+      hudUI.closeModal();
+      hudUI.hideHud();
+      lobbyUI?.showLobby();
+      lobbyUI?.openWordLevelSelectModal?.({ isChange: true });
+    },
     onStartPath(path) {
       hudUI.closeModal();
       hudUI.hideHud();
@@ -55,19 +66,19 @@ async function bootstrap() {
     },
   });
 
-  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2', isPlacement = false, targetUnitNum = 1 } = {}) {
+  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2', isPlacement = false, isPlacementTest = false, targetUnitNum = 1 } = {}) {
     audioEngine.unlock();
     lobbyUI.closeModal();
     lobbyUI.hideLobby();
     hudUI.closeModal();
     hudUI.showHud();
     canvas.classList.remove('hidden');
-    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel, isPlacement, targetUnitNum });
+    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel, isPlacement, isPlacementTest, targetUnitNum });
   }
 
   lobbyUI = createLobbyUI({
-    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, targetUnitNum = 1, isPromotion = false, targetLevel = null } = {}) {
-      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, targetUnitNum, isPromotion, targetLevel });
+    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, isPlacementTest = false, targetUnitNum = 1, isPromotion = false, targetLevel = null } = {}) {
+      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, isPlacementTest, targetUnitNum, isPromotion, targetLevel });
     },
     onStartTutorial() {
       if (!getSave().langSelected) {

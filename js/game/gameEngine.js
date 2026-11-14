@@ -62,6 +62,8 @@ export class GameEngine {
 
     this.autoRescueTimer = 0;
     this.rescuedCompanion = null;
+    this.tutorialTransitionActive = false;
+    this.tutorialClearParticles = [];
 
     this.runStats = {
       unitId: 'unit_001',
@@ -151,6 +153,8 @@ export class GameEngine {
     if (this.runStats.isTutorial) {
       this.tutorial.onUltUsed();
       audioEngine.playUlt();
+      // 우유 교관 말풍선 즉시 숨김
+      document.getElementById('hud-tutorial-coach')?.classList.add('hidden');
       this.combat.shockwaves.push({
         x: this.player.x,
         y: this.player.y,
@@ -167,6 +171,8 @@ export class GameEngine {
       this.combat.kills += this.enemies.enemies.length;
       this.enemies.enemies = [];
       this.monoliths.drops = [];
+      this.tutorialTransitionActive = true;
+      this.tutorialClearParticles = [];
       this._emitHudUpdate();
     }
   }
@@ -271,6 +277,8 @@ export class GameEngine {
     this.wordEvents.reset();
     this.autoRescueTimer = 0;
     this.rescuedCompanion = null;
+    this.tutorialTransitionActive = false;
+    this.tutorialClearParticles = [];
     this.inputVec = { x: 0, y: 0 };
     this.tutorial.stop();
     this.monoliths.resetForBattle();
@@ -293,6 +301,8 @@ export class GameEngine {
   }
 
   completeTutorialToLobby() {
+    this.tutorialTransitionActive = false;
+    this.tutorialClearParticles = [];
     this.stageDirector.completeTutorialToLobby();
   }
 
@@ -307,10 +317,16 @@ export class GameEngine {
       if (!this.isRunning) return;
       const rawDt = (now - this.lastTime) / 1000;
       this.lastTime = now;
-      const dt = Math.min(BALANCE.ENGINE.MAX_DT, Math.max(0, rawDt));
+      let dt = Math.min(BALANCE.ENGINE.MAX_DT, Math.max(0, rawDt));
+      const unscaledDt = dt;
+
+      if (this.tutorialTransitionActive) {
+        // 필살기 폭발 후 약 0.5~0.6초간 슬로우 모션 (0.35배속)
+        dt *= 0.35;
+      }
 
       if (this.state === GAME_STATES.PLAYING) {
-        this._update(dt);
+        this._update(dt, unscaledDt);
       }
       this._render();
       if (this.isRunning) {
@@ -327,7 +343,37 @@ export class GameEngine {
     }
   }
 
-  _update(dt) {
+  _update(dt, unscaledDt = dt) {
+    // 튜토리얼 필살기 발동 후 전환 파티클 업데이트
+    if (this.tutorialTransitionActive) {
+      if (!this.tutorialClearParticles) this.tutorialClearParticles = [];
+      if (this.tutorialClearParticles.length < 35) {
+        for (let i = 0; i < 2; i++) {
+          this.tutorialClearParticles.push({
+            x: this.viewW / 2 + (Math.random() - 0.5) * Math.min(340, this.viewW - 40),
+            y: this.viewH / 2 - 10 + (Math.random() - 0.5) * 80,
+            vx: (Math.random() - 0.5) * 45,
+            vy: -25 - Math.random() * 45,
+            size: 2 + Math.random() * 3.5,
+            color: Math.random() > 0.3 ? '#fbbf24' : '#fef08a',
+            alpha: 1.0,
+            ttl: 0.5 + Math.random() * 0.4,
+            maxTtl: 0.9,
+          });
+        }
+      }
+      for (let i = this.tutorialClearParticles.length - 1; i >= 0; i--) {
+        const p = this.tutorialClearParticles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.ttl -= unscaledDt;
+        p.alpha = Math.max(0, p.ttl / p.maxTtl);
+        if (p.ttl <= 0) {
+          this.tutorialClearParticles.splice(i, 1);
+        }
+      }
+    }
+
     // 튜토리얼 Step 2 (전광판 설명 및 [알겠어!] 대기 중): 모달 없이 게임 루프(좀비 이동, 사격, 타이머)만 일시정지
     if (this.runStats.isTutorial && this.tutorial.active && this.tutorial.step === 2) {
       this._emitHudUpdate();
@@ -379,6 +425,8 @@ export class GameEngine {
     );
     if (this.runStats.isTutorial) {
       this.player.hp = Math.max(Math.round(this.player.maxHp * 0.5), this.player.hp);
+    } else if (this.runStats.isPlacement || this.runStats.isPlacementTest) {
+      this.player.hp = Math.max(Math.ceil(this.player.maxHp * 0.2), this.player.hp);
     }
     const compRes = this.companions.update(dt, this.player, this.enemies.enemies, this.enemies.boss, this.combat);
     if (compRes?.cleanedPoop) {
@@ -482,7 +530,7 @@ export class GameEngine {
         }
       }
 
-      const tutTick = this.tutorial.update(dt, this.player);
+      const tutTick = this.tutorial.update(this.tutorialTransitionActive ? unscaledDt : dt, this.player);
       if (tutTick.transitionedToStep5) {
         this.player.ultGauge = 0;
         this.monoliths.clearMonoliths();
@@ -501,17 +549,23 @@ export class GameEngine {
         this.completeTutorialToLobby();
         return;
       }
-
-      // 튜토리얼 중 플레이어 HP가 최대 체력의 50% 아래로는 절대 내려가지 않도록 보호
-      this.player.hp = Math.max(Math.round(this.player.maxHp * 0.5), this.player.hp);
     }
 
-    // 사망 판정
-    if (this.player.hp <= 0) {
-      if (this.runStats.isPlacement) {
-        this._finishStage(false);
-        return;
-      }
+    // 튜토리얼 및 실력 진단(배치) 테스트 체력 하한선 보호 (어떤 경우에도 사망 불가)
+    const isProtected = Boolean(
+      this.runStats.isTutorial ||
+      this.runStats.isPlacement ||
+      this.runStats.isPlacementTest ||
+      this.player.isProtectedMode
+    );
+    if (isProtected) {
+      const minRatio = this.runStats.isTutorial ? 0.5 : 0.2;
+      const minHp = Math.ceil(this.player.maxHp * minRatio);
+      this.player.hp = Math.max(minHp, this.player.hp);
+    }
+
+    // 사망 판정 (보호 모드일 때는 사망 모달 실행 원천 차단)
+    if (this.player.hp <= 0 && !isProtected) {
       this.state = GAME_STATES.GAMEOVER_MODAL;
       audioEngine.pauseAll();
       this.handlers.onGameOver?.({ canRevive: !this.runStats.revivedOnce });
@@ -547,8 +601,10 @@ export class GameEngine {
       wrongReview: this.wrongReviewTimer > 0 ? this.wrongReviewWord : null,
       tutorialCoaching: this.runStats.isTutorial ? this.tutorial.getCoachingState(this.player.ultGauge, this.currentWord || this.deck[0]) : null,
       placement: this.runStats.isPlacement ? {
+        isPlacementTest: Boolean(this.runStats.isPlacementTest),
         targetUnitNum: this.runStats.targetUnitNum,
         lives: this.runStats.placementLives,
+        questionNumber: Math.min(10, (this.wordEvents?.questionIndex ?? 0) + 1),
       } : null,
     });
   }
@@ -593,6 +649,62 @@ export class GameEngine {
     if (this.autoRescueTimer > 0 && this.rescuedCompanion) {
       this._renderAutoRescueCard(ctx);
     }
+
+    // 튜토리얼 필살기 발동 후 슬로우모션 전환 배너 및 파티클 렌더링
+    if (this.tutorialTransitionActive) {
+      this._renderTutorialClearBanner(ctx);
+    }
+  }
+
+  _renderTutorialClearBanner(ctx) {
+    ctx.save();
+
+    // 1. 반짝이는 파티클 렌더링
+    if (this.tutorialClearParticles && this.tutorialClearParticles.length > 0) {
+      for (const p of this.tutorialClearParticles) {
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // 2. 화면 중앙 깔끔한 전환 배너 카드
+    const cx = this.viewW / 2;
+    const cy = this.viewH / 2;
+    const bannerW = Math.min(320, this.viewW - 40);
+    const bannerH = 100;
+
+    // 배너 배경 & 테두리
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = 'rgba(251, 191, 36, 0.5)';
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.roundRect(cx - bannerW / 2, cy - bannerH / 2, bannerW, bannerH, 16);
+    ctx.fill();
+    ctx.stroke();
+
+    // 메인 타이틀: ⚡ 실전 훈련 클리어!
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⚡ 실전 훈련 클리어!', cx, cy - 14);
+
+    // 서브 타이틀: 본부로 이동합니다... 🐾
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('본부로 이동합니다... 🐾', cx, cy + 18);
+
+    ctx.restore();
   }
 
   _renderAutoRescueCard(ctx) {

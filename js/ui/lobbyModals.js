@@ -14,7 +14,8 @@
 
 import { BREEDS, COSTUMES, ATTENDANCE_30_REWARDS, QUEST_DEFS } from '../data/catalog.js';
 import { SUPPORTED_LANGUAGES, applyI18nToDOM, getLanguage, setLanguage, t } from '../data/i18n.js';
-import { getWords } from '../data/data_en.js?v=2';
+import { getWords, getTotalUnits } from '../data/data_en.js?v=2';
+import { getChapterNumberForUnit } from '../data/chapters.js';
 import {
   getSave,
   updateSave,
@@ -22,6 +23,7 @@ import {
   importSaveBase64,
   claimAttendance30,
   claimDailyAirDrop,
+  openAirDropWithKey,
   claimQuestReward,
   ensureQuestsState,
   getTodayDateKey,
@@ -36,6 +38,9 @@ import {
   PLACEMENT_PASS_COUNT,
   PLACEMENT_QUESTION_COUNT,
   TIER_GAUGE,
+  WORD_LEVEL_TIERS,
+  getTierForUnit,
+  calcQuizRecommendedTier,
   bandToCourse,
   buildPlacementTest,
   confirmCourseSelection,
@@ -47,6 +52,7 @@ import {
   getEvolutionStage,
 } from '../entities/player.js';
 import { renderDogToCanvas } from '../render/dogRenderer.js';
+import { createPlacementSession } from '../game/placementTest.js';
 
 export function openEditDogNameModal(ctx, options = {}) {
   const { openModal, closeModal, refreshHeader, renderBattleTab } = ctx;
@@ -239,123 +245,147 @@ export function openQuestsModal(ctx, activeSubtab = 'daily') {
 
 export function openAirDropSupplyModal(ctx) {
   const { openModal, closeModal, refreshHeader, renderBattleTab } = ctx;
-  const save = getSave();
   const today = getTodayDateKey();
-  const dogName = save.dogName || '우유';
 
-  const renderModalContent = (claimedResult = null) => {
+  function rollReward() {
+    const roll = Math.random();
+    if (roll < 0.45) {
+      const gold = Math.floor(Math.random() * 21) + 30; // 30 ~ 50
+      return { gold, snacks: 0, gems: 0, label: `+${gold} 금화`, icon: '🪙', bg: 'bg-amber-50 border-amber-300 text-amber-900' };
+    } else if (roll < 0.8) {
+      return { gold: 0, snacks: 1, gems: 0, label: '+1 뼈다귀', icon: '🦴', bg: 'bg-amber-50 border-amber-300 text-amber-900' };
+    } else {
+      const gems = Math.floor(Math.random() * 2) + 2; // 2 ~ 3
+      return { gold: 0, snacks: 0, gems, label: `+${gems} 보석`, icon: '💎', bg: 'bg-cyan-50 border-cyan-300 text-cyan-900' };
+    }
+  }
+
+  const renderModalContent = (claimedReward = null) => {
     const curSave = getSave();
-    if (claimedResult) {
-      const rewardPills = [];
-      if (claimedResult.gold) rewardPills.push(`<div class="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-center"><div class="text-xl">🪙</div><div class="text-xs font-black text-amber-800">+${claimedResult.gold.toLocaleString()} 금화</div></div>`);
-      if (claimedResult.snacks) rewardPills.push(`<div class="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-center"><div class="text-xl">🦴</div><div class="text-xs font-black text-amber-900">+${claimedResult.snacks} 뼈다귀</div></div>`);
-      if (claimedResult.gems) rewardPills.push(`<div class="p-2.5 rounded-xl bg-cyan-50 border border-cyan-300 text-center"><div class="text-xl">💎</div><div class="text-xs font-black text-cyan-800">+${claimedResult.gems} 보석</div></div>`);
+    const isAvailable = curSave.dailyAirDropDate !== today;
+    const keysCount = curSave.keys || 0;
 
+    // 수령 전 화면 (무료 보급품 수령 가능 상태)
+    if (isAvailable && !claimedReward) {
       openModal(`
         <div class="space-y-4 text-center py-1">
           <div class="flex items-center justify-between pb-1 border-b border-[#d2c8b4]">
             <h2 class="text-base font-black text-[#1f2d24] flex items-center gap-1.5">
               <span>🪂</span>
-              <span>하늘 보급품 투하 완료!</span>
+              <span>일일 보급품</span>
             </h2>
             <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold cursor-pointer">✕</button>
           </div>
 
-          <div class="py-2">
-            <div class="text-5xl animate-bounce">🎁✨</div>
-            <div class="text-sm font-black text-emerald-800 mt-2">구조 비행기 보급품 개봉!</div>
-            <p class="text-xs text-[#5c6e60] mt-1">${dogName}를 위한 전술 보급품이 안전하게 도착했습니다.</p>
+          <div class="py-3 flex flex-col items-center justify-center">
+            <div class="text-5xl select-none leading-none">🪂📦</div>
+            <div class="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-black">
+              🪙 금화 · 🦴 간식 · 💎 보석 중 랜덤 무료 지급!
+            </div>
           </div>
 
-          <div class="grid grid-cols-${rewardPills.length} gap-2 px-2">
-            ${rewardPills.join('')}
-          </div>
-
-          <div class="pt-2">
-            <button id="btn-airdrop-confirm" type="button" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-xs shadow-md active:scale-95 transition cursor-pointer">
-              확인
+          <div class="pt-1">
+            <button
+              id="btn-claim-airdrop"
+              type="button"
+              class="w-full py-3.5 rounded-2xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <span>[ 🪂 무료 보급품 받기 ]</span>
             </button>
           </div>
         </div>
       `);
 
       document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-      document.getElementById('btn-airdrop-confirm')?.addEventListener('click', closeModal);
+
+      document.getElementById('btn-claim-airdrop')?.addEventListener('click', () => {
+        const reward = rollReward();
+        const res = claimDailyAirDrop({ gold: reward.gold, snacks: reward.snacks, gems: reward.gems });
+        if (res.ok) {
+          audioEngine.playPowerUp?.();
+          refreshHeader();
+          renderBattleTab();
+          renderModalContent(reward);
+        }
+      });
       return;
     }
 
-    const isAvailable = curSave.dailyAirDropDate !== today;
-
+    // 개봉 결과 화면 또는 이미 수령 완료 후 화면
     openModal(`
       <div class="space-y-4 text-center py-1">
         <div class="flex items-center justify-between pb-1 border-b border-[#d2c8b4]">
           <h2 class="text-base font-black text-[#1f2d24] flex items-center gap-1.5">
             <span>🪂</span>
-            <span>하늘에서 떨어진 보급품</span>
+            <span>일일 보급품</span>
           </h2>
           <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold cursor-pointer">✕</button>
         </div>
 
-        <div class="p-3.5 rounded-2xl bg-gradient-to-b from-[#e8f5e9] to-[#faf6ee] border border-emerald-600/30 text-center">
-          <div class="text-xs text-[#4a584e] font-semibold leading-relaxed">
-            ✈️ <em>"매일 전장 상공을 지나는 구조 비행기가<br/><strong class="text-emerald-800">${dogName}</strong>를 위해 낙하산 보급품을 투하합니다!"</em>
+        <div class="py-2 flex flex-col items-center justify-center">
+          <div class="text-4xl select-none leading-none">🪂📦✨</div>
+          <div class="text-sm font-black text-[#1f2d24] mt-2">
+            ${claimedReward ? '보급품 개봉 완료!' : '오늘의 무료 보급품 수령 완료'}
           </div>
-
-          <div class="my-4 flex flex-col items-center justify-center">
-            ${isAvailable ? `
-              <div class="text-5xl animate-bounce select-none">🪂</div>
-              <div class="text-3xl -mt-2 animate-pulse select-none">📦</div>
-              <div class="mt-2 text-xs font-black text-amber-800">상공에서 낙하 중인 보급 상자!</div>
-            ` : `
-              <div class="text-5xl select-none opacity-80">📦✨</div>
-              <div class="mt-2 text-xs font-black text-emerald-800">오늘의 보급품 수령 완료</div>
-              <div class="text-[11px] text-[#5c6e60] mt-0.5">내일 새로운 구조 비행기가 다시 찾아옵니다.</div>
-            `}
-          </div>
-
-          <div class="text-[11px] text-[#5c6e60] bg-[#faf6ee] rounded-xl p-2 border border-[#d2c8b4]">
-            💡 <strong>일일 보급 혜택</strong>: 금화, 간식(뼈다귀), 보석 중 1~2종 매일 무료 지급
-          </div>
+          ${
+            claimedReward
+              ? `
+                <div class="mt-2.5 p-3 rounded-2xl ${claimedReward.bg} border text-center inline-flex items-center justify-center gap-2 min-w-[160px] shadow-xs">
+                  <span class="text-2xl">${claimedReward.icon}</span>
+                  <span class="text-sm font-black">${claimedReward.label}</span>
+                </div>
+              `
+              : `
+                <p class="text-xs text-[#5c6e60] mt-1">내일 새로운 무료 보급품이 다시 투하됩니다.</p>
+              `
+          }
         </div>
 
-        <div class="pt-1">
-          ${isAvailable ? `
-            <button id="btn-claim-airdrop" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer animate-pulse">
-              <span>🪂</span>
-              <span>보급품 투하 받기</span>
-            </button>
-          ` : `
-            <button id="btn-airdrop-done" type="button" class="w-full py-3 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] text-[#7d8c80] font-bold text-xs cursor-pointer active:scale-95 transition">
-              오늘의 하늘 보급품 수령 완료 (내일 다시 투하됩니다)
-            </button>
-          `}
+        <div class="space-y-2 pt-1 border-t border-[#d2c8b4]">
+          <button
+            id="btn-airdrop-key"
+            type="button"
+            class="w-full py-3 rounded-xl font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 ${
+              keysCount > 0
+                ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer active:scale-95'
+                : 'bg-[#e6dec8] text-[#8c9c8f] cursor-not-allowed opacity-75'
+            }"
+            ${keysCount > 0 ? '' : 'disabled'}
+          >
+            <span>[ 🔑 열쇠 1개로 보급품 열기 (보유: ${keysCount}개) ]</span>
+          </button>
+          ${
+            keysCount === 0
+              ? `
+                <p class="text-[10px] text-[#5c6e60] leading-tight break-keep">
+                  💡 보급 열쇠 획득처: 일일 미션 달성, 주간 챌린지 랭킹 보상, 30일 출석부
+                </p>
+              `
+              : ''
+          }
+
+          <button
+            id="btn-airdrop-confirm"
+            type="button"
+            class="w-full py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-bold text-xs active:scale-95 transition cursor-pointer"
+          >
+            확인
+          </button>
         </div>
       </div>
     `);
 
     document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-    document.getElementById('btn-airdrop-done')?.addEventListener('click', closeModal);
+    document.getElementById('btn-airdrop-confirm')?.addEventListener('click', closeModal);
 
-    document.getElementById('btn-claim-airdrop')?.addEventListener('click', () => {
-      const gold = Math.floor(Math.random() * 300) + 200;
-      const rand = Math.random();
-      let snacks = 0;
-      let gems = 0;
-      if (rand < 0.45) {
-        snacks = Math.floor(Math.random() * 3) + 2;
-      } else if (rand < 0.8) {
-        gems = Math.floor(Math.random() * 20) + 10;
-      } else {
-        snacks = 2;
-        gems = 10;
-      }
-
-      const res = claimDailyAirDrop({ gold, snacks, gems });
+    document.getElementById('btn-airdrop-key')?.addEventListener('click', () => {
+      const reward = rollReward();
+      const res = openAirDropWithKey({ gold: reward.gold, snacks: reward.snacks, gems: reward.gems });
       if (res.ok) {
         audioEngine.playPowerUp?.();
         refreshHeader();
         renderBattleTab();
-        renderModalContent(res);
+        renderModalContent(reward);
       }
     });
   };
@@ -627,13 +657,16 @@ export function openNoticeModal(ctx) {
 }
 
 export function openProfileModal(ctx) {
-  const { openModal, closeModal, getProfileProgress } = ctx;
+  const { openModal, closeModal, refreshHeader, renderActiveTab, renderBattleTab, onStartBattle, getProfileProgress } = ctx;
   const save = getSave();
-  const curBreedId = save.selectedBreed || 'pomeranian';
+  const curBreedId = save.profileAvatarBreedId || save.selectedBreed || 'pomeranian';
   const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
   const evo = getEvolutionStage(save);
   const certLevel = save.certifiedLevel || 'A1';
   const dogName = save.dogName || '우유';
+  const curStudyLang = save.studyLang || 'en';
+  const langMeta = LANG_META[curStudyLang] || { flag: '🇺🇸', name: '영어' };
+  const curLevelLabel = save.selectedLevelLabel || '초급 Lv.1';
 
   const stats = computePlayerStats(save);
   const { pct: progressPct, mastered: levelMasteredCount, total: levelTotalCount } = getProfileProgress(save);
@@ -656,14 +689,18 @@ export function openProfileModal(ctx) {
 
       <!-- 강아지 영웅 카드 -->
       <div class="p-3.5 rounded-2xl bg-gradient-to-r from-[#234735] to-[#1b3b2b] text-[#f8f5ec] shadow-md flex items-center gap-3.5 border border-[#2d5a43]">
-        <div class="w-16 h-16 rounded-2xl bg-[#142c20]/70 border border-[#2d5a43] flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+        <button id="btn-profile-canvas-avatar" type="button" class="w-16 h-16 rounded-2xl bg-[#142c20]/70 border-2 border-[#2d5a43] hover:border-emerald-400 flex flex-col items-center justify-center shrink-0 overflow-hidden shadow-inner cursor-pointer relative group transition" title="프로필 사진 변경">
           <canvas id="profile-dog-canvas" width="64" height="64" class="w-16 h-16"></canvas>
-        </div>
+          <span class="absolute bottom-0 inset-x-0 bg-black/65 text-emerald-300 text-[8.5px] font-black text-center py-0.5 group-hover:bg-emerald-800 transition">🖼️ 변경</span>
+        </button>
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <span class="text-base font-black text-amber-200 truncate">${dogName}</span>
             <button id="btn-profile-edit-name" type="button" class="px-2 py-0.5 rounded-md bg-[#2d5a43] hover:bg-[#386d52] text-[10px] font-bold text-white active:scale-95 transition cursor-pointer" title="이름 변경">
               ✏️ 수정
+            </button>
+            <button id="btn-profile-change-avatar" type="button" class="px-2 py-0.5 rounded-md bg-[#2d5a43] hover:bg-[#386d52] text-[10px] font-bold text-white active:scale-95 transition cursor-pointer" title="프로필 사진 변경">
+              🖼️ 사진 변경
             </button>
           </div>
           <div class="text-xs font-semibold text-emerald-200/90 mt-0.5">
@@ -679,6 +716,34 @@ export function openProfileModal(ctx) {
               </div>
               <span class="text-[10px] font-black text-emerald-300 tabular-nums">${progressPct}%</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 학습 언어 & 단어 레벨 설정 박스 -->
+      <div class="p-3 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4] space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5 text-xs font-bold text-[#4a584e]">
+            <span>🌐</span>
+            <span>학습 언어</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black text-[#1f2d24]">${langMeta.flag} ${langMeta.name}</span>
+            <button id="btn-profile-change-lang" type="button" class="px-2 py-0.5 rounded-lg bg-[#2d6a4f] hover:bg-[#245840] text-white text-[10px] font-black active:scale-95 transition cursor-pointer">
+              🌐 언어 변경
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-1.5 border-t border-[#dcd3bd]">
+          <div class="flex items-center gap-1.5 text-xs font-bold text-[#4a584e]">
+            <span>🎯</span>
+            <span>단어 레벨</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-black text-emerald-800">${curLevelLabel}</span>
+            <button id="btn-profile-change-level" type="button" class="px-2 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-black active:scale-95 transition cursor-pointer">
+              🎯 레벨 변경 / 재테스트
+            </button>
           </div>
         </div>
       </div>
@@ -735,10 +800,191 @@ export function openProfileModal(ctx) {
     isBipedal: false,
   });
 
+  function openAvatarSelectModal() {
+    const curSave = getSave();
+    const unlocked = curSave.unlockedBreeds || ['pomeranian'];
+    const activeAvatar = curSave.profileAvatarBreedId || curSave.selectedBreed || 'pomeranian';
+    const availableBreeds = BREEDS.filter((b) => unlocked.includes(b.id) || b.id === 'pomeranian');
+
+    const avatarCardsHtml = availableBreeds.map((b) => {
+      const isSelected = b.id === activeAvatar;
+      return `
+        <button
+          type="button"
+          data-avatar-breed="${b.id}"
+          class="relative p-2 rounded-2xl border-2 text-center flex flex-col items-center justify-between transition-all duration-200 active:scale-95 cursor-pointer ${
+            isSelected
+              ? 'bg-emerald-50 border-emerald-600 ring-2 ring-emerald-500/40 shadow-xs'
+              : 'bg-[#faf6ee] border-[#d2c8b4] hover:bg-[#f3ede0]'
+          }"
+        >
+          <div class="w-full relative flex items-center justify-center my-0.5">
+            <canvas data-avatar-canvas="${b.id}" width="64" height="64" class="w-14 h-14 rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] block"></canvas>
+            ${isSelected ? '<span class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-black flex items-center justify-center shadow">✓</span>' : ''}
+          </div>
+          <div class="text-[11px] font-black text-[#1f2d24] truncate w-full mt-1">${b.name}</div>
+          <div class="text-[9px] font-bold ${isSelected ? 'text-emerald-700 font-black' : 'text-[#5c6e60]'} mt-0.5">
+            ${isSelected ? '현재 프로필' : '선택'}
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    openModal(`
+      <div class="space-y-3.5 py-1">
+        <div class="flex items-center justify-between pb-1 border-b border-[#d2c8b4]">
+          <h3 class="text-base font-black text-[#1f2d24] flex items-center gap-2">
+            <span>🖼️</span>
+            <span>프로필 사진 선택</span>
+          </h3>
+          <button id="btn-close-avatar-modal" type="button" class="w-8 h-8 rounded-full bg-[#eee7d7] text-[#4a584e] hover:text-[#1f2d24] flex items-center justify-center text-sm font-bold active:scale-95 transition cursor-pointer">✕</button>
+        </div>
+        <p class="text-xs text-[#5c6e60]">보유 중인 강아지 초상화를 프로필 사진으로 설정합니다.</p>
+        <div class="grid grid-cols-3 gap-2 max-h-[260px] overflow-y-auto p-1">
+          ${avatarCardsHtml}
+        </div>
+        <div class="pt-1">
+          <button id="btn-cancel-avatar" type="button" class="w-full py-2.5 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] text-[#1f2d24] font-bold text-xs active:scale-95 transition cursor-pointer">
+            닫기
+          </button>
+        </div>
+      </div>
+    `);
+
+    document.querySelectorAll('[data-avatar-canvas]').forEach((cvs) => {
+      const bId = cvs.getAttribute('data-avatar-canvas');
+      renderDogToCanvas(cvs, {
+        save: { ...curSave, selectedBreed: bId },
+        breedId: bId,
+        scale: 1.15,
+        offsetY: 4,
+        isBipedal: false,
+      });
+    });
+
+    document.getElementById('btn-close-avatar-modal')?.addEventListener('click', () => openProfileModal(ctx));
+    document.getElementById('btn-cancel-avatar')?.addEventListener('click', () => openProfileModal(ctx));
+
+    document.querySelectorAll('[data-avatar-breed]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const breedId = btn.getAttribute('data-avatar-breed');
+        if (breedId) {
+          updateSave((s) => {
+            s.profileAvatarBreedId = breedId;
+          });
+          audioEngine.playPowerUp?.();
+          refreshHeader();
+          renderActiveTab?.();
+          renderBattleTab?.();
+          openProfileModal(ctx);
+        }
+      });
+    });
+  }
+
+  const handleOpenAvatarSelect = () => {
+    openAvatarSelectModal();
+  };
+
+  document.getElementById('btn-profile-canvas-avatar')?.addEventListener('click', handleOpenAvatarSelect);
+  document.getElementById('btn-profile-change-avatar')?.addEventListener('click', handleOpenAvatarSelect);
+
   document.getElementById('btn-profile-edit-name')?.addEventListener('click', () => {
     openEditDogNameModal(ctx, {
       onSaved: () => openProfileModal(ctx),
       onCancel: () => openProfileModal(ctx),
+    });
+  });
+
+  document.getElementById('btn-profile-change-lang')?.addEventListener('click', () => {
+    openModal(`
+      <div class="space-y-4 py-1">
+        <div class="flex items-center justify-between pb-2 border-b border-[#d2c8b4]">
+          <h3 class="text-base font-black text-[#1f2d24] flex items-center gap-2">
+            <span>🌐</span>
+            <span>학습 언어 변경</span>
+          </h3>
+          <button id="btn-close-lang-modal" type="button" class="w-8 h-8 rounded-full bg-[#eee7d7] text-[#4a584e] hover:text-[#1f2d24] flex items-center justify-center text-sm font-bold active:scale-95 transition cursor-pointer">✕</button>
+        </div>
+        <p class="text-xs text-[#5c6e60]">학습하고자 하는 언어를 선택해 주세요.</p>
+        <div class="grid grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            data-lang="en"
+            class="lang-select-btn p-3.5 rounded-2xl border text-center font-black active:scale-95 transition cursor-pointer ${
+              curStudyLang === 'en'
+                ? 'border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm ring-2 ring-emerald-400/50'
+                : 'border-[#d2c8b4] bg-[#faf6ee] text-[#1f2d24] hover:bg-emerald-50/60'
+            }"
+          >
+            <div class="text-2xl mb-1">🇺🇸</div>
+            <div class="text-sm font-black">영어</div>
+            <div class="text-[10px] text-[#5c6e60] mt-0.5">English</div>
+          </button>
+          <button
+            type="button"
+            data-lang="es"
+            class="lang-select-btn p-3.5 rounded-2xl border text-center font-black active:scale-95 transition cursor-pointer ${
+              curStudyLang === 'es'
+                ? 'border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm ring-2 ring-emerald-400/50'
+                : 'border-[#d2c8b4] bg-[#faf6ee] text-[#1f2d24] hover:bg-emerald-50/60'
+            }"
+          >
+            <div class="text-2xl mb-1">🇪🇸</div>
+            <div class="text-sm font-black">스페인어</div>
+            <div class="text-[10px] text-[#5c6e60] mt-0.5">Español</div>
+          </button>
+        </div>
+      </div>
+    `);
+
+    document.getElementById('btn-close-lang-modal')?.addEventListener('click', () => openProfileModal(ctx));
+    document.querySelectorAll('.lang-select-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const chosen = btn.getAttribute('data-lang');
+        if (chosen) {
+          switchStudyLang(chosen);
+          refreshHeader?.();
+          renderActiveTab?.();
+          openWordLevelSelectModal(ctx, {
+            isChange: true,
+            onSelectTier: (tier) => {
+              updateSave((s) => {
+                s.hasSelectedWordLevel = true;
+                s.wordLevelTier = tier.id;
+                s.wordUnitOffset = Number(tier.unitOffset) || 0;
+                s.selectedLevelLabel = tier.badgeLabel;
+                if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
+                  s.courseProgress[s.studyLang].cefr = tier.cefr;
+                }
+              });
+              refreshHeader?.();
+              renderActiveTab?.();
+              openProfileModal(ctx);
+            },
+          });
+        }
+      });
+    });
+  });
+
+  document.getElementById('btn-profile-change-level')?.addEventListener('click', () => {
+    openWordLevelSelectModal(ctx, {
+      isChange: true,
+      onSelectTier: (tier) => {
+        updateSave((s) => {
+          s.hasSelectedWordLevel = true;
+          s.wordLevelTier = tier.id;
+          s.wordUnitOffset = Number(tier.unitOffset) || 0;
+          s.selectedLevelLabel = tier.badgeLabel;
+          if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
+            s.courseProgress[s.studyLang].cefr = tier.cefr;
+          }
+        });
+        refreshHeader?.();
+        renderActiveTab?.();
+        openProfileModal(ctx);
+      },
     });
   });
 
@@ -1277,12 +1523,23 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
           </div>
 
           <div class="my-1.5 relative flex items-center justify-center">
-            <canvas data-starter-canvas="${opt.id}" width="96" height="80" class="w-[96px] h-[80px] rounded-xl bg-[#f0ebe0] border border-[#d2c8b4] block"></canvas>
-            ${
-              isSelected
-                ? '<span class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-black flex items-center justify-center shadow">✓</span>'
-                : ''
-            }
+            <div class="relative w-[80px] h-[68px] flex items-center justify-center">
+              ${
+                isSelected
+                  ? '<div class="absolute -inset-1 rounded-xl bg-gradient-to-r from-emerald-400/40 via-amber-300/40 to-emerald-400/40 blur-sm animate-pulse pointer-events-none"></div>'
+                  : ''
+              }
+              <canvas data-starter-canvas="${opt.id}" width="80" height="68" class="relative z-10 w-[80px] h-[68px] rounded-xl ${
+                isSelected
+                  ? 'bg-gradient-to-b from-emerald-100/90 to-[#f0ebe0] border-2 border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                  : 'bg-[#f0ebe0] border border-[#d2c8b4]'
+              } block"></canvas>
+              ${
+                isSelected
+                  ? '<span class="absolute -top-1.5 -right-1.5 z-20 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-black flex items-center justify-center shadow">✓</span>'
+                  : ''
+              }
+            </div>
           </div>
 
           <div class="w-full space-y-1">
@@ -1318,7 +1575,7 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
         <button
           id="btn-confirm-starter-adopt"
           type="button"
-          class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#2d6a4f] via-[#245840] to-[#1b4332] text-[#f8f5ec] font-black text-sm shadow-lg active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer tutorial-highlight-pulse"
+          class="w-full py-3.5 rounded-2xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <span>[ 🐾 이 강아지와 함께하기 ]</span>
         </button>
@@ -1330,8 +1587,8 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
       renderDogToCanvas(cvs, {
         save: { ...baseSave, selectedBreed: bId },
         breedId: bId,
-        scale: 1.2,
-        y: cvs.height / 2 + 7,
+        scale: 1.1,
+        y: cvs.height / 2 + 6,
         withWeapon: false,
         withEquipment: false,
         isHappy: bId === selectedId,
@@ -1366,7 +1623,7 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
         if (!s.dogName || s.dogName === '우유' || s.dogName === 'Milk' || s.dogName === 'Leche') {
           s.dogName = chosenOpt.defaultName;
         }
-        s.gold = Math.max(50, s.gold || 0);
+        s.gold = Math.max(35, s.gold || 0);
       });
       refreshHeader?.();
       renderActiveTab?.();
@@ -1404,7 +1661,7 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
           <button
             id="btn-claim-adopt-gift"
             type="button"
-            class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#2d6a4f] via-[#245840] to-[#1b4332] text-[#f8f5ec] font-black text-sm shadow-lg active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer tutorial-highlight-pulse"
+            class="w-full py-3.5 rounded-2xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <span>[ 🎒 모자 받고 입혀보기 ]</span>
           </button>
@@ -1423,7 +1680,7 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
           if (s.costumes.equipped) {
             s.costumes.equipped.hat = null;
           }
-          s.gold = Math.max(30, s.gold || 0);
+          s.gold = Math.max(35, s.gold || 0);
           s.onboardingCompleted = false;
           s.onboardingStep = 1;
         });
@@ -1436,6 +1693,345 @@ export function openStarterAdoptionModal(ctx, { onAdopted } = {}) {
   }
 
   render();
+}
+
+export function openWordLevelSelectModal(ctx, options = {}) {
+  const { openModal, closeModal, refreshHeader, renderActiveTab, renderBattleTab, onStartBattle } = ctx;
+  const { isChange = false, onSelectTier } = options;
+
+  const save = getSave();
+  const lang = save.studyLang || 'en';
+  const flag = LANG_META[lang]?.flag || '🇺🇸';
+  const langName = LANG_META[lang]?.name || '영어';
+
+  function applyTierAndLaunch(tier) {
+    if (onSelectTier) {
+      onSelectTier(tier);
+      return;
+    }
+
+    updateSave((s) => {
+      s.hasSelectedWordLevel = true;
+      s.wordLevelTier = tier.id;
+      s.wordUnitOffset = Number(tier.unitOffset) || 0;
+      s.selectedLevelLabel = tier.badgeLabel;
+      if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
+        s.courseProgress[s.studyLang].cefr = tier.cefr;
+      }
+      // 중요: selectedUnit과 maxUnlockedUnit은 항상 CH.1 STAGE 1부터 시작하는 게임 스테이지 진행도이므로 건드리지 않음
+    });
+    closeModal();
+    refreshHeader();
+    renderActiveTab();
+    renderBattleTab?.();
+
+    if (!isChange) {
+      const cur = getSave();
+      onStartBattle?.({
+        chapterNumber: cur.selectedChapter || 1,
+        courseId: cur.selectedCourse || 'lv1',
+        unitId: cur.selectedUnit || 'unit_001',
+        isPlacement: false,
+        isPlacementTest: false,
+      });
+    }
+  }
+
+  function renderLevelSelection(highlightTierId = null) {
+    const currentSave = getSave();
+    const activeLabel = currentSave.selectedLevelLabel || '초급 Lv.1';
+
+    const renderRowButtons = (groupName) => {
+      const groupTiers = WORD_LEVEL_TIERS.filter((t) => t.group === groupName);
+      return groupTiers.map((t) => {
+        const isSelected = highlightTierId ? t.id === highlightTierId : t.badgeLabel === activeLabel;
+        return `
+          <button
+            type="button"
+            data-tier-id="${t.id}"
+            class="tier-btn relative py-3 px-2 rounded-xl border text-center font-black text-sm active:scale-95 transition cursor-pointer ${
+              isSelected
+                ? 'border-2 border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm ring-2 ring-emerald-400/50'
+                : 'border-[#d2c8b4] bg-[#faf6ee] text-[#1f2d24] hover:bg-emerald-50/60 hover:border-emerald-300'
+            }"
+          >
+            ${isSelected ? '<span class="absolute -top-1.5 -right-1 px-1.5 py-0.2 rounded-full bg-emerald-600 text-[8px] font-black text-white leading-tight shadow-xs">선택</span>' : ''}
+            <span>Lv.${t.level}</span>
+          </button>
+        `;
+      }).join('');
+    };
+
+    openModal(`
+      <div class="space-y-4 py-1">
+        <div class="flex items-center justify-between pb-2 border-b border-[#d2c8b4]">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl leading-none">${flag}</span>
+            <div>
+              <h2 class="text-base font-black text-[#1f2d24] leading-none">학습 단어 레벨 선택</h2>
+              <p class="text-[11px] text-[#5c6e60] mt-1">${langName} 단어 난이도를 선택해 주세요</p>
+            </div>
+          </div>
+          ${isChange ? '<button id="btn-close-word-level" type="button" class="w-8 h-8 rounded-full bg-[#eee7d7] text-[#4a584e] hover:text-[#1f2d24] flex items-center justify-center text-sm font-bold active:scale-95 transition cursor-pointer">✕</button>' : ''}
+        </div>
+
+        <div class="space-y-3">
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-1.5 px-1 text-xs font-black text-[#1f2d24]">
+              <span>🌱</span>
+              <span>초급</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              ${renderRowButtons('초급')}
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-1.5 px-1 text-xs font-black text-[#1f2d24]">
+              <span>🌿</span>
+              <span>중급</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              ${renderRowButtons('중급')}
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-1.5 px-1 text-xs font-black text-[#1f2d24]">
+              <span>🔥</span>
+              <span>고급</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              ${renderRowButtons('고급')}
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t border-[#d2c8b4]">
+          <button
+            id="btn-start-quick-quiz"
+            type="button"
+            class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-amber-700 text-white font-black text-xs shadow-md active:scale-95 transition flex items-center justify-between cursor-pointer"
+          >
+            <div class="flex items-center gap-2">
+              <span class="text-lg leading-none">🎯</span>
+              <div class="text-left">
+                <div class="font-black text-xs leading-none">잘 모르겠어요! 빠른 실력 테스트</div>
+                <div class="text-[9.5px] text-amber-100 font-medium mt-0.5">10문제로 내게 딱 맞는 레벨 자동 진단</div>
+              </div>
+            </div>
+            <span class="text-[11px] font-black bg-amber-800/40 px-2.5 py-1 rounded-lg border border-amber-300/30 whitespace-nowrap">
+              시작 🐾
+            </span>
+          </button>
+        </div>
+      </div>
+    `);
+
+    document.getElementById('btn-close-word-level')?.addEventListener('click', closeModal);
+
+    document.querySelectorAll('.tier-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tierId = btn.getAttribute('data-tier-id');
+        const tier = WORD_LEVEL_TIERS.find((t) => t.id === tierId);
+        if (tier) {
+          applyTierAndLaunch(tier);
+        }
+      });
+    });
+
+    document.getElementById('btn-start-quick-quiz')?.addEventListener('click', () => {
+      closeModal();
+      const cur = getSave();
+      onStartBattle?.({
+        chapterNumber: 1,
+        courseId: cur.selectedCourse || 'lv1',
+        unitId: 'unit_001',
+        isPlacement: true,
+        isPlacementTest: true,
+        targetUnitNum: 1,
+      });
+    });
+  }
+
+  function startQuickQuiz() {
+    const session = createPlacementSession(lang);
+    let isSubmitting = false;
+
+    function renderQuestion() {
+      if (session.isFinished()) {
+        finishQuiz();
+        return;
+      }
+
+      const q = session.getCurrentQuestion();
+      if (!q) {
+        finishQuiz();
+        return;
+      }
+
+      const currentNum = session.currentIndex + 1;
+      const totalNum = session.totalQuestions;
+
+      openModal(`
+        <div class="space-y-4 py-1">
+          <div class="flex items-center justify-between pb-2 border-b border-[#d2c8b4]">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🎯</span>
+              <span class="text-xs font-black text-[#1f2d24]">빠른 실력 진단</span>
+            </div>
+            <div class="text-xs font-black text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
+              ${currentNum} / ${totalNum}
+            </div>
+          </div>
+
+          <div class="w-full h-1.5 rounded-full bg-[#142c20]/15 overflow-hidden">
+            <div class="h-full bg-amber-500 transition-all duration-300" style="width: ${(currentNum / totalNum) * 100}%"></div>
+          </div>
+
+          <div class="text-center py-4 px-3 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4]">
+            <span class="text-[10px] font-extrabold text-[#5c6e60] tracking-wider uppercase">${q.tierName} 단어</span>
+            <div class="text-2xl font-black text-[#1f2d24] mt-1 tracking-wide">${q.word}</div>
+            <div class="text-[11px] text-[#5c6e60] mt-1">이 단어의 올바른 뜻은 무엇일까요?</div>
+          </div>
+
+          <div id="quiz-feedback-box" class="min-h-[20px] text-center text-xs font-black text-rose-600 hidden">
+            오답입니다. 다음 문제로 이동합니다.
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            ${q.choices.map((choice) => `
+              <button
+                type="button"
+                data-choice="${choice.replace(/"/g, '&quot;')}"
+                class="quiz-choice-btn py-3 px-2 rounded-xl border border-[#d2c8b4] bg-[#faf6ee] text-[#1f2d24] font-black text-xs hover:bg-emerald-50 hover:border-emerald-300 active:scale-95 transition text-center cursor-pointer shadow-2xs"
+              >
+                ${choice}
+              </button>
+            `).join('')}
+          </div>
+
+          <button
+            id="btn-quiz-dont-know"
+            type="button"
+            class="w-full py-2.5 rounded-xl border border-dashed border-[#b0a590] text-[#6b5e48] hover:bg-[#ede7d8] text-xs font-bold active:scale-95 transition cursor-pointer"
+          >
+            ❓ 잘 모르겠어요
+          </button>
+        </div>
+      `);
+
+      isSubmitting = false;
+
+      document.querySelectorAll('.quiz-choice-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (isSubmitting) return;
+          const selected = btn.getAttribute('data-choice');
+          handleAnswer(selected, btn);
+        });
+      });
+
+      document.getElementById('btn-quiz-dont-know')?.addEventListener('click', () => {
+        if (isSubmitting) return;
+        const btn = document.getElementById('btn-quiz-dont-know');
+        handleAnswer(null, btn);
+      });
+    }
+
+    function handleAnswer(choice, clickedBtn) {
+      if (isSubmitting) return;
+      isSubmitting = true;
+
+      const res = session.submitAnswer(choice);
+
+      // Rule 4: 오답 또는 모름 시 정답을 일체 노출하지 않음
+      if (res.isCorrect) {
+        audioEngine.playCaptureTick?.();
+        if (clickedBtn) {
+          clickedBtn.classList.remove('bg-[#faf6ee]', 'border-[#d2c8b4]');
+          clickedBtn.classList.add('bg-emerald-100', 'border-emerald-400', 'text-emerald-800');
+        }
+        setTimeout(() => {
+          if (res.isFinished) {
+            finishQuiz();
+          } else {
+            renderQuestion();
+          }
+        }, 250);
+      } else {
+        audioEngine.playEnemyHit?.();
+        if (clickedBtn) {
+          clickedBtn.classList.remove('bg-[#faf6ee]', 'border-[#d2c8b4]');
+          clickedBtn.classList.add('bg-rose-100', 'border-rose-400', 'text-rose-700');
+        }
+        const fb = document.getElementById('quiz-feedback-box');
+        if (fb) {
+          fb.classList.remove('hidden');
+        }
+        setTimeout(() => {
+          if (res.isFinished) {
+            finishQuiz();
+          } else {
+            renderQuestion();
+          }
+        }, 400);
+      }
+    }
+
+    function finishQuiz() {
+      const result = session.getResult();
+      const recommendedTier = result.recommendedTier;
+      const recommendMsg = result.recommendMsg || recommendedTier.recommendMsg || '나에게 딱 맞는 레벨로 시작해 보세요!';
+
+      openModal(`
+        <div class="text-center space-y-4 py-2">
+          <div class="text-4xl">🎯✨</div>
+          <div class="space-y-1.5">
+            <div class="text-xs font-bold text-[#5c6e60]">실력 진단 완료!</div>
+            <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
+              회원님께 딱 맞는 추천 레벨은 <br/>
+              <span class="text-emerald-700 font-black text-xl">[ ${recommendedTier.label} ]</span> 입니다!
+            </h3>
+            <p class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 py-1.5 px-3 rounded-xl inline-block mt-1">
+              "${recommendMsg}"
+            </p>
+            <p class="text-[11px] text-[#5c6e60] mt-1">
+              정답: <b>${result.score}</b> / ${session.totalQuestions}문제
+            </p>
+          </div>
+
+          <div class="space-y-2 pt-2">
+            <button
+              id="btn-apply-recommended-level"
+              type="button"
+              class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-white font-black text-sm shadow-md active:scale-95 transition cursor-pointer"
+            >
+              ⚔️ [ 추천 레벨로 바로 출격! ]
+            </button>
+            <button
+              id="btn-choose-other-level"
+              type="button"
+              class="w-full py-2.5 rounded-xl border border-[#d2c8b4] bg-[#faf6ee] text-[#4a584e] hover:text-[#1f2d24] text-xs font-bold active:scale-95 transition cursor-pointer"
+            >
+              다른 레벨 직접 선택하기
+            </button>
+          </div>
+        </div>
+      `);
+
+      document.getElementById('btn-apply-recommended-level')?.addEventListener('click', () => {
+        applyTierAndLaunch(recommendedTier);
+      });
+
+      document.getElementById('btn-choose-other-level')?.addEventListener('click', () => {
+        renderLevelSelection(recommendedTier.id);
+      });
+    }
+
+    renderQuestion();
+  }
+
+  renderLevelSelection();
 }
 
 export function createLobbyOnboardingTour(ctx) {
@@ -1805,6 +2401,7 @@ export function createLobbyModals(ctx) {
     openCourseSetupModal: () => openCourseSetupModal(ctx),
     openInitialStudyLangModal: (options) => openInitialStudyLangModal(ctx, options),
     openStarterAdoptionModal: (options) => openStarterAdoptionModal(ctx, options),
+    openWordLevelSelectModal: (options) => openWordLevelSelectModal(ctx, options),
     createLobbyOnboardingTour: (tourCtx) => createLobbyOnboardingTour({ ...ctx, ...tourCtx }),
   };
 }

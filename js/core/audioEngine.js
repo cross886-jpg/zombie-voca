@@ -40,9 +40,48 @@ const PREFERRED_VOICE_NAMES = [
   'Victoria',
 ];
 
+const PREFERRED_ES_VOICE_NAMES = [
+  'Google español',
+  'Paulina',
+  'Monica',
+  'Mónica',
+  'Jorge',
+  'Lucia',
+  'Lucía',
+  'Diego',
+  'Rosa',
+  'Soledad',
+  'Carlos',
+  'Francisca',
+  'Juan',
+];
+
 function isBlockedNoveltyVoice(voice) {
   const name = (voice?.name || '').toLowerCase();
   return BLOCKED_NOVELTY_VOICES.some((bad) => name.includes(bad));
+}
+
+function selectCleanSpanishVoice() {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  const cleanEsVoices = voices.filter(
+    (v) => (v.lang?.toLowerCase().startsWith('es') || v.lang?.toLowerCase().includes('spanish')) && !isBlockedNoveltyVoice(v)
+  );
+  if (cleanEsVoices.length === 0) {
+    return voices.find((v) => v.lang?.toLowerCase().startsWith('es')) || null;
+  }
+
+  for (const preferred of PREFERRED_ES_VOICE_NAMES) {
+    const match = cleanEsVoices.find((v) => v.name?.includes(preferred));
+    if (match) return match;
+  }
+
+  return (
+    cleanEsVoices.find((v) => v.lang === 'es-ES') ||
+    cleanEsVoices.find((v) => v.lang === 'es-MX') ||
+    cleanEsVoices.find((v) => v.lang?.toLowerCase().startsWith('es')) ||
+    cleanEsVoices[0]
+  );
 }
 
 function selectCleanEnglishVoice() {
@@ -65,23 +104,26 @@ function selectCleanEnglishVoice() {
   );
 }
 
-function refreshSelectedVoice() {
-  selectedVoice = selectCleanEnglishVoice();
-  return selectedVoice;
+export function selectCleanVoiceForLang(lang = 'en') {
+  if (lang === 'es') {
+    return selectCleanSpanishVoice();
+  }
+  return selectCleanEnglishVoice();
+}
+
+function onVoicesReady() {
+  if (pendingSpeech) {
+    const req = pendingSpeech;
+    pendingSpeech = null;
+    if (!activeWord || req.word === activeWord) {
+      audioEngine.speakWordOnce(req.word, req.onFinished, req.lang);
+    }
+  }
 }
 
 if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-  refreshSelectedVoice();
-  window.speechSynthesis.addEventListener?.('voiceschanged', () => {
-    refreshSelectedVoice();
-    if (selectedVoice && pendingSpeech) {
-      const req = pendingSpeech;
-      pendingSpeech = null;
-      if (!activeWord || req.word === activeWord) {
-        audioEngine.speakWordOnce(req.word, req.onFinished);
-      }
-    }
-  });
+  window.speechSynthesis.addEventListener?.('voiceschanged', onVoicesReady);
+  window.speechSynthesis.onvoiceschanged = onVoicesReady;
 }
 
 const BGM_NOTES = [261.63, 311.13, 392.0, 311.13, 293.66, 349.23, 440.0, 349.23];
@@ -188,7 +230,7 @@ export const audioEngine = {
    * @param {string} word
    * @param {(() => void)|null} [onFinished]
    */
-  speakWordOnce(word, onFinished = null) {
+  speakWordOnce(word, onFinished = null, forcedLang = null) {
     const { audio } = getSave();
     if (!audio.sfxEnabled || !word) {
       onFinished?.();
@@ -200,12 +242,14 @@ export const audioEngine = {
     }
 
     const cleanWord = String(word).trim();
-    if (!selectedVoice) {
-      refreshSelectedVoice();
-    }
+    const studyLang = forcedLang || getSave().studyLang || 'en';
+    const isSpanish = studyLang === 'es';
+
+    // 음성 목록이 비동기로 늦게 로드되는 환경 대비: 재생 직전 getVoices() 및 보이스 재조회 방어 로직
     const voicesLoaded = (window.speechSynthesis.getVoices?.() || []).length > 0;
-    if (!selectedVoice && !voicesLoaded) {
-      pendingSpeech = { word: cleanWord, onFinished };
+    const voice = selectCleanVoiceForLang(studyLang);
+    if (!voice && !voicesLoaded) {
+      pendingSpeech = { word: cleanWord, onFinished, lang: studyLang };
       return;
     }
 
@@ -220,13 +264,13 @@ export const audioEngine = {
     try {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(cleanWord);
-      if (selectedVoice) {
-        utter.voice = selectedVoice;
-        utter.lang = selectedVoice.lang || 'en-US';
+      if (voice) {
+        utter.voice = voice;
+        utter.lang = voice.lang || (isSpanish ? 'es-ES' : 'en-US');
       } else {
-        utter.lang = 'en-US';
+        utter.lang = isSpanish ? 'es-ES' : 'en-US';
       }
-      utter.rate = 0.95;
+      utter.rate = isSpanish ? 0.92 : 0.95;
       utter.pitch = 1.0;
       utter.volume = 1.0;
 
@@ -258,8 +302,8 @@ export const audioEngine = {
     }
   },
 
-  speakWord(word, onFinished = null) {
-    this.speakWordOnce(word, onFinished);
+  speakWord(word, onFinished = null, forcedLang = null) {
+    this.speakWordOnce(word, onFinished, forcedLang);
   },
 
   /**

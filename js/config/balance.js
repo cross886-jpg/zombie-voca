@@ -189,7 +189,7 @@ export const BALANCE = Object.freeze({
     STEP5_GEM_ULT_CHARGE: 34,
     STEP5_KILL_ULT_CHARGE: 12,
     STEP5_WAVE_ZOMBIES: 20,
-    STEP6_COMPLETE_SEC: 1.4,
+    STEP6_COMPLETE_SEC: 1.55,
   },
 });
 
@@ -289,7 +289,7 @@ export function calcStageReward({
 } = {}) {
   if (isTutorial) {
     return {
-      earnedGold: 100,
+      earnedGold: 0,
       earnedSnacks: 0,
       earnedEvoXp: earnedEvoXp + (cleared ? 50 : 0),
       earnedGems: 0,

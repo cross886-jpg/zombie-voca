@@ -11,7 +11,7 @@ import { GAME_STATES } from '../game/gameEngine.js';
 import { getSave, updateSave } from '../core/saveStore.js';
 import { clampIndicatorToThumbSafeZone, isMonolithOffscreen } from '../entities/monoliths.js';
 
-export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
+export function createHudUI(engine, { onReturnToLobby, onStartPath, onStartBattle, onOpenWordLevelSelect } = {}) {
   const hudLayer = document.getElementById('hud-layer');
   const modalLayer = document.getElementById('modal-layer');
   const modalCard = document.getElementById('modal-card');
@@ -497,41 +497,127 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
 
   function showStageResultModal(res) {
     if (res.isPlacement) {
+      const isTest = Boolean(res.isPlacementTest);
       const passed = Boolean(res.placementPassed);
-      const targetUnit = res.targetUnitNum || 1;
-      const lives = Math.max(0, res.lives ?? 0);
-      const hearts = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 3 - lives));
-      openModal(`
-        <div class="text-center space-y-4">
-          <div class="text-4xl">${passed ? '🎉🎓' : '💦💀'}</div>
-          <h2 class="text-xl font-black ${passed ? 'text-amber-600' : 'text-rose-600'}">
-            ${passed ? `월반 성공! STAGE ${targetUnit} 해금!` : '월반 도전 실패'}
-          </h2>
-          <p class="text-xs text-[#4a584e] leading-relaxed">
-            ${passed
-              ? `뛰어난 실력으로 10문제를 모두 돌파했습니다!<br/><b>STAGE ${targetUnit}</b>까지 즉시 일괄 해금되었습니다.`
-              : `목숨 3개를 모두 소진하거나 쓰러졌습니다.<br/>현재 스테이지를 조금 더 학습한 뒤 다시 도전해 보세요!`
-            }
-          </p>
-          <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs">
-            <div class="text-[#4a584e]">도전 스테이지</div>
-            <div class="text-right font-extrabold text-[#1f2d24]">STAGE ${targetUnit}</div>
-            <div class="text-[#4a584e]">정답 벙커</div>
-            <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount || 0} / 10</div>
-            <div class="text-[#4a584e]">남은 기회</div>
-            <div class="text-right font-extrabold text-[#1f2d24]">${hearts}</div>
-            <div class="text-[#4a584e]">판정 결과</div>
-            <div class="text-right font-extrabold ${passed ? 'text-emerald-700 font-black' : 'text-rose-600'}">${passed ? '합격 (해금 완료)' : '불합격'}</div>
-            <div class="text-[#4a584e]">처치 좀비</div>
-            <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
+      const assignedTier = res.assignedTier || { label: '초급 Lv.1', badgeLabel: '초급 Lv.1', id: 'beginner_lv1', unitOffset: 0, cefr: 'A1', recommendMsg: '' };
+      const recommendMsg = assignedTier.recommendMsg || '나에게 딱 맞는 레벨로 시작해 보세요!';
+
+      if (isTest) {
+        openModal(`
+          <div class="text-center space-y-4 py-1">
+            <div class="text-4xl">🎯✨</div>
+            <div class="space-y-1.5">
+              <div class="text-xs font-bold text-[#5c6e60]">실력 진단 테스트 완료!</div>
+              <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
+                회원님께 딱 맞는 추천 레벨은 <br/>
+                <span class="text-emerald-700 font-black text-xl">[ ${assignedTier.label} ]</span> 입니다!
+              </h3>
+              <p class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 py-1.5 px-3 rounded-xl inline-block mt-1">
+                "${recommendMsg}"
+              </p>
+              <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs mt-2">
+                <div class="text-[#4a584e]">배정 레벨</div>
+                <div class="text-right font-extrabold text-[#1f2d24]">${assignedTier.label}</div>
+                <div class="text-[#4a584e]">진단 점수</div>
+                <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount || 0} / 10</div>
+                <div class="text-[#4a584e]">처치 좀비</div>
+                <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
+                <div class="text-[#4a584e]">출격 스테이지</div>
+                <div class="text-right font-extrabold text-emerald-800">CH.1 STAGE 1</div>
+              </div>
+            </div>
+            <div class="space-y-2 pt-1">
+              <button id="btn-result-launch" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-[#f8f5ec] font-black text-sm shadow-[0_4px_16px_rgba(16,185,129,0.35)] active:scale-95 transition cursor-pointer">
+                ⚔️ 추천 레벨로 바로 출격!
+              </button>
+              <button id="btn-result-choose-other" type="button" class="w-full py-3 rounded-xl bg-[#faf6ee] hover:bg-[#ede7d8] border border-[#d2c8b4] text-[#1f2d24] font-bold text-xs active:scale-95 transition cursor-pointer">
+                다른 레벨 직접 선택하기
+              </button>
+            </div>
           </div>
-          <button id="btn-result-confirm" type="button" class="w-full py-3 rounded-xl ${passed ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#2d6a4f] hover:bg-[#245840]'} text-[#f8f5ec] font-black text-sm active:scale-95 transition">
-            ${passed ? `⚔️ STAGE ${targetUnit} 로비로 이동` : '로비로 돌아가기'}
+        `);
+
+        const saveTier = () => {
+          updateSave((s) => {
+            s.hasSelectedWordLevel = true;
+            s.wordLevelTier = assignedTier.id;
+            s.wordUnitOffset = Number(assignedTier.unitOffset) || 0;
+            s.selectedLevelLabel = assignedTier.badgeLabel;
+            if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
+              s.courseProgress[s.studyLang].cefr = assignedTier.cefr;
+            }
+            // 게임 전투 스테이지는 항상 CH.1 STAGE 1 유지
+            s.selectedChapter = 1;
+            s.selectedUnit = 'unit_001';
+          });
+        };
+
+        document.getElementById('btn-result-launch')?.addEventListener('click', () => {
+          saveTier();
+          closeModal();
+          hideHud();
+          if (onStartBattle) {
+            onStartBattle({ chapterNumber: 1, courseId: getSave().selectedCourse || 'lv1', unitId: 'unit_001', isTutorial: false });
+          } else {
+            onReturnToLobby?.();
+          }
+        });
+
+        document.getElementById('btn-result-choose-other')?.addEventListener('click', () => {
+          saveTier();
+          closeModal();
+          hideHud();
+          if (onOpenWordLevelSelect) {
+            onOpenWordLevelSelect();
+          } else {
+            onReturnToLobby?.();
+          }
+        });
+        return;
+      }
+
+      openModal(`
+        <div class="text-center space-y-4 py-1">
+          <div class="text-4xl">🎯✨</div>
+          <div class="space-y-1.5">
+            <div class="text-xs font-bold text-[#5c6e60]">배치 테스트 완료!</div>
+            <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
+              회원님께 딱 맞는 추천 레벨은 <br/>
+              <span class="text-emerald-700 font-black text-xl">[ ${assignedTier.label} ]</span> 입니다!
+            </h3>
+            <p class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 py-1.5 px-3 rounded-xl inline-block mt-1">
+              "${recommendMsg}"
+            </p>
+            <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs mt-2">
+              <div class="text-[#4a584e]">배정 레벨</div>
+              <div class="text-right font-extrabold text-[#1f2d24]">${assignedTier.label}</div>
+              <div class="text-[#4a584e]">정답 퀴즈</div>
+              <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount || 0} / 10</div>
+              <div class="text-[#4a584e]">처치 좀비</div>
+              <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
+              <div class="text-[#4a584e]">출격 스테이지</div>
+              <div class="text-right font-extrabold text-emerald-800">CH.1 STAGE 1</div>
+            </div>
+          </div>
+          <button id="btn-result-confirm" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-[#f8f5ec] font-black text-sm shadow-[0_4px_16px_rgba(16,185,129,0.35)] active:scale-95 transition cursor-pointer">
+            ⚔️ [ ${assignedTier.label} 확정 및 로비 이동 ]
           </button>
         </div>
       `);
 
       document.getElementById('btn-result-confirm')?.addEventListener('click', () => {
+        updateSave((s) => {
+          s.hasSelectedWordLevel = true;
+          s.wordLevelTier = assignedTier.id;
+          s.wordUnitOffset = Number(assignedTier.unitOffset) || 0;
+          s.selectedLevelLabel = assignedTier.badgeLabel;
+          if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
+            s.courseProgress[s.studyLang].cefr = assignedTier.cefr;
+          }
+          // 게임 전투 스테이지는 항상 CH.1 STAGE 1 유지
+          s.selectedChapter = 1;
+          s.selectedUnit = 'unit_001';
+        });
         closeModal();
         hideHud();
         onReturnToLobby?.();
@@ -687,9 +773,13 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
       if (hudPlacementBadge && hudPlacementText) {
         if (placement) {
           hudPlacementBadge.classList.remove('hidden');
-          const lives = Math.max(0, placement.lives ?? 3);
-          const hearts = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 3 - lives));
-          hudPlacementText.textContent = `🎓 STAGE ${placement.targetUnitNum} 월반 도전 · ${hearts} (남은 기회 ${lives}회)`;
+          if (placement.isPlacementTest) {
+            hudPlacementText.textContent = `🎯 실력 진단 테스트 진행 중 (${placement.questionNumber || 1} / 10)`;
+          } else {
+            const lives = Math.max(0, placement.lives ?? 3);
+            const hearts = '❤️'.repeat(lives) + '🤍'.repeat(Math.max(0, 3 - lives));
+            hudPlacementText.textContent = `🎓 STAGE ${placement.targetUnitNum} 월반 도전 · ${hearts} (남은 기회 ${lives}회)`;
+          }
         } else {
           hudPlacementBadge.classList.add('hidden');
         }
@@ -699,6 +789,11 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath } = {}) {
         if (wrongReview) {
           wrongReviewWord.textContent = wrongReview.word || '';
           wrongReviewMeaning.textContent = wrongReview.meaning || '';
+          if (wrongReview.isPlacementTest) {
+            wrongReviewMeaning.classList.add('hidden');
+          } else {
+            wrongReviewMeaning.classList.remove('hidden');
+          }
           wrongReviewOverlay.classList.remove('hidden');
         } else {
           wrongReviewOverlay.classList.add('hidden');

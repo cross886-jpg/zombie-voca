@@ -10,7 +10,8 @@ import { getTotalUnits } from '../data/data_en.js?v=2';
 import { getSave, updateSave, recordQuestProgress } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
 import { wordEngine } from '../core/wordEngine.js';
-import { getCurrentStudyUnitId, getLangUnitWords } from '../core/courseEngine.js';
+import { getCurrentStudyUnitId, getLangUnitWords, calcPlacementTier, WORD_LEVEL_TIERS } from '../core/courseEngine.js';
+import { generatePlacementDeck, evaluatePlacementScore } from './placementTest.js';
 import { GAME_STATES } from './gameEngine.js';
 
 export class StageDirector {
@@ -26,15 +27,17 @@ export class StageDirector {
     isPromotion = false,
     targetLevel = 'A2',
     isPlacement = false,
+    isPlacementTest = false,
     targetUnitNum = 1,
   } = {}) {
     const engine = this.engine;
     engine.resizeCanvas();
     const save = getSave();
 
+    const isAnyPlacement = Boolean(isPlacement || isPlacementTest);
     const chosenCourseId = courseId || save.selectedCourse || 'lv1';
     const chosenUnitId = unitId || save.selectedUnit || 'unit_001';
-    const curUnitNum = isPlacement
+    const curUnitNum = isAnyPlacement
       ? (targetUnitNum || 1)
       : parseInt((chosenUnitId || 'unit_001').replace(/\D/g, ''), 10) || 1;
     const stageChapterNum = getChapterNumberForUnit(curUnitNum);
@@ -48,15 +51,23 @@ export class StageDirector {
     const startX = engine.arenaWidth / 2;
     const startY = engine.arenaHeight / 2;
 
-    engine.player.resetForBattle(startX, startY, save);
-    engine.companions.resetForBattle(engine.player, save);
+    const minHpRatio = isTutorial ? 0.5 : (isAnyPlacement ? 0.2 : 0.1);
+    engine.player.resetForBattle(startX, startY, save, {
+      isProtected: Boolean(isTutorial || isAnyPlacement),
+      minHpRatio,
+    });
+    if (isPlacementTest || isPlacement) {
+      engine.companions.resetForBattle(engine.player, { companions: { active: [] } });
+    } else {
+      engine.companions.resetForBattle(engine.player, save);
+    }
     engine.enemies.resetForBattle();
     engine.monoliths.resetForBattle(Boolean(isTutorial));
     engine.obstacles.resetForBattle(engine.arenaWidth, engine.arenaHeight, startX, startY);
     engine.combat.reset(engine.player, engine.enemies, engine.monoliths);
     engine.camera.reset(startX, startY);
 
-    const resolvedTargetUnitNum = isPlacement
+    const resolvedTargetUnitNum = isAnyPlacement
       ? (targetUnitNum || parseInt((chosenUnitId || 'unit_001').replace(/\D/g, ''), 10) || 1)
       : null;
 
@@ -64,6 +75,7 @@ export class StageDirector {
       unitId: chosenUnitId,
       correctCount: 0,
       wrongCount: 0,
+      answeredCount: 0,
       earnedEvoXp: 0,
       earnedGold: 0,
       podGoldEarned: 0,
@@ -75,9 +87,10 @@ export class StageDirector {
       isTutorial,
       isPromotion,
       targetLevel,
-      isPlacement,
+      isPlacement: isAnyPlacement,
+      isPlacementTest: Boolean(isPlacementTest),
       targetUnitNum: resolvedTargetUnitNum,
-      placementLives: isPlacement ? 3 : null,
+      placementLives: isPlacementTest ? null : (isPlacement ? 3 : null),
       placementPassed: false,
     };
 
@@ -92,9 +105,9 @@ export class StageDirector {
       engine.tutorial.stop();
       engine.deck = wordEngine.buildPromotionDeck(targetLevel);
       this.spawnInitialWave('promotion', startX, startY);
-    } else if (isPlacement) {
+    } else if (isAnyPlacement) {
       engine.tutorial.stop();
-      engine.deck = wordEngine.buildPlacementDeck(resolvedTargetUnitNum);
+      engine.deck = generatePlacementDeck(save.studyLang || 'en');
       this.spawnInitialWave('placement', startX, startY);
     } else {
       engine.tutorial.stop();
@@ -219,31 +232,32 @@ export class StageDirector {
     engine.runStats.isFirstClear = reward.isFirstClear;
     engine.runStats.isRepeatFarm = reward.isRepeatFarm;
 
-    if (isPlacement) {
-      const targetUnitNum = engine.runStats.targetUnitNum;
-      const totalUnits = getTotalUnits();
-      const safeTarget = Math.min(Math.max(1, targetUnitNum), totalUnits);
+    if (isPlacement || engine.runStats.isPlacementTest) {
+      const isPlacementTest = Boolean(engine.runStats.isPlacementTest);
+      const correctCount = engine.runStats.correctCount;
+      const lives = engine.runStats.placementLives;
+      const placementPassed = isPlacementTest ? true : (cleared && lives > 0);
+
+      const assignedTier = isPlacementTest
+        ? evaluatePlacementScore(correctCount)
+        : (placementPassed ? calcPlacementTier(correctCount, lives) : WORD_LEVEL_TIERS[0]);
 
       updateSave((s) => {
         s.dailyMissions.progress.battles += 1;
         s.dailyMissions.progress.wordsCorrect += engine.runStats.correctCount;
         s.dailyMissions.progress.kills += engine.combat.kills;
-
-        if (placementPassed) {
-          s.maxUnlockedUnit = Math.max(s.maxUnlockedUnit || 1, safeTarget);
-          s.selectedUnit = `unit_${String(safeTarget).padStart(3, '0')}`;
-          const nextCh = getChapterNumberForUnit(safeTarget, totalUnits);
-          if (nextCh > (s.unlockedChapter || 1)) {
-            s.unlockedChapter = nextCh;
-          }
-          s.selectedChapter = nextCh;
-        }
+        // 주의: hasSelectedWordLevel은 결과 팝업에서 유저가 확인 버튼을 눌러야 확정되므로 미완료 이탈 시 false를 유지함
+        // 게임 전투 스테이지는 항상 CH.1 STAGE 1부터 시작 유지
+        s.selectedChapter = 1;
+        s.selectedUnit = 'unit_001';
       });
 
       engine.handlers.onStageResult?.({
         isPlacement: true,
+        isPlacementTest,
         placementPassed,
-        targetUnitNum: safeTarget,
+        targetUnitNum: 1,
+        assignedTier,
         correctCount: engine.runStats.correctCount,
         lives: engine.runStats.placementLives,
         kills: engine.combat.kills,

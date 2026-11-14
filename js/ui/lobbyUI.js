@@ -148,6 +148,7 @@ export function createLobbyUI({
     openProfileModal,
     openSettingsModal,
     openCourseSetupModal,
+    openWordLevelSelectModal,
     createLobbyOnboardingTour,
   } = createLobbyModals({
     openModal,
@@ -216,15 +217,15 @@ export function createLobbyUI({
     const canvas = document.getElementById('lobby-hero-canvas');
     if (!canvas) return;
     const save = getSave();
-    const curBreedId = save.selectedBreed || 'pomeranian';
+    const curBreedId = save.profileAvatarBreedId || save.selectedBreed || 'pomeranian';
     const now = Date.now();
     const isHappy = now < happyUntil;
 
     renderDogToCanvas(canvas, {
       save,
       breedId: curBreedId,
-      scale: 1.95,
-      y: canvas.height / 2 + 10,
+      scale: 2.65,
+      y: canvas.height / 2 + 14,
       isHappy,
       time: now,
       companions: (save.companions?.active || []).slice(0, MAX_SUPPORTERS),
@@ -239,7 +240,7 @@ export function createLobbyUI({
 
   function refreshHeader() {
     const save = getSave();
-    const curBreedId = save.selectedBreed || 'pomeranian';
+    const curBreedId = save.profileAvatarBreedId || save.selectedBreed || 'pomeranian';
     const curBreed = BREEDS.find((b) => b.id === curBreedId) || BREEDS[0];
 
     if (evoBadge) {
@@ -248,14 +249,9 @@ export function createLobbyUI({
       else if (save.equippedSkin === 'skin_astronaut') skinBadge = '<span class="absolute -top-1.5 -left-1 text-[11px] leading-none select-none">🧑‍🚀</span>';
       else if (save.equippedSkin === 'skin_detective') skinBadge = '<span class="absolute -top-1.5 -left-1 text-[11px] leading-none select-none">🕵️</span>';
 
-      const eqWeaponId = save.costumes?.equipped?.weapon;
-      const eqWeapon = COSTUMES.find((c) => c.id === eqWeaponId);
-      const weaponBadge = eqWeapon ? `<span class="absolute -top-1.5 -right-1 text-[10px] leading-none select-none">${eqWeapon.icon || '⚔️'}</span>` : '';
-
       evoBadge.innerHTML = `
         <span class="text-xl select-none leading-none">${curBreed.icon || '🐶'}</span>
         ${skinBadge}
-        ${weaponBadge}
       `;
     }
 
@@ -447,11 +443,11 @@ export function createLobbyUI({
           </div>
         </div>
 
-        <!-- 중앙 무대 영역: 상단 버튼과 분리되어 중앙 여백이 넉넉해진 수호견 무대 (전체 프로필 카드 id 부여) -->
-        <div id="lobby-hero-profile-card" class="flex flex-col items-center justify-center text-center my-auto -mt-4 pointer-events-auto w-full max-w-[260px] mx-auto">
+        <!-- 하단 무대 영역: 하단 스테이지 네비게이션(CH.1 STAGE 1) 바로 위쪽에 배치된 큼직한 수호견 쇼케이스 무대 -->
+        <div id="lobby-hero-profile-card" class="flex flex-col items-center justify-center text-center mt-auto mb-1 pointer-events-auto w-full max-w-[280px] mx-auto">
           <div id="lobby-hero-stage" class="relative group cursor-pointer active:scale-95 transition select-none" title="탭하여 쓰다듬기 🩷">
-            <div class="relative w-44 h-[116px] rounded-2xl bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center p-1">
-              <canvas id="lobby-hero-canvas" width="176" height="116" class="w-44 h-[116px] rounded-2xl bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
+            <div class="relative w-52 h-[156px] rounded-2xl bg-radial from-emerald-600/20 via-emerald-600/5 to-transparent flex items-center justify-center p-1">
+              <canvas id="lobby-hero-canvas" width="208" height="156" class="w-52 h-[156px] rounded-2xl bg-[#faf6ee] border border-emerald-600/40 shadow-[0_0_24px_rgba(45,106,79,0.2)] block"></canvas>
               <button id="pet-action-badge" type="button" class="${petBadgeClass}" title="우유 쓰다듬기 (터치하여 교감)">
                 ${petBadgeInner}
               </button>
@@ -765,6 +761,13 @@ export function createLobbyUI({
       onStartTutorial?.();
       return;
     }
+
+    // 튜토리얼 완료 후 첫 출격 시 9단계 단어 레벨 선택 모달 노출 (이미 선택했거나 배치 완료 시 직행)
+    if (!cur.hasSelectedWordLevel) {
+      openWordLevelSelectModal({ isChange: false });
+      return;
+    }
+
     const totalUnits = getTotalUnits();
     let unitToPlay = cur.selectedUnit || 'unit_001';
     if (curUnitNum > maxUnlocked || curUnitNum > totalUnits) {
@@ -778,6 +781,8 @@ export function createLobbyUI({
       chapterNumber: cur.selectedChapter,
       courseId: cur.selectedCourse,
       unitId: unitToPlay,
+      isPlacement: false,
+      isPlacementTest: false,
     });
   });
 
@@ -789,11 +794,11 @@ export function createLobbyUI({
     });
   });
 
-  // 상단 헤더 프로필 & CEFR 승급 & 재화 바로가기 바인딩
+  // 상단 헤더 프로필 & CEFR 레벨 설정 & 재화 바로가기 바인딩
   document.getElementById('btn-header-profile')?.addEventListener('click', openProfileModal);
   certBadge?.addEventListener('click', (e) => {
     e.stopPropagation();
-    openCourseSetupModal();
+    openWordLevelSelectModal({ isChange: true });
   });
   document.getElementById('btn-header-gold')?.addEventListener('click', () => switchTab('training'));
   document.getElementById('btn-header-snacks')?.addEventListener('click', () => switchTab('training'));
@@ -818,6 +823,7 @@ export function createLobbyUI({
     openNoticeModal,
     openCefrModal,
     openAirDropSupplyModal,
+    openWordLevelSelectModal,
   };
 }
 

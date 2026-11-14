@@ -47,7 +47,7 @@ export class MonolithManager {
 
     choices.forEach((choice, idx) => {
       const dir = quadrantDirs[idx % 4];
-      const topMargin = 120; // 상단 전광판 높이 감안 안전 마진
+      const topMargin = 170; // 상단 전광판 높이 감안 안전 마진 (120 -> 170 상향하여 배너 최상단 178px 보장)
       const bottomMargin = 138; // 정면 진입 발판(Y+38, 반경 28) 및 하단 통과 여유 감안 안전 마진
       const clampX = (val) => Math.max(margin, Math.min(arenaWidth - margin, val));
       const clampY = (val) => Math.max(margin + topMargin, Math.min(arenaHeight - bottomMargin, val));
@@ -611,17 +611,17 @@ export function isMonolithOffscreen(screenX, screenY, viewW, viewH) {
  * @param {number} viewW 뷰포트 너비
  * @param {number} viewH 뷰포트 높이
  * @param {'right'|'left'} dominantHand 주손 설정
- * @param {number} topPadding 상단 전광판 안전선 (기본 136px)
+ * @param {number} topPadding 상단 전광판 안전선 (기본 160px)
  * @returns {{ x: number, y: number }}
  */
-export function clampIndicatorToThumbSafeZone(ax, ay, viewW, viewH, dominantHand = 'right', topPadding = 136) {
+export function clampIndicatorToThumbSafeZone(ax, ay, viewW, viewH, dominantHand = 'right', topPadding = 160) {
   const thumbW = 165;
   const thumbH = 170;
   const ultW = 95;
   const ultH = 95;
   const safeMargin = 8;
 
-  // 상단 네온 전광판 하단 안전선(topPadding 136px) 이하로 내려오지 않도록 보정
+  // 상단 네온 전광판 하단 안전선(topPadding 160px) 이하로 내려오지 않도록 보정
   ay = Math.max(topPadding, ay);
 
   if (dominantHand === 'left') {

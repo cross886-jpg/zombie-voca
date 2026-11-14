@@ -24,6 +24,7 @@ export class WordEventManager {
     this.waitingRespawn = false;
     this.wrongReviewTimer = 0;
     this.wrongReviewWord = null;
+    this.usedWordIds = new Set();
   }
 
   reset() {
@@ -34,10 +35,24 @@ export class WordEventManager {
     this.waitingRespawn = false;
     this.wrongReviewTimer = 0;
     this.wrongReviewWord = null;
+    this.usedWordIds = new Set();
   }
 
   presentCurrentQuestion() {
     const engine = this.engine;
+
+    if (engine.runStats.isPlacementTest) {
+      this.usedWordIds = this.usedWordIds || new Set();
+      while (this.questionIndex < this.deck.length && this.usedWordIds.has(this.deck[this.questionIndex]?.id)) {
+        this.questionIndex++;
+      }
+      if (this.questionIndex >= 10 || (engine.runStats.answeredCount || 0) >= 10 || this.questionIndex >= this.deck.length) {
+        engine.monoliths.clearMonoliths();
+        this.waitingRespawn = false;
+        engine._finishStage(true);
+        return;
+      }
+    }
 
     if (this.questionIndex >= this.deck.length) {
       if (engine.runStats.isPlacement) {
@@ -64,7 +79,28 @@ export class WordEventManager {
     }
 
     this.currentWord = this.deck[this.questionIndex];
-    const choices = wordEngine.createQuestionChoices(this.currentWord);
+    if (engine.runStats.isPlacementTest && this.currentWord) {
+      this.usedWordIds = this.usedWordIds || new Set();
+      this.usedWordIds.add(this.currentWord.id);
+    }
+
+    let choices;
+    if (engine.runStats.isPlacementTest && Array.isArray(this.currentWord?.choices) && this.currentWord.choices.length > 0) {
+      const targetMeaning = (this.currentWord._correctMeaning || this.currentWord.meaning || '').trim().toLowerCase();
+      choices = this.currentWord.choices.map((c) => {
+        const meaningStr = (typeof c === 'string' ? c : (c.meaning || '')).trim();
+        return {
+          wordId: this.currentWord.id,
+          meaning: meaningStr,
+          isCorrect: meaningStr.toLowerCase() === targetMeaning,
+        };
+      });
+      if (!choices.some((c) => c.isCorrect) && choices.length > 0) {
+        choices[0].isCorrect = true;
+      }
+    } else {
+      choices = wordEngine.createQuestionChoices(this.currentWord);
+    }
 
     engine.monoliths.spawnMonoliths(
       choices,
@@ -94,12 +130,14 @@ export class WordEventManager {
     audioEngine.stopWordLoop();
 
     const isCorrect = monolith.isCorrect;
-    const wordRes = wordEngine.submitAnswer(this.currentWord.id, isCorrect);
+    const wordRes = engine.runStats.isPlacementTest
+      ? { newlyMastered: false, streak: 0 }
+      : wordEngine.submitAnswer(this.currentWord.id, isCorrect);
 
     if (isCorrect) {
       engine.runStats.correctCount += 1;
       engine.runStats.earnedEvoXp += BALANCE.MONOLITH.CORRECT_XP;
-      if (wordRes.newlyMastered) {
+      if (wordRes.newlyMastered && !engine.runStats.isPlacementTest) {
         engine.runStats.newlyMasteredCount += 1;
         // 현재 학습 유닛 단어를 모두 마스터하면 다음 유닛 및 티어/등급 게이지 자동 상승
         if (recordStudyMastery(this.currentWord.id)) {
@@ -116,17 +154,19 @@ export class WordEventManager {
       engine.player.heal(correctHeal);
       engine.combat.spawnDamageText(engine.player.x, engine.player.y - 28, `+${correctHeal} HP`, '#4ade80', 1.0);
 
-      // 전술 구조 캡슐 개방 굵직한 기본 금화 보상 (+25 🪙)
-      const podGold = 25;
-      engine.runStats.podGoldEarned = (engine.runStats.podGoldEarned || 0) + podGold;
-      engine.combat.spawnDamageText(monolith.x + 24, monolith.y - 18, `+${podGold} 🪙`, '#fbbf24', 1.15);
+      // 전술 구조 캡슐 개방 굵직한 기본 금화 보상 (+25 🪙, 실력 진단 테스트 제외)
+      const podGold = engine.runStats.isPlacementTest ? 0 : 25;
+      if (podGold > 0) {
+        engine.runStats.podGoldEarned = (engine.runStats.podGoldEarned || 0) + podGold;
+        engine.combat.spawnDamageText(monolith.x + 24, monolith.y - 18, `+${podGold} 🪙`, '#fbbf24', 1.15);
+      }
 
       // 캡슐 해치 개방 및 넉백 선명한 단일 충격파 + 스파크
       engine.combat.triggerCorrectShockwave(monolith, engine.camera, engine.player);
       audioEngine.playCorrect();
 
-      // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품 (튜토리얼 제외)
-      if (!engine.runStats.isTutorial) {
+      // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품 (튜토리얼, 월반, 실력 진단 테스트 제외)
+      if (!engine.runStats.isTutorial && !engine.runStats.isPlacementTest && !engine.runStats.isPlacement) {
         const surpriseRoll = Math.random();
         if (surpriseRoll < 0.5) {
           // 1. 깜짝 아기 동물 구출 지원 (Surprise Animal Rescue)
@@ -227,8 +267,8 @@ export class WordEventManager {
         }
       }
 
-      // 월반 도전 시 오답 1회당 하트(남은 기회) 1개 차감, 3회 소진 시 즉시 실패 종료
-      if (engine.runStats.isPlacement) {
+      // 월반 도전 시 오답 1회당 하트(남은 기회) 1개 차감, 3회 소진 시 즉시 실패 종료 (실력 진단 테스트는 10문제 끝까지 완주 보장)
+      if (engine.runStats.isPlacement && !engine.runStats.isPlacementTest) {
         engine.runStats.placementLives = Math.max(0, (engine.runStats.placementLives ?? 3) - 1);
         if (engine.runStats.placementLives <= 0) {
           engine._finishStage(false);
@@ -236,13 +276,23 @@ export class WordEventManager {
         }
       }
 
-      this.wrongReviewTimer = 1.2;
-      this.wrongReviewWord = {
-        word: this.currentWord.word,
-        phonetic: this.currentWord.phonetic || '',
-        meaning: this.currentWord.meaning,
-      };
-      audioEngine.speakWord(this.currentWord.word);
+      if (engine.runStats.isPlacementTest) {
+        this.wrongReviewTimer = 0.6;
+        this.wrongReviewWord = {
+          word: '❌ 오답입니다!',
+          phonetic: '',
+          meaning: '',
+          isPlacementTest: true,
+        };
+      } else {
+        this.wrongReviewTimer = 1.2;
+        this.wrongReviewWord = {
+          word: this.currentWord.word,
+          phonetic: this.currentWord.phonetic || '',
+          meaning: this.currentWord.meaning,
+        };
+        audioEngine.speakWord(this.currentWord.word);
+      }
 
       if (engine.enemies.boss && engine.enemies.boss.hp > 0) {
         engine.enemies.enrageBoss();
@@ -252,8 +302,18 @@ export class WordEventManager {
 
     this.questionIndex += 1;
 
-    // 오답 시 해당 단어를 2~3문제 뒤 큐에 재삽입 (Spaced Repetition, 월반 및 튜토리얼 제외)
-    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && !isCorrect && this.currentWord) {
+    if (engine.runStats.isPlacementTest) {
+      engine.runStats.answeredCount = (engine.runStats.answeredCount || 0) + 1;
+      if (engine.runStats.answeredCount >= 10 || this.questionIndex >= 10 || this.questionIndex >= this.deck.length) {
+        engine.monoliths.clearMonoliths();
+        this.waitingRespawn = false;
+        engine._finishStage(true);
+        return;
+      }
+    }
+
+    // 오답 시 해당 단어를 2~3문제 뒤 큐에 재삽입 (Spaced Repetition, 월반, 실력 진단 테스트 및 튜토리얼 제외)
+    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && !engine.runStats.isPlacementTest && !isCorrect && this.currentWord) {
       const offset = Math.random() < 0.5 ? 2 : 3;
       let insertIdx = Math.min(this.deck.length, this.questionIndex + offset);
       const prevSame = this.deck[insertIdx - 1]?.id === this.currentWord.id;
@@ -287,9 +347,9 @@ export class WordEventManager {
     this.waitingRespawn = true;
     this.respawnTimer = BALANCE.MONOLITH.RESPAWN_DELAY_SEC;
 
-    // 본게임에서 단어 3문제 정답마다 정확히 1회 스킬 선택 모달 오픈
+    // 본게임에서 단어 3문제 정답마다 정확히 1회 스킬 선택 모달 오픈 (튜토리얼 및 실력 진단 테스트 제외)
     const solvedCount = engine.runStats.correctCount;
-    if (!engine.runStats.isTutorial && isCorrect && solvedCount > 0 && solvedCount % 3 === 0) {
+    if (!engine.runStats.isTutorial && !engine.runStats.isPlacementTest && isCorrect && solvedCount > 0 && solvedCount % 3 === 0) {
       engine.openSkillSelect();
     }
   }
