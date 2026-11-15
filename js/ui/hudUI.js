@@ -10,6 +10,7 @@ import { audioEngine } from '../core/audioEngine.js';
 import { GAME_STATES } from '../game/gameEngine.js';
 import { getSave, updateSave } from '../core/saveStore.js';
 import { clampIndicatorToThumbSafeZone, isMonolithOffscreen } from '../entities/monoliths.js';
+import { WORD_LEVEL_TIERS } from '../core/courseEngine.js';
 
 export function createHudUI(engine, { onReturnToLobby, onStartPath, onStartBattle, onOpenWordLevelSelect } = {}) {
   const hudLayer = document.getElementById('hud-layer');
@@ -474,76 +475,147 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath, onStartBattl
       const recommendMsg = assignedTier.recommendMsg || '나에게 딱 맞는 레벨로 시작해 보세요!';
 
       if (isTest) {
-        openModal(`
-          <div class="text-center space-y-4 py-1">
-            <div class="text-4xl">🎯✨</div>
-            <div class="space-y-1.5">
-              <div class="text-xs font-bold text-[#5c6e60]">실력 진단 테스트 완료!</div>
-              <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
-                회원님께 딱 맞는 추천 레벨은 <br/>
-                <span class="text-emerald-700 font-black text-xl">[ ${assignedTier.label} ]</span> 입니다!
-              </h3>
-              <p class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 py-1.5 px-3 rounded-xl inline-block mt-1">
-                "${recommendMsg}"
-              </p>
-              <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs mt-2">
-                <div class="text-[#4a584e]">배정 레벨</div>
-                <div class="text-right font-extrabold text-[#1f2d24]">${assignedTier.label}</div>
-                <div class="text-[#4a584e]">진단 점수</div>
-                <div class="text-right font-extrabold text-[#1f2d24]">${res.correctCount || 0} / 10</div>
-                <div class="text-[#4a584e]">처치 좀비</div>
-                <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
-                <div class="text-[#4a584e]">출격 스테이지</div>
-                <div class="text-right font-extrabold text-emerald-800">CH.1 STAGE 1</div>
+        const testedTier = res.selectedTier || res.assignedTier || WORD_LEVEL_TIERS[0];
+        const correctCount = res.correctCount || 0;
+        const bossDefeated = Boolean(res.bossDefeated);
+        const isPassed = Boolean(res.placementPassed);
+
+        if (isPassed) {
+          // ✅ 합격(통과) 시
+          openModal(`
+            <div class="text-center space-y-4 py-1">
+              <div class="text-4xl animate-bounce">🎉✨</div>
+              <div class="space-y-1.5">
+                <span class="inline-block px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-black">
+                  레벨 테스트 합격!
+                </span>
+                <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
+                  🎉 [${testedTier.label || testedTier.badgeLabel}] 테스트 통과!
+                </h3>
+                <p class="text-xs text-[#4a584e] font-bold">
+                  (10문제 중 <b class="text-emerald-700 font-extrabold">${correctCount}문제</b> 정답 + 보스 격파)
+                </p>
+                <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs mt-2">
+                  <div class="text-[#4a584e]">배정 레벨</div>
+                  <div class="text-right font-extrabold text-emerald-800">${testedTier.label || testedTier.badgeLabel}</div>
+                  <div class="text-[#4a584e]">정답 결과</div>
+                  <div class="text-right font-extrabold text-emerald-800">${correctCount} / 10 (합격 ✓)</div>
+                  <div class="text-[#4a584e]">보스 처치</div>
+                  <div class="text-right font-extrabold text-emerald-800">격파 성공 ✓</div>
+                  <div class="text-[#4a584e]">처치 좀비</div>
+                  <div class="text-right font-extrabold text-[#1f2d24]">${res.kills || 0}마리</div>
+                  <div class="text-[#4a584e]">출격 스테이지</div>
+                  <div class="text-right font-extrabold text-emerald-800">CH.1 STAGE 1</div>
+                </div>
+              </div>
+              <div class="pt-1">
+                <button id="btn-result-launch" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-[#f8f5ec] font-black text-sm shadow-[0_4px_16px_rgba(16,185,129,0.35)] active:scale-95 transition cursor-pointer">
+                  [ ⚔️ 이 레벨로 모험 시작하기 ]
+                </button>
               </div>
             </div>
-            <div class="space-y-2 pt-1">
-              <button id="btn-result-launch" type="button" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-[#f8f5ec] font-black text-sm shadow-[0_4px_16px_rgba(16,185,129,0.35)] active:scale-95 transition cursor-pointer">
-                ⚔️ 추천 레벨로 바로 출격!
-              </button>
-              <button id="btn-result-choose-other" type="button" class="w-full py-3 rounded-xl bg-[#faf6ee] hover:bg-[#ede7d8] border border-[#d2c8b4] text-[#1f2d24] font-bold text-xs active:scale-95 transition cursor-pointer">
-                다른 레벨 직접 선택하기
-              </button>
-            </div>
-          </div>
-        `);
+          `);
 
-        const saveTier = () => {
-          updateSave((s) => {
-            s.hasSelectedWordLevel = true;
-            s.wordLevelTier = assignedTier.id;
-            s.wordUnitOffset = Number(assignedTier.unitOffset) || 0;
-            s.selectedLevelLabel = assignedTier.badgeLabel;
-            if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
-              s.courseProgress[s.studyLang].cefr = assignedTier.cefr;
+          document.getElementById('btn-result-launch')?.addEventListener('click', () => {
+            updateSave((s) => {
+              s.hasSelectedWordLevel = true;
+              s.wordLevelTier = testedTier.id;
+              s.wordUnitOffset = Number(testedTier.unitOffset) || 0;
+              s.selectedLevelLabel = testedTier.badgeLabel;
+              if (s.courseProgress && s.studyLang && s.courseProgress[s.studyLang]) {
+                s.courseProgress[s.studyLang].cefr = testedTier.cefr;
+              }
+              s.selectedChapter = 1;
+              s.selectedUnit = 'unit_001';
+            });
+            closeModal();
+            hideHud();
+            if (onStartBattle) {
+              onStartBattle({ chapterNumber: 1, courseId: getSave().selectedCourse || 'lv1', unitId: 'unit_001', isTutorial: false });
+            } else {
+              onReturnToLobby?.();
             }
-            // 게임 전투 스테이지는 항상 CH.1 STAGE 1 유지
-            s.selectedChapter = 1;
-            s.selectedUnit = 'unit_001';
           });
-        };
+        } else {
+          // ❌ 불합격(탈락) 시
+          const failReasonText = (correctCount >= 7 && !bossDefeated)
+            ? '7문제 이상 맞혔지만 마지막 보스를 쓰러뜨리지 못했습니다.'
+            : '조금 더 쉬운 단계에서 다시 도전해 볼까요?';
 
-        document.getElementById('btn-result-launch')?.addEventListener('click', () => {
-          saveTier();
-          closeModal();
-          hideHud();
-          if (onStartBattle) {
-            onStartBattle({ chapterNumber: 1, courseId: getSave().selectedCourse || 'lv1', unitId: 'unit_001', isTutorial: false });
-          } else {
-            onReturnToLobby?.();
-          }
-        });
+          openModal(`
+            <div class="text-center space-y-4 py-1">
+              <div class="text-4xl">🌱💦</div>
+              <div class="space-y-1.5">
+                <span class="inline-block px-3 py-1 rounded-full bg-rose-100 border border-rose-300 text-rose-900 text-xs font-black">
+                  레벨 테스트 결과
+                </span>
+                <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
+                  아쉬워요! (10문제 중 <b class="text-rose-600">${correctCount}문제</b> 정답)
+                </h3>
+                <p class="text-xs text-rose-700 font-bold bg-rose-50 border border-rose-200 py-1.5 px-3 rounded-xl inline-block mt-1">
+                  ${failReasonText}
+                </p>
+                <div class="grid grid-cols-2 gap-2 text-left bg-[#f0ebe0] border border-[#d2c8b4] rounded-xl p-3 text-xs mt-2">
+                  <div class="text-[#4a584e]">응시 레벨</div>
+                  <div class="text-right font-extrabold text-[#1f2d24]">${testedTier.label || testedTier.badgeLabel}</div>
+                  <div class="text-[#4a584e]">정답 결과</div>
+                  <div class="text-right font-extrabold ${correctCount >= 7 ? 'text-emerald-700' : 'text-rose-600'}">${correctCount} / 10 (${correctCount >= 7 ? '기준 달성' : '미달'})</div>
+                  <div class="text-[#4a584e]">보스 처치</div>
+                  <div class="text-right font-extrabold ${bossDefeated ? 'text-emerald-700' : 'text-rose-600'}">${bossDefeated ? '격파 성공 ✓' : '격파 실패 ❌'}</div>
+                  <div class="text-[#4a584e]">통과 기준</div>
+                  <div class="text-right font-extrabold text-[#5c6e60]">7문제 이상 + 보스 격파</div>
+                </div>
+              </div>
+              <div class="space-y-2 pt-1">
+                <button id="btn-result-retry-same" type="button" class="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 text-white font-black text-xs shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                  <span>[ 🔄 이 레벨 다시 도전하기 ]</span>
+                </button>
+                <button id="btn-result-choose-level" type="button" class="w-full py-2.5 px-3 rounded-xl bg-[#e6dec8] hover:bg-[#dcd3bd] text-[#1f2d24] font-black text-xs active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                  <span>[ 📋 레벨 다시 선택하기 ]</span>
+                </button>
+                <button id="btn-result-exit-lobby" type="button" class="w-full py-2.5 rounded-xl bg-[#faf6ee] hover:bg-[#f0ebe0] border border-[#d2c8b4] text-[#4a584e] hover:text-[#1f2d24] font-bold text-xs active:scale-95 transition cursor-pointer">
+                  <span>[ 🏠 로비로 나가기 ]</span>
+                </button>
+              </div>
+            </div>
+          `);
 
-        document.getElementById('btn-result-choose-other')?.addEventListener('click', () => {
-          saveTier();
-          closeModal();
-          hideHud();
-          if (onOpenWordLevelSelect) {
-            onOpenWordLevelSelect();
-          } else {
+          document.getElementById('btn-result-retry-same')?.addEventListener('click', () => {
+            closeModal();
+            hideHud();
+            if (onStartBattle) {
+              onStartBattle({
+                chapterNumber: 1,
+                courseId: getSave().selectedCourse || 'lv1',
+                unitId: 'unit_001',
+                isPlacement: true,
+                isPlacementTest: true,
+                selectedTier: testedTier,
+                targetUnitNum: Number(testedTier.unitOffset) + 1,
+              });
+            } else {
+              onReturnToLobby?.();
+            }
+          });
+
+          document.getElementById('btn-result-choose-level')?.addEventListener('click', () => {
+            updateSave((s) => {
+              s.hasSelectedWordLevel = false;
+            });
+            closeModal();
+            hideHud();
+            onOpenWordLevelSelect?.();
+          });
+
+          document.getElementById('btn-result-exit-lobby')?.addEventListener('click', () => {
+            updateSave((s) => {
+              s.hasSelectedWordLevel = false;
+            });
+            closeModal();
+            hideHud();
             onReturnToLobby?.();
-          }
-        });
+          });
+        }
         return;
       }
 
@@ -843,6 +915,40 @@ export function createHudUI(engine, { onReturnToLobby, onStartPath, onStartBattl
       resetJoystick();
       hudTutorialCoach?.classList.add('hidden');
       showGameOverModal({ canRevive });
+    },
+
+    onCompanionRescueTutorial({ companion, onConfirm }) {
+      resetJoystick();
+      openModal(`
+        <div class="text-center space-y-4 py-2">
+          <div class="text-5xl animate-bounce">🐶🎉</div>
+          <div class="space-y-1.5">
+            <span class="inline-block px-3 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-xs font-black">
+              서포트 동료 구출 성공!
+            </span>
+            <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
+              🎉 새 서포트 동료 <span class="text-emerald-700 font-extrabold">[${companion.name}]</span> 구출!
+            </h3>
+            <p class="text-xs font-bold text-[#4a584e] bg-[#f0ebe0] border border-[#d2c8b4] p-3 rounded-2xl leading-relaxed mt-2 text-left">
+              💡 <b>동료 배치 튜토리얼</b><br/>
+              전투 종료 후 로비 <b>[내 강아지]</b> 메뉴에서 동료 슬롯에 장착하면 다음 전투부터 함께 싸웁니다!
+            </p>
+          </div>
+          <button
+            id="btn-confirm-companion-rescue"
+            type="button"
+            class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-[#f8f5ec] font-black text-sm shadow-md active:scale-95 transition cursor-pointer"
+          >
+            확인 (다음 문제 계속) 🐾
+          </button>
+        </div>
+      `);
+
+      document.getElementById('btn-confirm-companion-rescue')?.addEventListener('click', () => {
+        audioEngine.playCaptureTick?.();
+        closeModal();
+        onConfirm?.();
+      });
     },
 
     onStageResult(res) {

@@ -24,6 +24,7 @@ export class TutorialController {
     this.movedDist = 0;
     this.hasMoved = false;
     this.step1Kills = 0;
+    this.step1Timer = 0;
     this.solvedCount = 0;
     this.retryHintActive = false;
     this.selectedSkillName = '';
@@ -48,18 +49,24 @@ export class TutorialController {
     const d = Math.hypot(dx, dy);
     if (d > 0) {
       this.movedDist += d;
-      if (this.movedDist >= (BALANCE.TUTORIAL.STEP1_MIN_MOVE_DIST || 24)) {
+      if (this.movedDist >= (BALANCE.TUTORIAL.STEP1_MIN_MOVE_DIST || 16)) {
         this.hasMoved = true;
       }
     }
   }
 
-  checkStep1Advance(kills) {
+  checkStep1Advance(kills, dt = 0) {
     if (!this.active || this.step !== 1) return false;
-    this.step1Kills = Math.min(BALANCE.TUTORIAL.STEP1_TARGET_KILLS, kills);
-    if (this.hasMoved && kills >= BALANCE.TUTORIAL.STEP1_TARGET_KILLS) {
-      this.step = 2;
-      return true;
+    const targetKills = BALANCE.TUTORIAL.STEP1_TARGET_KILLS ?? 1;
+    this.step1Kills = Math.min(targetKills, kills);
+    if (this.hasMoved) {
+      if (this.step1Timer === undefined) this.step1Timer = 0;
+      if (dt > 0) this.step1Timer += dt;
+      const maxWait = BALANCE.TUTORIAL.STEP1_DELAY_SEC || 1.2;
+      if (kills >= targetKills || this.step1Timer >= maxWait) {
+        this.step = 2;
+        return true;
+      }
     }
     return false;
   }

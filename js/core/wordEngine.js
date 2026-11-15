@@ -4,7 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { getActiveWords as getWords, getActiveTotalUnits as getTotalUnits, getActiveCefrWords, getCurrentStudyUnitId, getEffectiveStudyUnitId } from './courseEngine.js';
+import { getActiveWords as getWords, getActiveCefrWords, getEffectiveStudyUnitId } from './courseEngine.js';
 import { getSave, getWordStat, recordWordResult } from './saveStore.js';
 
 function shuffleArray(arr) {
@@ -175,32 +175,6 @@ export const wordEngine = {
   },
 
   /**
-   * 월반 전투 도전용 10문제 덱 (목표 유닛 및 직전 유닛들의 핵심 단어 10개)
-   * @param {number} targetUnitNum
-   * @returns {Array<object>}
-   */
-  buildPlacementDeck(targetUnitNum) {
-    const all = getWords();
-    const tot = typeof getTotalUnits === 'function' ? getTotalUnits() : 714;
-    const safeTarget = Math.min(Math.max(1, targetUnitNum || 1), tot);
-    const targetUnitId = `unit_${String(safeTarget).padStart(3, '0')}`;
-    let candidateWords = all.filter((w) => w.unit === targetUnitId);
-
-    for (let u = safeTarget - 1; u >= 1 && candidateWords.length < 15; u--) {
-      const prevId = `unit_${String(u).padStart(3, '0')}`;
-      const prevWords = all.filter((w) => w.unit === prevId);
-      candidateWords = candidateWords.concat(prevWords);
-    }
-
-    if (candidateWords.length < 10) {
-      candidateWords = all.slice();
-    }
-
-    const shuffled = shuffleArray(candidateWords);
-    return shuffled.slice(0, 10);
-  },
-
-  /**
    * 튜토리얼용 3문제 초급 미니 덱
    * @returns {Array<object>}
    */
@@ -261,38 +235,6 @@ export const wordEngine = {
    */
   submitAnswer(wordId, isCorrect) {
     return recordWordResult(wordId, isCorrect);
-  },
-
-  /**
-   * 기억 수첩용 통계 및 복습 대기 단어 목록 반환
-   */
-  getWordbookSummary() {
-    const allWords = getWords();
-    const stats = getSave().wordStats || {};
-    let masteredCount = 0;
-    const reviewQueue = [];
-
-    for (const w of allWords) {
-      const st = stats[String(w.id)];
-      if (!st) continue;
-      if (st.mastered) {
-        masteredCount++;
-      } else if (st.wrongCount > 0 || st.streak > 0) {
-        reviewQueue.push({ ...w, stat: st });
-      }
-    }
-
-    reviewQueue.sort((a, b) => b.stat.wrongCount - a.stat.wrongCount || a.stat.streak - b.stat.streak);
-
-    const totalCount = allWords.length || 1;
-    const masteryPercent = Math.round((masteredCount / totalCount) * 1000) / 10;
-
-    return {
-      totalCount: allWords.length,
-      masteredCount,
-      masteryPercent,
-      reviewQueue,
-    };
   },
 
   getWordStreak(wordId) {

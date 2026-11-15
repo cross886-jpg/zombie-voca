@@ -84,36 +84,6 @@ export class CompanionManager {
     return false;
   }
 
-  addTemporaryCompanion(companionDef, player, duration = 16) {
-    if (!companionDef) return null;
-    const existing = this.activeCompanions.find((c) => c.id === companionDef.id);
-    if (existing) {
-      existing.runLv += 1;
-      existing.tempTimer = Math.max(existing.tempTimer || 0, duration);
-      return existing;
-    }
-    const idx = this.activeCompanions.length;
-    const sideAngle = (player?.facingAngle || 0) + (idx % 2 === 0 ? 1 : -1) * 1.8;
-    const comp = {
-      id: companionDef.id,
-      def: companionDef,
-      isBreed: false,
-      x: (player?.x || 0) + Math.cos(sideAngle) * 44,
-      y: (player?.y || 0) + Math.sin(sideAngle) * 44,
-      orbitAngle: sideAngle,
-      lobbyLv: 1,
-      runLv: 2,
-      affLevel: 3,
-      cooldownTimer: 0.1,
-      attackFlash: 0,
-      isTemporary: true,
-      tempTimer: duration,
-      jointSkillTimer: 7.0,
-    };
-    this.activeCompanions.push(comp);
-    return comp;
-  }
-
   update(dt, player, enemies, boss, combatSystem) {
     let result = { cleanedPoop: false, poopX: 0, poopY: 0 };
 
@@ -175,13 +145,6 @@ export class CompanionManager {
     // 3. 동료 추종 AI 및 친밀도 5단계 행동 진화
     for (let i = this.activeCompanions.length - 1; i >= 0; i--) {
       const comp = this.activeCompanions[i];
-      if (comp.isTemporary) {
-        comp.tempTimer -= dt;
-        if (comp.tempTimer <= 0) {
-          this.activeCompanions.splice(i, 1);
-          continue;
-        }
-      }
       if (comp.attackFlash > 0) comp.attackFlash = Math.max(0, comp.attackFlash - dt);
 
       const aff = comp.affLevel || 1;

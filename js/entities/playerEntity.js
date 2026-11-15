@@ -39,10 +39,10 @@ export class Player {
     this.equipped = { hat: null, outfit: null, weapon: null, aura: null };
     this._saveRef = null;
     this.isProtectedMode = false;
-    this.protectedMinHpRatio = 0.2;
+    this.protectedMinHpRatio = 0.1;
   }
 
-  resetForBattle(centerX, centerY, saveData, { isProtected = false, minHpRatio = 0.2 } = {}) {
+  resetForBattle(centerX, centerY, saveData, { isProtected = false, minHpRatio = 0.1 } = {}) {
     this._saveRef = saveData;
     this.isProtectedMode = Boolean(isProtected);
     this.protectedMinHpRatio = minHpRatio;
@@ -147,7 +147,7 @@ export class Player {
     this.y = Math.max(minBoundY, Math.min(maxBoundY, this.y));
 
     if (this.isProtectedMode) {
-      const minRatio = this.protectedMinHpRatio ?? 0.2;
+      const minRatio = this.protectedMinHpRatio ?? 0.1;
       const minHp = Math.ceil(this.maxHp * minRatio);
       if (this.hp < minHp) this.hp = minHp;
     }
@@ -157,7 +157,7 @@ export class Player {
     if (this.invulnTimer > 0) return 0;
     const dmg = Math.max(1, Math.round(amount));
     if (this.isProtectedMode) {
-      const minRatio = this.protectedMinHpRatio ?? 0.2;
+      const minRatio = this.protectedMinHpRatio ?? 0.1;
       const minHp = Math.ceil(this.maxHp * minRatio);
       this.hp = Math.max(minHp, this.hp - dmg);
     } else {
@@ -183,17 +183,6 @@ export class Player {
 
   consumeUltGauge() {
     this.ultGauge = 0;
-  }
-
-  addRunXp(amount) {
-    this.xp += amount;
-    if (this.xp >= this.xpToNext) {
-      this.xp -= this.xpToNext;
-      this.level += 1;
-      this.xpToNext = BALANCE.PLAYER.LEVEL_UP_BASE_XP + (this.level - 1) * BALANCE.PLAYER.LEVEL_UP_XP_STEP;
-      return true;
-    }
-    return false;
   }
 
   _getCostumeItem(slot) {

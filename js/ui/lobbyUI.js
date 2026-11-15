@@ -4,9 +4,9 @@
  * 일일 미션 4종 모달, 7일 연속 출석부 모달, 설정(Base64 백업/복원, 튜토리얼 다시보기, 언어 스위치) 제어
  */
 
-import { BREEDS, COSTUMES, QUEST_DEFS } from '../data/catalog.js';
-import { CHAPTERS, getChapter, getChapterNumberForUnit } from '../data/chapters.js';
-import { applyI18nToDOM, getLanguage, t } from '../data/i18n.js';
+import { BREEDS, QUEST_DEFS } from '../data/catalog.js';
+import { getChapter, getChapterNumberForUnit } from '../data/chapters.js';
+import { t } from '../data/i18n.js';
 import { getTotalUnits } from '../data/data_en.js?v=2';
 import { formatCourseBadge, getActiveCefrWords } from '../core/courseEngine.js';
 import {
@@ -147,7 +147,6 @@ export function createLobbyUI({
     openNoticeModal,
     openProfileModal,
     openSettingsModal,
-    openCourseSetupModal,
     openWordLevelSelectModal,
     createLobbyOnboardingTour,
   } = createLobbyModals({

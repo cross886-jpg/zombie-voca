@@ -4,7 +4,6 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { getTotalUnits } from './data_en.js?v=2';
 
 export const CHAPTERS = Object.freeze([
   {

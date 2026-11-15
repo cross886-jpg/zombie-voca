@@ -8,7 +8,6 @@ import { audioEngine } from '../../core/audioEngine.js';
 import { LANG_META, WORD_LEVEL_TIERS } from '../../core/courseEngine.js';
 import { computePlayerStats } from '../../entities/player.js';
 import { renderDogToCanvas } from '../../render/dogRenderer.js';
-import { createPlacementSession } from '../../game/placementTest.js';
 
 export function openInitialStudyLangModal(ctx, { onStartTutorial } = {}) {
   const { openModal, closeModal, refreshHeader } = ctx;
@@ -331,7 +330,7 @@ export function openWordLevelSelectModal(ctx, options = {}) {
     }
 
     updateSave((s) => {
-      s.hasSelectedWordLevel = true;
+      s.hasSelectedWordLevel = isChange ? true : false;
       s.wordLevelTier = tier.id;
       s.wordUnitOffset = Number(tier.unitOffset) || 0;
       s.selectedLevelLabel = tier.badgeLabel;
@@ -348,11 +347,13 @@ export function openWordLevelSelectModal(ctx, options = {}) {
     if (!isChange) {
       const cur = getSave();
       onStartBattle?.({
-        chapterNumber: cur.selectedChapter || 1,
+        chapterNumber: 1,
         courseId: cur.selectedCourse || 'lv1',
-        unitId: cur.selectedUnit || 'unit_001',
-        isPlacement: false,
-        isPlacementTest: false,
+        unitId: 'unit_001',
+        isPlacement: true,
+        isPlacementTest: true,
+        selectedTier: tier,
+        targetUnitNum: Number(tier.unitOffset) + 1,
       });
     }
   }
@@ -462,6 +463,9 @@ export function openWordLevelSelectModal(ctx, options = {}) {
 
     document.getElementById('btn-start-quick-quiz')?.addEventListener('click', () => {
       closeModal();
+      updateSave((s) => {
+        s.hasSelectedWordLevel = false;
+      });
       const cur = getSave();
       onStartBattle?.({
         chapterNumber: 1,
@@ -472,183 +476,6 @@ export function openWordLevelSelectModal(ctx, options = {}) {
         targetUnitNum: 1,
       });
     });
-  }
-
-  function startQuickQuiz() {
-    const session = createPlacementSession(lang);
-    let isSubmitting = false;
-
-    function renderQuestion() {
-      if (session.isFinished()) {
-        finishQuiz();
-        return;
-      }
-
-      const q = session.getCurrentQuestion();
-      if (!q) {
-        finishQuiz();
-        return;
-      }
-
-      const currentNum = session.currentIndex + 1;
-      const totalNum = session.totalQuestions;
-
-      openModal(`
-        <div class="space-y-4 py-1">
-          <div class="flex items-center justify-between pb-2 border-b border-[#d2c8b4]">
-            <div class="flex items-center gap-2">
-              <span class="text-xl">🎯</span>
-              <span class="text-xs font-black text-[#1f2d24]">빠른 실력 진단</span>
-            </div>
-            <div class="text-xs font-black text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300">
-              ${currentNum} / ${totalNum}
-            </div>
-          </div>
-
-          <div class="w-full h-1.5 rounded-full bg-[#142c20]/15 overflow-hidden">
-            <div class="h-full bg-amber-500 transition-all duration-300" style="width: ${(currentNum / totalNum) * 100}%"></div>
-          </div>
-
-          <div class="text-center py-4 px-3 rounded-2xl bg-[#efe9dc] border border-[#d2c8b4]">
-            <span class="text-[10px] font-extrabold text-[#5c6e60] tracking-wider uppercase">${q.tierName} 단어</span>
-            <div class="text-2xl font-black text-[#1f2d24] mt-1 tracking-wide">${q.word}</div>
-            <div class="text-[11px] text-[#5c6e60] mt-1">이 단어의 올바른 뜻은 무엇일까요?</div>
-          </div>
-
-          <div id="quiz-feedback-box" class="min-h-[20px] text-center text-xs font-black text-rose-600 hidden">
-            오답입니다. 다음 문제로 이동합니다.
-          </div>
-
-          <div class="grid grid-cols-2 gap-2">
-            ${q.choices.map((choice) => `
-              <button
-                type="button"
-                data-choice="${choice.replace(/"/g, '&quot;')}"
-                class="quiz-choice-btn py-3 px-2 rounded-xl border border-[#d2c8b4] bg-[#faf6ee] text-[#1f2d24] font-black text-xs hover:bg-emerald-50 hover:border-emerald-300 active:scale-95 transition text-center cursor-pointer shadow-2xs"
-              >
-                ${choice}
-              </button>
-            `).join('')}
-          </div>
-
-          <button
-            id="btn-quiz-dont-know"
-            type="button"
-            class="w-full py-2.5 rounded-xl border border-dashed border-[#b0a590] text-[#6b5e48] hover:bg-[#ede7d8] text-xs font-bold active:scale-95 transition cursor-pointer"
-          >
-            ❓ 잘 모르겠어요
-          </button>
-        </div>
-      `);
-
-      isSubmitting = false;
-
-      document.querySelectorAll('.quiz-choice-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          if (isSubmitting) return;
-          const selected = btn.getAttribute('data-choice');
-          handleAnswer(selected, btn);
-        });
-      });
-
-      document.getElementById('btn-quiz-dont-know')?.addEventListener('click', () => {
-        if (isSubmitting) return;
-        const btn = document.getElementById('btn-quiz-dont-know');
-        handleAnswer(null, btn);
-      });
-    }
-
-    function handleAnswer(choice, clickedBtn) {
-      if (isSubmitting) return;
-      isSubmitting = true;
-
-      const res = session.submitAnswer(choice);
-
-      // Rule 4: 오답 또는 모름 시 정답을 일체 노출하지 않음
-      if (res.isCorrect) {
-        audioEngine.playCaptureTick?.();
-        if (clickedBtn) {
-          clickedBtn.classList.remove('bg-[#faf6ee]', 'border-[#d2c8b4]');
-          clickedBtn.classList.add('bg-emerald-100', 'border-emerald-400', 'text-emerald-800');
-        }
-        setTimeout(() => {
-          if (res.isFinished) {
-            finishQuiz();
-          } else {
-            renderQuestion();
-          }
-        }, 250);
-      } else {
-        audioEngine.playEnemyHit?.();
-        if (clickedBtn) {
-          clickedBtn.classList.remove('bg-[#faf6ee]', 'border-[#d2c8b4]');
-          clickedBtn.classList.add('bg-rose-100', 'border-rose-400', 'text-rose-700');
-        }
-        const fb = document.getElementById('quiz-feedback-box');
-        if (fb) {
-          fb.classList.remove('hidden');
-        }
-        setTimeout(() => {
-          if (res.isFinished) {
-            finishQuiz();
-          } else {
-            renderQuestion();
-          }
-        }, 400);
-      }
-    }
-
-    function finishQuiz() {
-      const result = session.getResult();
-      const recommendedTier = result.recommendedTier;
-      const recommendMsg = result.recommendMsg || recommendedTier.recommendMsg || '나에게 딱 맞는 레벨로 시작해 보세요!';
-
-      openModal(`
-        <div class="text-center space-y-4 py-2">
-          <div class="text-4xl">🎯✨</div>
-          <div class="space-y-1.5">
-            <div class="text-xs font-bold text-[#5c6e60]">실력 진단 완료!</div>
-            <h3 class="text-base sm:text-lg font-black text-[#1f2d24]">
-              회원님께 딱 맞는 추천 레벨은 <br/>
-              <span class="text-emerald-700 font-black text-xl">[ ${recommendedTier.label} ]</span> 입니다!
-            </h3>
-            <p class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 py-1.5 px-3 rounded-xl inline-block mt-1">
-              "${recommendMsg}"
-            </p>
-            <p class="text-[11px] text-[#5c6e60] mt-1">
-              정답: <b>${result.score}</b> / ${session.totalQuestions}문제
-            </p>
-          </div>
-
-          <div class="space-y-2 pt-2">
-            <button
-              id="btn-apply-recommended-level"
-              type="button"
-              class="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 text-white font-black text-sm shadow-md active:scale-95 transition cursor-pointer"
-            >
-              ⚔️ [ 추천 레벨로 바로 출격! ]
-            </button>
-            <button
-              id="btn-choose-other-level"
-              type="button"
-              class="w-full py-2.5 rounded-xl border border-[#d2c8b4] bg-[#faf6ee] text-[#4a584e] hover:text-[#1f2d24] text-xs font-bold active:scale-95 transition cursor-pointer"
-            >
-              다른 레벨 직접 선택하기
-            </button>
-          </div>
-        </div>
-      `);
-
-      document.getElementById('btn-apply-recommended-level')?.addEventListener('click', () => {
-        applyTierAndLaunch(recommendedTier);
-      });
-
-      document.getElementById('btn-choose-other-level')?.addEventListener('click', () => {
-        renderLevelSelection(recommendedTier.id);
-      });
-    }
-
-    renderQuestion();
   }
 
   renderLevelSelection();

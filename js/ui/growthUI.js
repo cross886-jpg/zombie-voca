@@ -7,16 +7,12 @@
 
 import {
   BALANCE,
-  MAX_EQUIPPED_COMPANIONS,
-  getTrainingBonusValue,
   getTrainingUpgradeCost,
-  isCompanionUnlockable,
 } from '../config/balance.js';
 import {
   BREEDS,
   COMPANIONS,
   COSTUMES,
-  SNACKS,
   getCostumeCollectionBonus,
   isBreedUnlocked,
   isCompanionUnlocked,

@@ -11,7 +11,6 @@ import { getSave, updateSave, recordQuestProgress } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
 import { wordEngine } from '../core/wordEngine.js';
 import { recordStudyMastery, formatCourseBadge } from '../core/courseEngine.js';
-import { GAME_STATES } from './gameEngine.js';
 
 export class WordEventManager {
   constructor(engine) {
@@ -73,9 +72,13 @@ export class WordEventManager {
     }
 
     // 28번 문제(index 27) 진입 시 챕터 보스 등장 + 1.5초 줌아웃→줌인 연출 (월반 및 튜토리얼 제외)
-    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !engine.enemies.boss) {
-      engine.enemies.spawnBoss(engine.chapter, 1.0, engine.player.x, engine.player.y);
-      engine.camera.triggerZoomSequence(BALANCE.BOSS.ZOOM_SEQUENCE_SEC);
+    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && !engine.runStats.isPlacementTest && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !engine.enemies.boss) {
+      engine.stageDirector.spawnBoss();
+    }
+
+    // 실력 진단 테스트: 5번째 문제 완료 직후(6번째 문제 진입 시점: questionIndex >= 5) 스테이지 군단장 보스 출현
+    if (engine.runStats.isPlacementTest && this.questionIndex >= 5 && !engine.enemies.boss) {
+      engine.stageDirector.spawnBoss();
     }
 
     this.currentWord = this.deck[this.questionIndex];
@@ -165,6 +168,37 @@ export class WordEventManager {
       engine.combat.triggerCorrectShockwave(monolith, engine.camera, engine.player);
       audioEngine.playCorrect();
 
+      // [실력 진단 테스트 전용]: 8번째 정답(correctCount === 8) 시 랜덤 서포트 1마리 구출 & 배치 방법 튜토리얼 안내
+      if (engine.runStats.isPlacementTest && engine.runStats.correctCount === 8 && !engine.runStats.placementCompanionRescued) {
+        engine.runStats.placementCompanionRescued = true;
+        const curSave = getSave();
+        const unlocked = curSave.companions?.unlocked || [];
+        const unrescued = COMPANIONS.filter((c) => !unlocked.includes(c.id));
+        const candidateList = unrescued.length > 0 ? unrescued : COMPANIONS;
+        const rescuedDef = candidateList[Math.floor(Math.random() * candidateList.length)];
+
+        updateSave((s) => {
+          if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
+          if (!s.companions.unlocked) s.companions.unlocked = [];
+          if (!s.companions.unlocked.includes(rescuedDef.id)) {
+            s.companions.unlocked.push(rescuedDef.id);
+          }
+          s.unlockedCompanions = s.companions.unlocked;
+        });
+
+        audioEngine.playPowerUp?.();
+        engine.combat.spawnDamageText(monolith.x, monolith.y - 42, `🎉 ${rescuedDef.name} 구출 성공!`, '#34d399', 1.5);
+
+        // 게임 일시정지 후 안내 팝업 표출
+        engine.pause();
+        engine.handlers.onCompanionRescueTutorial?.({
+          companion: rescuedDef,
+          onConfirm: () => {
+            engine.resume();
+          },
+        });
+      }
+
       // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품 (튜토리얼, 월반, 실력 진단 테스트 제외)
       if (!engine.runStats.isTutorial && !engine.runStats.isPlacementTest && !engine.runStats.isPlacement) {
         // 스테이지당 동료 구출은 최대 1회(1마리)로 제한
@@ -227,8 +261,12 @@ export class WordEventManager {
 
         if (bossRes.defeated) {
           recordQuestProgress('bossKills', 1);
-          engine._finishStage(true);
-          return;
+          engine.runStats.bossDefeated = true;
+          engine.combat.spawnDamageText(engine.enemies.boss.x, engine.enemies.boss.y - 70, '💥 보스 격파 성공!', '#fbbf24', 2.0);
+          if (!engine.runStats.isPlacementTest) {
+            engine._finishStage(true);
+            return;
+          }
         }
       }
     } else {
@@ -308,7 +346,8 @@ export class WordEventManager {
       if (engine.runStats.answeredCount >= 10 || this.questionIndex >= 10 || this.questionIndex >= this.deck.length) {
         engine.monoliths.clearMonoliths();
         this.waitingRespawn = false;
-        engine._finishStage(true);
+        const cleared = engine.runStats.correctCount >= 7 && Boolean(engine.runStats.bossDefeated);
+        engine._finishStage(cleared);
         return;
       }
     }

@@ -53,7 +53,7 @@ async function bootstrap() {
       hudUI.closeModal();
       hudUI.hideHud();
       lobbyUI?.showLobby();
-      lobbyUI?.openWordLevelSelectModal?.({ isChange: true });
+      lobbyUI?.openWordLevelSelectModal?.({ isChange: false });
     },
     onStartPath(path) {
       hudUI.closeModal();
@@ -66,19 +66,19 @@ async function bootstrap() {
     },
   });
 
-  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2', isPlacement = false, isPlacementTest = false, targetUnitNum = 1 } = {}) {
+  function startBattleFlow({ chapterNumber, courseId, unitId, isTutorial = false, isPromotion = false, targetLevel = 'A2', isPlacement = false, isPlacementTest = false, targetUnitNum = 1, selectedTier = null } = {}) {
     audioEngine.unlock();
     lobbyUI.closeModal();
     lobbyUI.hideLobby();
     hudUI.closeModal();
     hudUI.showHud();
     canvas.classList.remove('hidden');
-    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel, isPlacement, isPlacementTest, targetUnitNum });
+    engine.startBattle({ chapterNumber, courseId, unitId, isTutorial, isPromotion, targetLevel, isPlacement, isPlacementTest, targetUnitNum, selectedTier });
   }
 
   lobbyUI = createLobbyUI({
-    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, isPlacementTest = false, targetUnitNum = 1, isPromotion = false, targetLevel = null } = {}) {
-      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, isPlacementTest, targetUnitNum, isPromotion, targetLevel });
+    onStartBattle({ chapterNumber, courseId, unitId, isPlacement = false, isPlacementTest = false, targetUnitNum = 1, isPromotion = false, targetLevel = null, selectedTier = null } = {}) {
+      startBattleFlow({ chapterNumber, courseId, unitId, isTutorial: false, isPlacement, isPlacementTest, targetUnitNum, isPromotion, targetLevel, selectedTier });
     },
     onStartTutorial() {
       if (!getSave().langSelected) {

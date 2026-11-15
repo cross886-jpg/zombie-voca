@@ -13,8 +13,6 @@ import { getWords as getSpanishWords } from '../data/data_es.js';
 /** 스페인어 단어 id가 영어 단어 id(wordStats 키)와 충돌하지 않도록 분리하는 오프셋 */
 export const ES_ID_OFFSET = 100000;
 export const BAND_COUNT = STUDY_CEFRS.length * 3;
-export const PLACEMENT_QUESTION_COUNT = 10;
-export const PLACEMENT_PASS_COUNT = 7;
 
 export const TIER_GAUGE = Object.freeze({ 1: '◈◇◇', 2: '◈◈◇', 3: '◈◈◈' });
 
@@ -163,16 +161,6 @@ export const WORD_LEVEL_TIERS = Object.freeze([
     recommendMsg: '최상위 마스터 어휘에 도전해 보세요!',
   },
 ]);
-
-export function getTierForUnit(unitNum) {
-  const n = Number(unitNum) || 1;
-  for (let i = WORD_LEVEL_TIERS.length - 1; i >= 0; i--) {
-    if (n >= WORD_LEVEL_TIERS[i].unit) {
-      return WORD_LEVEL_TIERS[i];
-    }
-  }
-  return WORD_LEVEL_TIERS[0];
-}
 
 export function calcQuizRecommendedTier(score) {
   const s = Math.max(0, Number(score) || 0);
@@ -496,30 +484,4 @@ export function confirmCourseSelection(lang, cefr, tier) {
   });
 }
 
-/**
- * 선택 구간 전체 유닛에서 서로 다른 단어 10문제를 무작위 추출해 난이도(순번)순 4지선다로 구성
- * @returns {Array<{ word: string, phonetic: string, choices: Array<{ meaning: string, isCorrect: boolean }> }>}
- */
-export function buildPlacementTest(lang, cefr, tier) {
-  const pool = getBandWords(lang, getBandIndex(cefr, tier));
-  const picked = shuffle(pool)
-    .slice(0, PLACEMENT_QUESTION_COUNT)
-    .sort((a, b) => a.id - b.id);
-
-  return picked.map((target) => {
-    const distractors = [];
-    const usedMeanings = new Set([target.meaning]);
-    for (const cand of shuffle(pool)) {
-      if (distractors.length >= 3) break;
-      if (usedMeanings.has(cand.meaning)) continue;
-      usedMeanings.add(cand.meaning);
-      distractors.push(cand);
-    }
-    const choices = shuffle([
-      { meaning: target.meaning, isCorrect: true },
-      ...distractors.map((d) => ({ meaning: d.meaning, isCorrect: false })),
-    ]);
-    return { word: target.word, phonetic: target.phonetic || '', choices };
-  });
-}
 

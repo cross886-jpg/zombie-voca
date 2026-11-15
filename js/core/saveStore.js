@@ -5,7 +5,6 @@
 
 import { BALANCE } from '../config/balance.js';
 import {
-  WEAPONS,
   PET_TREATS,
   SUPPLY_BOX_DEFS,
   ATTENDANCE_30_REWARDS,

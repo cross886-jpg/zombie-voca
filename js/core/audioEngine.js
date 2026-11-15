@@ -447,6 +447,41 @@ export const audioEngine = {
     setTimeout(() => playTone(440, 0.2, 'sine', 0.16), 90);
   },
 
+  playBossSiren() {
+    const { audio } = getSave();
+    if (!audio.sfxEnabled) return;
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      // 2단계 긴박한 보스 사이렌 주파수 스윕 (440Hz -> 880Hz -> 520Hz -> 960Hz, 약 1.35초)
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.linearRampToValueAtTime(880, now + 0.55);
+      osc.frequency.linearRampToValueAtTime(520, now + 0.85);
+      osc.frequency.linearRampToValueAtTime(960, now + 1.35);
+
+      const vol = (audio.sfxVolume ?? 0.5) * 0.28;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(vol, now + 0.12);
+      gain.gain.setValueAtTime(vol, now + 1.15);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.45);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 1.48);
+      this.triggerHaptic([60, 50, 80, 50, 100]);
+    } catch {
+      // ignore
+    }
+  },
+
   playLevelUp() {
     [440, 554.37, 659.25, 880].forEach((f, idx) => {
       setTimeout(() => playTone(f, 0.14, 'triangle', 0.15), idx * 75);

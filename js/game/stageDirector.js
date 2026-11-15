@@ -4,7 +4,7 @@
  * 보스전 등장 연출 및 스테이지 클리어/패배 정산 모듈
  */
 
-import { BALANCE, calcStageReward } from '../config/balance.js';
+import { BALANCE, GAME_STATES, calcStageReward } from '../config/balance.js';
 import { getChapter, getChapterNumberForUnit } from '../data/chapters.js';
 import { getTotalUnits } from '../data/data_en.js?v=2';
 import { getSave, updateSave, recordQuestProgress } from '../core/saveStore.js';
@@ -12,7 +12,6 @@ import { audioEngine } from '../core/audioEngine.js';
 import { wordEngine } from '../core/wordEngine.js';
 import { getCurrentStudyUnitId, getLangUnitWords, calcPlacementTier, WORD_LEVEL_TIERS } from '../core/courseEngine.js';
 import { generatePlacementDeck, evaluatePlacementScore } from './placementTest.js';
-import { GAME_STATES } from './gameEngine.js';
 
 export class StageDirector {
   constructor(engine) {
@@ -29,6 +28,7 @@ export class StageDirector {
     isPlacement = false,
     isPlacementTest = false,
     targetUnitNum = 1,
+    selectedTier = null,
   } = {}) {
     const engine = this.engine;
     engine.resizeCanvas();
@@ -51,9 +51,9 @@ export class StageDirector {
     const startX = engine.arenaWidth / 2;
     const startY = engine.arenaHeight / 2;
 
-    const minHpRatio = isTutorial ? 0.5 : (isAnyPlacement ? 0.2 : 0.1);
+    const minHpRatio = isTutorial ? 0.5 : (isPlacementTest ? 0.1 : (isAnyPlacement ? 0.2 : 0.1));
     engine.player.resetForBattle(startX, startY, save, {
-      isProtected: Boolean(isTutorial || isAnyPlacement),
+      isProtected: Boolean(isTutorial || isAnyPlacement || isPlacementTest),
       minHpRatio,
     });
     if (isPlacementTest || isPlacement) {
@@ -89,9 +89,11 @@ export class StageDirector {
       targetLevel,
       isPlacement: isAnyPlacement,
       isPlacementTest: Boolean(isPlacementTest),
+      selectedTier,
       targetUnitNum: resolvedTargetUnitNum,
       placementLives: isPlacementTest ? null : (isPlacement ? 3 : null),
       placementPassed: false,
+      bossDefeated: false,
       rescuedCompanionCount: 0, // 스테이지당 동료 구출 최대 1회 제한 카운터
     };
 
@@ -108,7 +110,7 @@ export class StageDirector {
       this.spawnInitialWave('promotion', startX, startY);
     } else if (isAnyPlacement) {
       engine.tutorial.stop();
-      engine.deck = generatePlacementDeck(save.studyLang || 'en');
+      engine.deck = generatePlacementDeck(save.studyLang || 'en', selectedTier);
       this.spawnInitialWave('placement', startX, startY);
     } else {
       engine.tutorial.stop();
@@ -168,6 +170,7 @@ export class StageDirector {
     const engine = this.engine;
     engine.enemies.spawnBoss(engine.chapter, 1.0, engine.player.x, engine.player.y);
     engine.camera.triggerZoomSequence(BALANCE.BOSS.ZOOM_SEQUENCE_SEC);
+    audioEngine.playBossSiren?.();
   }
 
   completeTutorialToLobby() {
@@ -238,10 +241,16 @@ export class StageDirector {
       const isPlacementTest = Boolean(engine.runStats.isPlacementTest);
       const correctCount = engine.runStats.correctCount;
       const lives = engine.runStats.placementLives;
-      const placementPassed = isPlacementTest ? true : (cleared && lives > 0);
+      const bossDefeated = Boolean(engine.runStats.bossDefeated);
+      const placementPassed = isPlacementTest ? (correctCount >= 7 && bossDefeated) : (cleared && lives > 0);
+
+      engine.runStats.placementPassed = placementPassed;
+      engine.runStats.bossDefeated = bossDefeated;
 
       const assignedTier = isPlacementTest
-        ? evaluatePlacementScore(correctCount)
+        ? (engine.runStats.selectedTier
+          ? (placementPassed ? engine.runStats.selectedTier : evaluatePlacementScore(correctCount))
+          : evaluatePlacementScore(correctCount))
         : (placementPassed ? calcPlacementTier(correctCount, lives) : WORD_LEVEL_TIERS[0]);
 
       updateSave((s) => {
@@ -258,8 +267,10 @@ export class StageDirector {
         isPlacement: true,
         isPlacementTest,
         placementPassed,
+        bossDefeated,
         targetUnitNum: 1,
         assignedTier,
+        selectedTier: engine.runStats.selectedTier,
         correctCount: engine.runStats.correctCount,
         lives: engine.runStats.placementLives,
         kills: engine.combat.kills,

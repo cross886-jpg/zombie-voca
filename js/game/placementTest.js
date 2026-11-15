@@ -41,47 +41,92 @@ export function getFilteredWordPool(lang = 'en') {
 }
 
 /**
- * 총 10문제 진단 덱 생성 (초급 3문제 → 중급 4문제 → 고급 3문제)
+ * 총 10문제 진단 덱 생성
+ * - 특정 레벨(selectedTier) 응시 시: 해당 레벨 난이도 범위 10문제 집중 출제
+ * - 빠른 실력 테스트(미선택) 시: 초급 3문제 → 중급 4문제 → 고급 3문제 순차 출제
  * @param {'en'|'es'} lang
+ * @param {object|null} selectedTier
  * @returns {Array<object>}
  */
-export function generatePlacementDeck(lang = 'en') {
+export function generatePlacementDeck(lang = 'en', selectedTier = null) {
   const allWords = getFilteredWordPool(lang);
-
-  const beginnerPool = shuffle(allWords.filter((w) => w.level === 'A1'));
-  const intermediatePool = shuffle(allWords.filter((w) => w.level === 'A2' || w.level === 'B1'));
-  const advancedPool = shuffle(allWords.filter((w) => w.level === 'B2' || w.level === 'C1'));
 
   const usedIds = new Set();
   const usedSpellings = new Set();
   const pickedWords = [];
 
-  function pickFromPool(pool, count, tierKey, tierName) {
-    let picked = 0;
+  if (selectedTier) {
+    const tierOffset = Number(selectedTier.unitOffset) || 0;
+    // 1차: 해당 티어의 유닛 범위 (unitOffset ~ unitOffset + 80)
+    let tierWords = allWords.filter((w) => {
+      const uNum = parseInt((w.unit || '').replace(/\D/g, ''), 10) || 1;
+      return uNum > tierOffset && uNum <= tierOffset + 80;
+    });
+    // 보조: 유닛 범위 단어가 부족할 경우 CEFR 등급 일치 단어로 확장
+    if (tierWords.length < PLACEMENT_CONFIG.TOTAL_QUESTIONS) {
+      const cefrWords = allWords.filter((w) => w.level === selectedTier.cefr || (selectedTier.groupCefr && selectedTier.groupCefr.includes(w.level)));
+      tierWords = [...tierWords, ...cefrWords];
+    }
+    const pool = shuffle(tierWords);
     for (const w of pool) {
-      if (picked >= count) break;
+      if (pickedWords.length >= PLACEMENT_CONFIG.TOTAL_QUESTIONS) break;
       const lower = w.word.toLowerCase();
       if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
-
       usedIds.add(w.id);
       usedSpellings.add(lower);
       pickedWords.push({
         wordObj: w,
-        tierKey,
-        tierName,
+        tierKey: selectedTier.id || 'tier',
+        tierName: selectedTier.badgeLabel || selectedTier.label || '선택 레벨',
       });
-      picked++;
     }
+    // 안전 보충: 전체 풀에서 중복 없이 보충
+    if (pickedWords.length < PLACEMENT_CONFIG.TOTAL_QUESTIONS) {
+      for (const w of shuffle(allWords)) {
+        if (pickedWords.length >= PLACEMENT_CONFIG.TOTAL_QUESTIONS) break;
+        const lower = w.word.toLowerCase();
+        if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
+        usedIds.add(w.id);
+        usedSpellings.add(lower);
+        pickedWords.push({
+          wordObj: w,
+          tierKey: selectedTier.id || 'tier',
+          tierName: selectedTier.badgeLabel || selectedTier.label || '선택 레벨',
+        });
+      }
+    }
+  } else {
+    const beginnerPool = shuffle(allWords.filter((w) => w.level === 'A1'));
+    const intermediatePool = shuffle(allWords.filter((w) => w.level === 'A2' || w.level === 'B1'));
+    const advancedPool = shuffle(allWords.filter((w) => w.level === 'B2' || w.level === 'C1'));
+
+    function pickFromPool(pool, count, tierKey, tierName) {
+      let picked = 0;
+      for (const w of pool) {
+        if (picked >= count) break;
+        const lower = w.word.toLowerCase();
+        if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
+
+        usedIds.add(w.id);
+        usedSpellings.add(lower);
+        pickedWords.push({
+          wordObj: w,
+          tierKey,
+          tierName,
+        });
+        picked++;
+      }
+    }
+
+    // 1) 초급 3문제
+    pickFromPool(beginnerPool, PLACEMENT_CONFIG.BEGINNER_COUNT, 'beginner', '초급');
+    // 2) 중급 4문제
+    pickFromPool(intermediatePool, PLACEMENT_CONFIG.INTERMEDIATE_COUNT, 'intermediate', '중급');
+    // 3) 고급 3문제
+    pickFromPool(advancedPool, PLACEMENT_CONFIG.ADVANCED_COUNT, 'advanced', '고급');
   }
 
-  // 1) 초급 3문제
-  pickFromPool(beginnerPool, PLACEMENT_CONFIG.BEGINNER_COUNT, 'beginner', '초급');
-  // 2) 중급 4문제
-  pickFromPool(intermediatePool, PLACEMENT_CONFIG.INTERMEDIATE_COUNT, 'intermediate', '중급');
-  // 3) 고급 3문제
-  pickFromPool(advancedPool, PLACEMENT_CONFIG.ADVANCED_COUNT, 'advanced', '고급');
-
-  // 전체 오답 보기 후보군 풀
+  // 전체 오답 보기 후보군 풀 (동일 언어 뜻만 사용)
   const allMeanings = Array.from(new Set(allWords.map((w) => w.meaning.trim()))).filter((m) => m.length > 0);
 
   return pickedWords.map((item, index) => {
@@ -137,78 +182,3 @@ export function evaluatePlacementScore(score) {
   return WORD_LEVEL_TIERS[0]; // 0 ~ 2: 초급 Lv.1
 }
 
-/**
- * 실력 진단 세션 생성자
- * @param {'en'|'es'} [lang='en']
- */
-export function createPlacementSession(lang = 'en') {
-  const deck = generatePlacementDeck(lang);
-  let currentIndex = 0;
-  let score = 0;
-  const history = [];
-
-  return {
-    get totalQuestions() {
-      return deck.length;
-    },
-    get currentIndex() {
-      return currentIndex;
-    },
-    get score() {
-      return score;
-    },
-    isFinished() {
-      return currentIndex >= deck.length;
-    },
-    getCurrentQuestion() {
-      if (currentIndex >= deck.length) return null;
-      const q = deck[currentIndex];
-      return {
-        index: q.index,
-        tierKey: q.tierKey,
-        tierName: q.tierName,
-        word: q.word,
-        choices: [...q.choices],
-      };
-    },
-    /**
-     * 답변 제출 처리 (정답 여부만 반환하고 정답 텍스트는 일체 비공개)
-     * @param {string|null} selectedChoice (선택한 뜻 문자열 또는 '잘 모르겠어요' 시 null)
-     * @returns {{ isCorrect: boolean, isFinished: boolean, currentIndex: number }}
-     */
-    submitAnswer(selectedChoice) {
-      if (currentIndex >= deck.length) {
-        return { isCorrect: false, isFinished: true, currentIndex };
-      }
-      const q = deck[currentIndex];
-      const isCorrect = Boolean(selectedChoice && selectedChoice.trim() === q._correctMeaning);
-
-      if (isCorrect) {
-        score++;
-      }
-      history.push({
-        questionIndex: currentIndex,
-        word: q.word,
-        isCorrect,
-      });
-
-      currentIndex++;
-      const finished = currentIndex >= deck.length;
-      return {
-        isCorrect,
-        isFinished: finished,
-        currentIndex,
-      };
-    },
-    getResult() {
-      const recommendedTier = evaluatePlacementScore(score);
-      return {
-        score,
-        totalQuestions: deck.length,
-        recommendedTier,
-        recommendMsg: recommendedTier.recommendMsg,
-        history,
-      };
-    },
-  };
-}

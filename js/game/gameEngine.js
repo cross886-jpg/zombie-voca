@@ -3,10 +3,9 @@
  * 60fps 메인 루프 (dt <= 0.05s 클램프), 5대 게임 상태 통제, 30문제 덱 & 1.5초 비석 리스폰 지휘관
  */
 
-import { BALANCE, getTrainingBonusValue } from '../config/balance.js';
+import { BALANCE, GAME_STATES, getTrainingBonusValue } from '../config/balance.js';
 import { SKILLS } from '../data/catalog.js';
 import { getChapter } from '../data/chapters.js';
-import { t } from '../data/i18n.js';
 import { getSave, updateSave, addAffection, recordQuestProgress } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
 
@@ -21,14 +20,7 @@ import { TutorialController } from './tutorial.js';
 import { WordEventManager } from './wordEventManager.js';
 import { StageDirector } from './stageDirector.js';
 
-export const GAME_STATES = Object.freeze({
-  IDLE: 'IDLE',
-  PLAYING: 'PLAYING',
-  PAUSED: 'PAUSED',
-  LEVELUP_MODAL: 'LEVELUP_MODAL',
-  GAMEOVER_MODAL: 'GAMEOVER_MODAL',
-  CLEAR: 'CLEAR',
-});
+export { GAME_STATES };
 
 export class GameEngine {
   constructor(canvas) {
@@ -491,7 +483,7 @@ export class GameEngine {
             this.enemies.spawnEnemy('walker', zx, zy, 0.85, 0.65, 0.92);
           }
         }
-        if (this.tutorial.checkStep1Advance(this.combat.kills)) {
+        if (this.tutorial.checkStep1Advance(this.combat.kills, dt)) {
           if (this.deck[0]?.word) {
             audioEngine.speakWordOnce(this.deck[0].word);
           }
@@ -565,13 +557,13 @@ export class GameEngine {
       this.player.isProtectedMode
     );
     if (isProtected) {
-      const minRatio = this.runStats.isTutorial ? 0.5 : 0.2;
+      const minRatio = this.runStats.isTutorial ? 0.5 : (this.runStats.isPlacementTest ? 0.1 : (this.player.protectedMinHpRatio ?? 0.1));
       const minHp = Math.ceil(this.player.maxHp * minRatio);
       this.player.hp = Math.max(minHp, this.player.hp);
     }
 
-    // 사망 판정 (보호 모드일 때는 사망 모달 실행 원천 차단)
-    if (this.player.hp <= 0 && !isProtected) {
+    // 사망 판정 (보호 모드 및 실력 진단 테스트일 때는 사망 모달 실행 원천 차단)
+    if (this.player.hp <= 0 && !isProtected && !this.runStats.isPlacementTest) {
       this.state = GAME_STATES.GAMEOVER_MODAL;
       audioEngine.pauseAll();
       this.handlers.onGameOver?.({ canRevive: !this.runStats.revivedOnce });

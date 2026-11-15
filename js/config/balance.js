@@ -8,6 +8,15 @@ import { COMPANIONS } from '../data/catalog.js';
 
 export const MAX_EQUIPPED_COMPANIONS = 3;
 
+export const GAME_STATES = Object.freeze({
+  IDLE: 'IDLE',
+  PLAYING: 'PLAYING',
+  PAUSED: 'PAUSED',
+  LEVELUP_MODAL: 'LEVELUP_MODAL',
+  GAMEOVER_MODAL: 'GAMEOVER_MODAL',
+  CLEAR: 'CLEAR',
+});
+
 export const BALANCE = Object.freeze({
   ENGINE: {
     LOGICAL_WIDTH: 480,
@@ -183,8 +192,9 @@ export const BALANCE = Object.freeze({
   TUTORIAL: {
     QUESTION_COUNT: 3,
     INITIAL_ZOMBIES: 18,
-    STEP1_TARGET_KILLS: 2,
-    STEP1_MIN_MOVE_DIST: 24,
+    STEP1_TARGET_KILLS: 1, // 기존 2마리에서 1마리로 50% 단축
+    STEP1_MIN_MOVE_DIST: 16, // 기존 24px에서 조이스틱 반응 거리 단축
+    STEP1_DELAY_SEC: 1.2, // 방향 전환 완료 후 최대 대기 시간 간격 단축
     STEP4_EXPLAIN_SEC: 1.8,
     STEP5_GEM_ULT_CHARGE: 34,
     STEP5_KILL_ULT_CHARGE: 12,

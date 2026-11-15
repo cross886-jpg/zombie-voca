@@ -7,15 +7,12 @@
 
 import {
   getSave,
-  updateSave,
   checkAndSettleWeeklyLeague,
   getTimeUntilNextWeeklyReset,
   generateRivals,
   getWeekKey,
-  LEAGUE_TIERS,
 } from '../core/saveStore.js';
 import { BREEDS } from '../data/catalog.js';
-import { audioEngine } from '../core/audioEngine.js';
 
 const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
@@ -37,10 +34,6 @@ const BREED_ICONS = {
 
 export function createChallengeUI({ onResourcesChanged, openModal, closeModal, onStartPromotion }) {
   const panel = document.getElementById('tab-panel-challenge');
-
-  function getTodayString() {
-    return new Date().toISOString().slice(0, 10);
-  }
 
   function renderChallengeTab() {
     const targetPanel = panel || document.getElementById('tab-panel-challenge');
