@@ -62,8 +62,10 @@ export class TutorialController {
     if (this.hasMoved) {
       if (this.step1Timer === undefined) this.step1Timer = 0;
       if (dt > 0) this.step1Timer += dt;
-      const maxWait = BALANCE.TUTORIAL.STEP1_DELAY_SEC || 1.2;
-      if (kills >= targetKills || this.step1Timer >= maxWait) {
+      // 유저가 직접 움직여 보는 시간을 기존보다 2000ms(2초) 더 늘림
+      const minMoveWait = 2.0;
+      const maxWait = (BALANCE.TUTORIAL.STEP1_DELAY_SEC || 1.2) + 2.0;
+      if ((kills >= targetKills && this.step1Timer >= minMoveWait) || this.step1Timer >= maxWait) {
         this.step = 2;
         return true;
       }
@@ -147,8 +149,8 @@ export class TutorialController {
     updateSave((s) => {
       s.tutorialCompleted = true;
       s.tutorialDone = true;
-      s.onboardingCompleted = false;
-      s.onboardingStep = 0;
+      s.onboardingCompleted = true;
+      s.onboardingStep = 1;
       // 튜토리얼 훈련소 1회 강화(15금화) 후 약 20금화 여유가 남도록 초기 금화 35 보장
       if (typeof s.gold !== 'number' || s.gold <= 0) {
         s.gold = 35;

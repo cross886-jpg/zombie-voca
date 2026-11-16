@@ -119,11 +119,20 @@ export class CombatSystem {
     const target = this._findNearestTarget(player.x, player.y, skillDef.range + 70);
     const isAwakened = level >= 5;
 
-    if (skillDef.id === 'bark_sonic') {
+    if (skillDef.id === 'bark_sonic' || skillDef.id === 'bark') {
+      player.triggerMouthOpen?.(0.25);
       const weapon =
-        COSTUMES.find((c) => c.id === player.equipped?.weapon) ||
-        COSTUMES.find((c) => c.id === 'weapon_boomerang');
-      const wType = weapon?.projectileType || weapon?.type || 'bullet';
+        (player.equipped?.weapon && COSTUMES.find((c) => c.id === player.equipped?.weapon)) || {
+          projectileType: 'bullet',
+          projSpeed: 520,
+          projRadius: 6,
+          projColor: '#fbbf24',
+          shape: 'bullet',
+          pierce: 0,
+          aoeRadius: 0,
+          range: 160,
+        };
+      const wType = weapon.projectileType || weapon.type || 'bullet';
       const ang = target ? Math.atan2(target.y - player.y, target.x - player.x) : player.facingAngle;
       audioEngine.playBark();
 
@@ -428,8 +437,9 @@ export class CombatSystem {
         ttl: 8.0,
         armedTimer: 0.3,
       });
-    } else if (skillDef.id === 'bark_tornado') {
-      // [신규 4: 회오리 꼬리바람 / 🔥 Lv.5 각성: 슈퍼 토네이도]
+    } else if (skillDef.id === 'bark_tornado' || skillDef.id === 'tail_whirl') {
+      // [회오리 꼬리치기 / 토네이도 + 꼬리 흔들기 모션]
+      player.triggerTailWag?.(0.6);
       const ang = target ? Math.atan2(target.y - player.y, target.x - player.x) : player.facingAngle;
       const tAngles = isAwakened ? [ang - 0.24, ang + 0.24] : [ang];
 
@@ -448,6 +458,71 @@ export class CombatSystem {
           rotAngle: 0,
           ttl: isAwakened ? 2.8 : 2.2,
         });
+      }
+    } else if (skillDef.id === 'bite') {
+      // [야무지게 물어뜯기: 고속 하얀 이빨 에너지 탄환 + 입 벌림 모션]
+      player.triggerMouthOpen?.(0.25);
+      const ang = target ? Math.atan2(target.y - player.y, target.x - player.x) : player.facingAngle;
+      audioEngine.playHit?.();
+      const radScale = this.parrotAmplified ? 1.35 : 1.0;
+      this.spawnProjectile({
+        x: player.x,
+        y: player.y,
+        vx: Math.cos(ang) * 540,
+        vy: Math.sin(ang) * 540,
+        damage: Math.round(dmg * 1.35),
+        radius: Math.round(9 * radScale),
+        color: '#f8fafc',
+        shape: 'pellet',
+        pierce: isAwakened ? 2 : 0,
+        aoeRadius: 0,
+        ttl: 0.65,
+      });
+    } else if (skillDef.id === 'paw_swipe') {
+      // [앞발 날리기: 분홍 젤리 발바닥 스와이프 근접 공격]
+      player.triggerPawSwipe?.(0.25);
+      audioEngine.playCaptureTick?.();
+      const swipeRange = isAwakened ? 120 : 95;
+      const targets = [...this._enemyManager.enemies];
+      if (this._enemyManager.boss && this._enemyManager.boss.hp > 0) targets.push(this._enemyManager.boss);
+      for (const t of targets) {
+        const dx = t.x - player.x;
+        const dy = t.y - player.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= swipeRange) {
+          const ang = Math.atan2(dy, dx);
+          const diff = Math.abs(ang - player.facingAngle);
+          if (diff < 1.1 || diff > Math.PI * 2 - 1.1) {
+            this.damageEnemy(t, dmg, '#f472b6');
+            t.knockVx = Math.cos(ang) * 220;
+            t.knockVy = Math.sin(ang) * 220;
+          }
+        }
+      }
+    } else if (skillDef.id === 'hip_slam') {
+      // [엉덩이 쿵!: 360도 동심원 충격파 링 + 범위 넉백]
+      player.triggerHipSlam?.(0.35);
+      audioEngine.playPowerUp?.();
+      const ringRange = isAwakened ? 160 : 125;
+      this.shockwaves.push({
+        x: player.x,
+        y: player.y,
+        radius: 15,
+        maxRadius: ringRange,
+        color: '#fb923c',
+        ttl: 0.35,
+        maxTtl: 0.35,
+      });
+      const targets = [...this._enemyManager.enemies];
+      if (this._enemyManager.boss && this._enemyManager.boss.hp > 0) targets.push(this._enemyManager.boss);
+      for (const t of targets) {
+        const dist = Math.hypot(t.x - player.x, t.y - player.y);
+        if (dist <= ringRange) {
+          this.damageEnemy(t, dmg, '#fb923c');
+          const ang = Math.atan2(t.y - player.y, t.x - player.x);
+          t.knockVx = Math.cos(ang) * 320;
+          t.knockVy = Math.sin(ang) * 320;
+        }
       }
     }
   }
@@ -537,16 +612,21 @@ export class CombatSystem {
   }
 
   update(dt, player) {
-    // 1. 보유 속성 짖기 스킬 자동 발동 (패시브: 기관총 연사 passive_firerate 쿨타임 감소 반영)
-    const firerateBonus = (player.skills?.passive_firerate || 0) * 0.06;
-    const firerateMult = Math.max(0.4, 1 - firerateBonus);
+    // 0. 전장 추종 인간 주인(Owner) 물리 및 지원 사격 갱신
+    if (player.owner) {
+      player.owner.update(dt, player, this._enemyManager.enemies, this._enemyManager.boss, this);
+    }
+
+    // 1. 보유 속성 짖기 스킬 자동 발동 (패시브 + 실험실 앵무새 증폭 연사 쿨타임 감소 반영)
+    const firerateBonus = ((player.skills?.passive_firerate || 0) * 0.06) + (this.parrotAmplified ? 0.25 : 0);
+    const firerateMult = Math.max(0.35, 1 - firerateBonus);
 
     for (const skillDef of SKILLS) {
       if (skillDef.category !== 'bark') continue;
       const lv = player.skills[skillDef.id] || 0;
       if (lv <= 0) continue;
 
-      const weapon = COSTUMES.find((c) => c.id === player.equipped?.weapon);
+      const weapon = player.equipped?.weapon ? COSTUMES.find((c) => c.id === player.equipped?.weapon) : null;
       const cdMult = (skillDef.id === 'bark_sonic' && weapon?.cooldownMult) ? weapon.cooldownMult : 1.0;
 
       this.cooldowns[skillDef.id] = (this.cooldowns[skillDef.id] ?? 0) - dt;

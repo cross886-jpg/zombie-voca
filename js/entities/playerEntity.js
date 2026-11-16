@@ -8,6 +8,7 @@ import { COSTUMES } from '../data/catalog.js';
 import { resolveCircleCollisions } from '../game/obstacles.js';
 import { getEvolutionStage, computePlayerStats } from './playerStats.js';
 import { drawDogCharacter, drawDogSkin } from '../render/dogCharacterDraw.js';
+import { Owner } from './ownerEntity.js';
 
 export class Player {
   constructor() {
@@ -34,12 +35,37 @@ export class Player {
     this.walkPhase = 0;
     this.isStepping = false;
 
+    // 강아지 5대 야생 액션 모션 트리거 타이머
+    this.mouthOpenTimer = 0;
+    this.tailWagTimer = 0;
+    this.pawSwipeTimer = 0;
+    this.hipSlamTimer = 0;
+
     this.skills = { bark_sonic: 1 };
     this.evoStage = BALANCE.EVOLUTION_STAGES[0];
     this.equipped = { hat: null, outfit: null, weapon: null, aura: null };
     this._saveRef = null;
     this.isProtectedMode = false;
     this.protectedMinHpRatio = 0.1;
+
+    // 전장 추종 인간 주인(Owner) 객체
+    this.owner = new Owner(this);
+  }
+
+  triggerMouthOpen(duration = 0.25) {
+    this.mouthOpenTimer = Math.max(this.mouthOpenTimer, duration);
+  }
+
+  triggerTailWag(duration = 0.6) {
+    this.tailWagTimer = Math.max(this.tailWagTimer, duration);
+  }
+
+  triggerPawSwipe(duration = 0.25) {
+    this.pawSwipeTimer = Math.max(this.pawSwipeTimer, duration);
+  }
+
+  triggerHipSlam(duration = 0.35) {
+    this.hipSlamTimer = Math.max(this.hipSlamTimer, duration);
   }
 
   resetForBattle(centerX, centerY, saveData, { isProtected = false, minHpRatio = 0.1 } = {}) {
@@ -61,6 +87,11 @@ export class Player {
     this.walkPhase = 0;
     this.isStepping = false;
 
+    this.mouthOpenTimer = 0;
+    this.tailWagTimer = 0;
+    this.pawSwipeTimer = 0;
+    this.hipSlamTimer = 0;
+
     this.skills = { bark_sonic: 1 };
     if ((saveData?.shopUpgrades?.bonusWeapon || 0) >= 1) {
       this.skills.bark_flame = 1;
@@ -74,6 +105,11 @@ export class Player {
     this.equipped = { ...(saveData.costumes?.equipped || {}) };
 
     this.recalcStats(true);
+
+    // 주인 엔티티 리셋
+    if (this.owner) {
+      this.owner.resetForBattle(this, saveData);
+    }
   }
 
   recalcStats(resetHpToMax = false) {
@@ -106,6 +142,11 @@ export class Player {
     if (this.slowTimer > 0) {
       this.slowTimer = Math.max(0, this.slowTimer - dt);
     }
+
+    if (this.mouthOpenTimer > 0) this.mouthOpenTimer = Math.max(0, this.mouthOpenTimer - dt);
+    if (this.tailWagTimer > 0) this.tailWagTimer = Math.max(0, this.tailWagTimer - dt);
+    if (this.pawSwipeTimer > 0) this.pawSwipeTimer = Math.max(0, this.pawSwipeTimer - dt);
+    if (this.hipSlamTimer > 0) this.hipSlamTimer = Math.max(0, this.hipSlamTimer - dt);
 
     const slowMult = this.slowTimer > 0 ? BALANCE.MONOLITH.WRONG_SLOW_MULT : 1;
     const effectiveSpeed = this.speed * slowMult;
@@ -191,6 +232,11 @@ export class Player {
   }
 
   render(ctx, time) {
+    // 0. 전장 추종 인간 주인(Owner) 렌더링
+    if (this.owner) {
+      this.owner.render(ctx, time);
+    }
+
     ctx.save();
     ctx.translate(this.x, this.y);
 
@@ -266,9 +312,8 @@ export class Player {
       ctx.fill();
     }
 
-    // [레이어 3] 선택된 견종 강아지 본체 + 총총총 발걸음 모션
-    const isBipedal = this.evoStage.stage >= 2;
-    const bodyY = (isBipedal ? -2 : 2) + bob;
+    // [레이어 3] 선택된 견종 강아지 본체 + 총총총 발걸음 모션 (4족 보행)
+    const bodyY = 2 + bob;
     const lookX = Math.cos(this.facingAngle) * 2.5;
     const legSwing = this.isStepping ? Math.sin(this.walkPhase) : 0;
 
@@ -292,8 +337,62 @@ export class Player {
       scale: s,
       bodyY,
       lookX,
-      isBipedal,
     });
+
+    // 5대 야생 액션 모션 렌더링:
+    // 1) 짖기/물어뜯기 시 입 벌림 (Mouth Open)
+    if (this.mouthOpenTimer > 0) {
+      ctx.save();
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath();
+      ctx.ellipse(lookX * s, (bodyY - 2.5) * s, 3.2 * s, 3.8 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 2) 회오리 꼬리치기 활성화 시 살랑이는 꼬리 (미장착/미발동 시 꼬리 정지)
+    const isTailActive = this.tailWagTimer > 0 || Boolean(this.skills?.tail_whirl || this.skills?.bark_tornado);
+    if (isTailActive) {
+      ctx.save();
+      const tailSwing = Math.sin(time * 24) * 0.7;
+      ctx.translate(-14 * s, (bodyY + 6) * s);
+      ctx.rotate(tailSwing);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 3.5 * s, 7.5 * s, 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 3) 앞발 날리기 (paw_swipe) 분홍 젤리 스와이프 이펙트
+    if (this.pawSwipeTimer > 0) {
+      ctx.save();
+      ctx.rotate(this.facingAngle);
+      ctx.translate(18 * s, 0);
+      const progress = 1 - (this.pawSwipeTimer / 0.25);
+      ctx.strokeStyle = '#f472b6';
+      ctx.lineWidth = 3.5 * s;
+      ctx.beginPath();
+      ctx.arc(0, 0, 16 * s, -0.6 + progress * 0.4, 0.6 + progress * 0.4);
+      ctx.stroke();
+      ctx.fillStyle = '#ec4899';
+      ctx.font = `${Math.round(13 * s)}px sans-serif`;
+      ctx.fillText('🐾', 2 * s, -4 * s);
+      ctx.restore();
+    }
+
+    // 4) 엉덩이 쿵 (hip_slam) 360도 충격파 링
+    if (this.hipSlamTimer > 0) {
+      ctx.save();
+      const ratio = 1 - (this.hipSlamTimer / 0.35);
+      const ringR = (20 + ratio * 45) * s;
+      ctx.strokeStyle = `rgba(251, 146, 60, ${Math.max(0, 1 - ratio)})`;
+      ctx.lineWidth = 3.5 * s;
+      ctx.beginPath();
+      ctx.arc(0, bodyY * s, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // [레이어 4] 장착 무기 파츠 (아이콘/이펙트) 또는 진화 2단계 이상 에너지 블레이드
     const weaponItem = this._getCostumeItem('weapon');

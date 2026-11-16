@@ -1,11 +1,11 @@
 /**
  * js/game/placementTest.js
  * 실력 진단(배치 테스트) 전용 모듈:
- * - 10문제 구성: 초급 3문제 → 중급 4문제 → 고급 3문제 순차 난이도 상승
+ * - 12문제 구성: Unit 1부터 시작하여 해치를 통과할 때마다 난이도 계단식 자동 상승
  * - 인명·지명 등 첫 글자 대문자 고유명사 자동 필터링
  * - Set 기반 단어 중복(ID 및 철자) 완전 차단
  * - 오답/모름 제출 시 정답 비공개 원칙 준수
- * - 10점 만점 기준 맞춤 추천 레벨 산출
+ * - 12문제 기준 정답률 및 통과 난이도 기반 wordCursor 및 추천 레벨 산출
  */
 
 import { WORDS as WORDS_EN } from '../data/data_en.js?v=2';
@@ -15,11 +15,24 @@ import { WORD_LEVEL_TIERS, isProperNoun } from '../core/courseEngine.js';
 export { isProperNoun };
 
 export const PLACEMENT_CONFIG = Object.freeze({
-  TOTAL_QUESTIONS: 10,
-  BEGINNER_COUNT: 3,
-  INTERMEDIATE_COUNT: 4,
-  ADVANCED_COUNT: 3,
+  TOTAL_QUESTIONS: 12,
 });
+
+/** 12단계 계단식 난이도 구간 정의 (Unit 1부터 전체 유닛 범위로 점진적 확장) */
+export const STEPPED_DIFFICULTY_RANGES = Object.freeze([
+  { step: 1, minUnit: 1, maxUnit: 15, label: '왕초보 (입문)', tierKey: 'novice' },
+  { step: 2, minUnit: 16, maxUnit: 30, label: '왕초보 (도약)', tierKey: 'novice' },
+  { step: 3, minUnit: 31, maxUnit: 50, label: '초급 (기초)', tierKey: 'beginner' },
+  { step: 4, minUnit: 51, maxUnit: 70, label: '초급 (확장)', tierKey: 'beginner' },
+  { step: 5, minUnit: 71, maxUnit: 100, label: '초중급 (입문)', tierKey: 'pre_intermediate' },
+  { step: 6, minUnit: 101, maxUnit: 140, label: '초중급 (실전)', tierKey: 'pre_intermediate' },
+  { step: 7, minUnit: 141, maxUnit: 200, label: '중급 (핵심)', tierKey: 'intermediate' },
+  { step: 8, minUnit: 201, maxUnit: 280, label: '중급 (도약)', tierKey: 'intermediate' },
+  { step: 9, minUnit: 281, maxUnit: 380, label: '중고급 (심화)', tierKey: 'upper_intermediate' },
+  { step: 10, minUnit: 381, maxUnit: 480, label: '중고급 (실전)', tierKey: 'upper_intermediate' },
+  { step: 11, minUnit: 481, maxUnit: 580, label: '고급 (전문)', tierKey: 'advanced' },
+  { step: 12, minUnit: 581, maxUnit: 688, label: '고급 (마스터)', tierKey: 'advanced' },
+]);
 
 function shuffle(arr) {
   const c = [...arr];
@@ -41,89 +54,54 @@ export function getFilteredWordPool(lang = 'en') {
 }
 
 /**
- * 총 10문제 진단 덱 생성
- * - 특정 레벨(selectedTier) 응시 시: 해당 레벨 난이도 범위 10문제 집중 출제
- * - 빠른 실력 테스트(미선택) 시: 초급 3문제 → 중급 4문제 → 고급 3문제 순차 출제
+ * 총 12문제 계단식 진단 덱 생성 (Unit 1부터 점진적 난이도 상승)
  * @param {'en'|'es'} lang
- * @param {object|null} selectedTier
  * @returns {Array<object>}
  */
-export function generatePlacementDeck(lang = 'en', selectedTier = null) {
+export function generatePlacementDeck(lang = 'en') {
   const allWords = getFilteredWordPool(lang);
 
   const usedIds = new Set();
   const usedSpellings = new Set();
   const pickedWords = [];
 
-  if (selectedTier) {
-    const tierOffset = Number(selectedTier.unitOffset) || 0;
-    // 1차: 해당 티어의 유닛 범위 (unitOffset ~ unitOffset + 80)
-    let tierWords = allWords.filter((w) => {
+  for (let i = 0; i < STEPPED_DIFFICULTY_RANGES.length; i++) {
+    const range = STEPPED_DIFFICULTY_RANGES[i];
+    const rangeWords = allWords.filter((w) => {
       const uNum = parseInt((w.unit || '').replace(/\D/g, ''), 10) || 1;
-      return uNum > tierOffset && uNum <= tierOffset + 80;
+      return uNum >= range.minUnit && uNum <= range.maxUnit;
     });
-    // 보조: 유닛 범위 단어가 부족할 경우 CEFR 등급 일치 단어로 확장
-    if (tierWords.length < PLACEMENT_CONFIG.TOTAL_QUESTIONS) {
-      const cefrWords = allWords.filter((w) => w.level === selectedTier.cefr || (selectedTier.groupCefr && selectedTier.groupCefr.includes(w.level)));
-      tierWords = [...tierWords, ...cefrWords];
-    }
-    const pool = shuffle(tierWords);
+
+    const pool = shuffle(rangeWords);
+    let chosen = null;
     for (const w of pool) {
-      if (pickedWords.length >= PLACEMENT_CONFIG.TOTAL_QUESTIONS) break;
       const lower = w.word.toLowerCase();
       if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
-      usedIds.add(w.id);
-      usedSpellings.add(lower);
+      chosen = w;
+      break;
+    }
+
+    // 예비 안전 보충: 해당 구간 미사용 단어가 없을 경우 전체 풀에서 보충
+    if (!chosen) {
+      for (const w of shuffle(allWords)) {
+        const lower = w.word.toLowerCase();
+        if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
+        chosen = w;
+        break;
+      }
+    }
+
+    if (chosen) {
+      usedIds.add(chosen.id);
+      usedSpellings.add(chosen.word.toLowerCase());
       pickedWords.push({
-        wordObj: w,
-        tierKey: selectedTier.id || 'tier',
-        tierName: selectedTier.badgeLabel || selectedTier.label || '선택 레벨',
+        wordObj: chosen,
+        step: range.step,
+        rangeLabel: range.label,
+        tierKey: range.tierKey,
+        tierName: range.label,
       });
     }
-    // 안전 보충: 전체 풀에서 중복 없이 보충
-    if (pickedWords.length < PLACEMENT_CONFIG.TOTAL_QUESTIONS) {
-      for (const w of shuffle(allWords)) {
-        if (pickedWords.length >= PLACEMENT_CONFIG.TOTAL_QUESTIONS) break;
-        const lower = w.word.toLowerCase();
-        if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
-        usedIds.add(w.id);
-        usedSpellings.add(lower);
-        pickedWords.push({
-          wordObj: w,
-          tierKey: selectedTier.id || 'tier',
-          tierName: selectedTier.badgeLabel || selectedTier.label || '선택 레벨',
-        });
-      }
-    }
-  } else {
-    const beginnerPool = shuffle(allWords.filter((w) => w.level === 'A1'));
-    const intermediatePool = shuffle(allWords.filter((w) => w.level === 'A2' || w.level === 'B1'));
-    const advancedPool = shuffle(allWords.filter((w) => w.level === 'B2' || w.level === 'C1'));
-
-    function pickFromPool(pool, count, tierKey, tierName) {
-      let picked = 0;
-      for (const w of pool) {
-        if (picked >= count) break;
-        const lower = w.word.toLowerCase();
-        if (usedIds.has(w.id) || usedSpellings.has(lower)) continue;
-
-        usedIds.add(w.id);
-        usedSpellings.add(lower);
-        pickedWords.push({
-          wordObj: w,
-          tierKey,
-          tierName,
-        });
-        picked++;
-      }
-    }
-
-    // 1) 초급 3문제
-    pickFromPool(beginnerPool, PLACEMENT_CONFIG.BEGINNER_COUNT, 'beginner', '초급');
-    // 2) 중급 4문제
-    pickFromPool(intermediatePool, PLACEMENT_CONFIG.INTERMEDIATE_COUNT, 'intermediate', '중급');
-    // 3) 고급 3문제
-    pickFromPool(advancedPool, PLACEMENT_CONFIG.ADVANCED_COUNT, 'advanced', '고급');
   }
 
   // 전체 오답 보기 후보군 풀 (동일 언어 뜻만 사용)
@@ -147,6 +125,7 @@ export function generatePlacementDeck(lang = 'en', selectedTier = null) {
       unit: target.unit,
       phonetic: target.phonetic,
       index,
+      step: item.step,
       tierKey: item.tierKey,
       tierName: item.tierName,
       wordId: target.id,
@@ -157,28 +136,68 @@ export function generatePlacementDeck(lang = 'en', selectedTier = null) {
 }
 
 /**
- * 10문제 진단 점수 기반 추천 레벨 산출
- * @param {number} score (0 ~ 10)
+ * 12문제 계단식 진단 결과 및 시작 wordCursor 산출
+ * @param {number} correctCount (0 ~ 12)
+ * @returns {object}
+ */
+export function calculateSteppedPlacementResult(correctCount = 0) {
+  const c = Math.max(0, Math.min(12, Number(correctCount) || 0));
+
+  let tier;
+  let wordCursor;
+  let unitOffset;
+  let recommendMsg;
+
+  if (c >= 11) {
+    tier = WORD_LEVEL_TIERS[5]; // 고급
+    wordCursor = 1050; // Unit 151
+    unitOffset = 150;
+    recommendMsg = '최고 난이도 완주! 뛰어난 실력에 맞춰 고급 마스터 어휘부터 시작합니다!';
+  } else if (c >= 9) {
+    tier = WORD_LEVEL_TIERS[4]; // 중고급
+    wordCursor = 840; // Unit 121
+    unitOffset = 120;
+    recommendMsg = '실력이 탄탄하시네요! 중고급 심화 어휘로 도약해 보세요!';
+  } else if (c >= 7) {
+    tier = WORD_LEVEL_TIERS[3]; // 중급
+    wordCursor = 630; // Unit 91
+    unitOffset = 90;
+    recommendMsg = '중급 핵심 어휘를 완벽히 정복할 수 있는 단계입니다!';
+  } else if (c >= 5) {
+    tier = WORD_LEVEL_TIERS[2]; // 초중급
+    wordCursor = 420; // Unit 61
+    unitOffset = 60;
+    recommendMsg = '기본기가 훌륭합니다! 실전 초중급 어휘부터 시작해 보세요!';
+  } else if (c >= 3) {
+    tier = WORD_LEVEL_TIERS[1]; // 초급
+    wordCursor = 210; // Unit 31
+    unitOffset = 30;
+    recommendMsg = '기초 단어 복습과 함께 즐겁게 어휘를 확장해 보세요!';
+  } else {
+    tier = WORD_LEVEL_TIERS[0]; // 왕초보
+    wordCursor = 0; // Unit 1
+    unitOffset = 0;
+    recommendMsg = '가장 기초적인 단어부터 차근차근 시작해 봅시다!';
+  }
+
+  return {
+    tier,
+    tierId: tier.id,
+    label: tier.label,
+    badgeLabel: tier.badgeLabel,
+    cefr: tier.cefr,
+    wordCursor,
+    unitOffset,
+    recommendMsg,
+  };
+}
+
+/**
+ * 하위 호환용 평가 함수
+ * @param {number} score
  * @returns {object}
  */
 export function evaluatePlacementScore(score) {
-  const s = Math.max(0, Math.min(10, Number(score) || 0));
-
-  if (s >= 10) {
-    return WORD_LEVEL_TIERS.find((t) => t.id === 'advanced_lv1') || WORD_LEVEL_TIERS[6];
-  }
-  if (s >= 8) {
-    return WORD_LEVEL_TIERS.find((t) => t.id === 'intermediate_lv2') || WORD_LEVEL_TIERS[4];
-  }
-  if (s >= 6) {
-    return WORD_LEVEL_TIERS.find((t) => t.id === 'intermediate_lv1') || WORD_LEVEL_TIERS[3];
-  }
-  if (s === 5) {
-    return WORD_LEVEL_TIERS.find((t) => t.id === 'beginner_lv3') || WORD_LEVEL_TIERS[2];
-  }
-  if (s >= 3) {
-    return WORD_LEVEL_TIERS.find((t) => t.id === 'beginner_lv2') || WORD_LEVEL_TIERS[1];
-  }
-  return WORD_LEVEL_TIERS[0]; // 0 ~ 2: 초급 Lv.1
+  return calculateSteppedPlacementResult(score).tier;
 }
 

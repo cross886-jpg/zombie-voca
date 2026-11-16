@@ -23,12 +23,9 @@ export function drawDogPreview(ctx, options = {}) {
     x = 0,
     y = 0,
     evolutionStage = save ? getEvolutionStage(save).stage : 1,
-    isBipedal = null,
     equippedSkin = save?.equippedSkin || null,
-    equippedWeapon = null,
-    equippedHat = null,
+    equippedHarness = null,
     withEquipment = true,
-    withWeapon = true,
     isHappy = false,
     time = Date.now(),
   } = options;
@@ -57,16 +54,14 @@ export function drawDogPreview(ctx, options = {}) {
     ctx.scale(squashX, squashY);
   }
 
-  const bipedal = isBipedal !== null ? isBipedal : (withEquipment && evolutionStage >= 2);
   const lookX = isHappy ? Math.sin(time * 0.02) * 1.5 : 0;
 
-  // 2. 기본 강아지 몸체 그리기
+  // 2. 기본 강아지 몸체 그리기 (4족 보행 형태)
   drawDogCharacter(ctx, {
     breedId,
     scale,
     bodyY: 0,
     lookX,
-    isBipedal: bipedal,
   });
 
   // 3. 행복 표정 오버레이 (반달 눈웃음, 핑크 홍조, 살랑거리는 꼬리)
@@ -115,69 +110,46 @@ export function drawDogPreview(ctx, options = {}) {
     drawDogSkin(ctx, equippedSkin, scale, 0);
   }
 
-  // 4-1. 장착 모자 코스튬 그리기 (네온 야구모자, 베레모, 헬멧 등)
+  // 4-1. 기본 하네스 (가슴줄 스트랩 & 황금색 D-링) 렌더링
   if (withEquipment) {
-    let hatDef = null;
-    if (equippedHat && typeof equippedHat === 'object') {
-      hatDef = equippedHat;
-    } else if (typeof equippedHat === 'string') {
-      hatDef = COSTUMES.find((c) => c.id === equippedHat);
-    } else if (save?.costumes?.equipped?.hat) {
-      hatDef = COSTUMES.find((c) => c.id === save.costumes.equipped.hat);
+    let harnessDef = null;
+    if (equippedHarness && typeof equippedHarness === 'object') {
+      harnessDef = equippedHarness;
+    } else if (typeof equippedHarness === 'string') {
+      harnessDef = COSTUMES.find((c) => c.id === equippedHarness);
+    } else if (save?.costumes?.equipped?.harness) {
+      harnessDef = COSTUMES.find((c) => c.id === save.costumes.equipped.harness);
+    } else {
+      harnessDef = COSTUMES.find((c) => c.id === 'basic_harness');
     }
 
-    if (hatDef) {
+    if (harnessDef) {
+      const strapColor = harnessDef.color || '#10b981';
+      const ringColor = harnessDef.ringColor || '#fbbf24';
       ctx.save();
-      const hatY = -21 * scale;
-      if (hatDef.icon) {
-        const fontSize = Math.max(14, Math.round(18 * scale));
-        ctx.font = `${fontSize}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        if (hatDef.color) {
-          ctx.shadowColor = hatDef.color;
-          ctx.shadowBlur = Math.round(6 * scale);
-        }
-        ctx.fillText(hatDef.icon, 0, hatY);
-      } else {
-        ctx.fillStyle = hatDef.color || '#38bdf8';
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(-9 * scale, (hatY - 4) * scale, 18 * scale, 8 * scale, 3 * scale);
-        } else {
-          ctx.rect(-9 * scale, (hatY - 4) * scale, 18 * scale, 8 * scale);
-        }
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-  }
+      // 메인 가슴줄 스트랩 (몸통을 감싸는 타원)
+      ctx.strokeStyle = strapColor;
+      ctx.lineWidth = Math.max(2, 3.2 * scale);
+      ctx.beginPath();
+      ctx.ellipse(0, 5 * scale, 11 * scale, 7.5 * scale, 0, 0, Math.PI * 2);
+      ctx.stroke();
 
-  // 5. 장착 무기 그리기
-  if (withEquipment && withWeapon) {
-    let weaponDef = null;
-    if (equippedWeapon && typeof equippedWeapon === 'object') {
-      weaponDef = equippedWeapon;
-    } else if (typeof equippedWeapon === 'string') {
-      weaponDef = COSTUMES.find((c) => c.id === equippedWeapon);
-    } else if (save?.costumes?.equipped?.weapon) {
-      weaponDef = COSTUMES.find((c) => c.id === save.costumes.equipped.weapon);
-    }
+      // 보조 가슴 연결 스트랩
+      ctx.strokeStyle = strapColor === '#10b981' ? '#059669' : '#1e293b';
+      ctx.lineWidth = Math.max(1.5, 2.5 * scale);
+      ctx.beginPath();
+      ctx.moveTo(-6 * scale, 5 * scale);
+      ctx.lineTo(6 * scale, 5 * scale);
+      ctx.stroke();
 
-    if (weaponDef) {
-      ctx.save();
-      const wx = 15 * scale;
-      const wy = 2;
-      ctx.translate(wx, wy);
-      const fontSize = Math.max(12, Math.round(15 * scale));
-      ctx.font = `${fontSize}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      if (weaponDef.color) {
-        ctx.shadowColor = weaponDef.color;
-        ctx.shadowBlur = Math.round(7 * scale);
-      }
-      ctx.fillText(weaponDef.icon || '⚔️', 0, 0);
+      // 황금색 D-링 (리드줄 연결 금속 고리)
+      ctx.fillStyle = ringColor;
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = Math.max(1, 1.2 * scale);
+      ctx.beginPath();
+      ctx.arc(0, 0.5 * scale, 2.8 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
       ctx.restore();
     }
   }
@@ -218,7 +190,6 @@ export function drawCompanionsAround(ctx, companions = []) {
         scale: pos.scale,
         bodyY: 0,
         lookX: 0,
-        isBipedal: false,
       });
     } else if (compDef) {
       ctx.fillStyle = compDef.color || '#fbbf24';

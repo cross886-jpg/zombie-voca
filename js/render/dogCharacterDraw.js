@@ -6,7 +6,7 @@
 /**
  * 10종 강아지 견종 외형 캔버스 렌더러 (포메라니안, 골든 리트리버, 웰시코기, 시바견, 비글, 보더콜리, 허스키, 달마시안, 프렌치 불독, 도베르만, 말티즈, 푸들)
  */
-export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY = 0, lookX = 0, isBipedal = false } = {}) {
+export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY = 0, lookX = 0 } = {}) {
   const s = scale;
 
   switch (breedId) {
@@ -23,11 +23,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통 & 밝은 가슴 털
       ctx.fillStyle = '#f59e0b';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 14 * s, 15 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 12 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 12 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 크림빛 가슴털
@@ -76,11 +72,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통 (상단 황갈색 + 하단 흰색 투톤)
       ctx.fillStyle = '#ea580c';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 14 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 11.5 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 11.5 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 흰색 앞가슴/배 털
@@ -144,11 +136,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통 & 흰 가슴 (우라지로)
       ctx.fillStyle = '#ea580c';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = '#fafaf9';
@@ -218,11 +206,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통 (흰색 바탕 + 검은 안장 패치)
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 등 부분 블랙 안장 패치 (Black saddle)
@@ -264,11 +248,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 보더콜리: 칠흑 같은 블랙 & 화이트 지능형 목양견, 날렵한 귀
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 화이트 가슴 칼라 & 넥카라
@@ -310,11 +290,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 시베리안 허스키: 은회색 & 화이트 마스크, 늑대형 직립 귀
       ctx.fillStyle = '#475569';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = '#f8fafc';
@@ -353,11 +329,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 달마시안: 순백색 털에 검정 스팟 점박이 무늬
       ctx.fillStyle = '#f8fafc';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 몸통 블랙 점박이들
@@ -396,11 +368,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 프렌치 불독: 다부진 체구, 둥근 박쥐 모양 큰 귀
       ctx.fillStyle = '#475569';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 14 * s, 13 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 16 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 머리 (넓적한 사각 라운드)
@@ -434,11 +402,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 도베르만: 날렵한 블랙 & 탄, 날카로운 직립 귀
       ctx.fillStyle = '#18181b';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 15 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 황갈색(탄) 가슴 무늬
@@ -486,11 +450,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 12 * s, 13 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 14 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 14 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 3. 머리
@@ -530,11 +490,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통 (곱슬 푸들 볼륨)
       ctx.fillStyle = '#b45309';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 12 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 12 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 3. 둥근 폼폼 크라운 머리
@@ -565,11 +521,7 @@ export function drawDogCharacter(ctx, { breedId = 'pomeranian', scale = 1, bodyY
       // 2. 몸통
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      if (isBipedal) {
-        ctx.ellipse(0, (bodyY + 4) * s, 13 * s, 14 * s, 0, 0, Math.PI * 2);
-      } else {
-        ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
-      }
+      ctx.ellipse(0, (bodyY + 5) * s, 15 * s, 11 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
       // 3. 머리 (솜사탕 털)

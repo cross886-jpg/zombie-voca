@@ -375,26 +375,192 @@ export function getWaveForQuestion(chapter, questionNumber) {
 }
 
 /**
- * 10개 챕터 스테이지 범위 정의 (10스테이지당 1챕터: Ch.1 1~10, Ch.2 11~20, ..., Ch.10 91+)
- * @param {number} [totalUnits]
- * @returns {Array<{ chapter: number, start: number, end: number }>}
- */
-/**
- * 특정 유닛/스테이지 번호가 속한 챕터 번호 반환 (10스테이지당 1챕터: Ch.1 ~ Ch.10)
+ * 10개 챕터 스테이지 범위 정의 (30스테이지당 1챕터: Ch.1 1~30, Ch.2 31~60, ..., Ch.5 121~150)
  * @param {number} unitNum
  * @param {number} [totalUnits]
  * @returns {number}
  */
 export function getChapterNumberForUnit(unitNum, totalUnits) {
   const n = Number(unitNum) || 1;
-  if (n <= 10) return 1;
-  if (n <= 20) return 2;
-  if (n <= 30) return 3;
-  if (n <= 40) return 4;
-  if (n <= 50) return 5;
-  if (n <= 60) return 6;
-  if (n <= 70) return 7;
-  if (n <= 80) return 8;
-  if (n <= 90) return 9;
-  return 10;
+  if (n <= 30) return 1;
+  if (n <= 60) return 2;
+  if (n <= 90) return 3;
+  if (n <= 120) return 4;
+  if (n <= 150) return 5;
+  return 6;
+}
+
+/**
+ * 시즌 1 (150스테이지) 챕터 메타데이터
+ */
+export const CHAPTER_INFO = Object.freeze({
+  1: {
+    chapter: 1,
+    name: '국제공항',
+    base: '공항 지하 방역실',
+    vehicle: '공항 셔틀버스',
+    stageRange: [1, 30],
+  },
+  2: {
+    chapter: 2,
+    name: '도심 & 하숙집',
+    base: '예약된 도심 하숙집',
+    vehicle: '하숙집 차고 스쿠터',
+    stageRange: [31, 60],
+  },
+  3: {
+    chapter: 3,
+    name: '대학 캠퍼스',
+    base: '캠퍼스 동아리방',
+    vehicle: '캠퍼스 연구용 밴',
+    stageRange: [61, 90],
+  },
+  4: {
+    chapter: 4,
+    name: '중앙 병원 & 연구소',
+    base: '병원 지하 연구소',
+    vehicle: '방역 장갑차',
+    stageRange: [91, 120],
+  },
+  5: {
+    chapter: 5,
+    name: '항구 & 방송 타워',
+    base: '방송 타워 송신실',
+    vehicle: '월드 투어 구조선',
+    stageRange: [121, 150],
+  },
+});
+
+/**
+ * 챕터 보스 클리어 회복 대사 및 보상 메타데이터
+ */
+export const CHAPTER_BOSS_RECOVERY = Object.freeze({
+  30: {
+    chapter: 1,
+    vehicle: '공항 셔틀버스',
+    vehicleIcon: '🚌',
+    nextBase: '예약된 도심 하숙집',
+    weaponReward: 'slingshot',
+    weaponName: '새총 (Slingshot)',
+    bremenUnlock: false,
+    dialog: {
+      en: 'Th-thank you, {petName}...',
+      es: 'Gr-gracias, {petName}...',
+      ko: '고... 고마워, {petName}...',
+    },
+    recoveryDescription: '감염 붕괴가 멈추고 주인이 서서히 의식을 되찾기 시작했습니다!',
+  },
+  60: {
+    chapter: 2,
+    vehicle: '하숙집 차고 스쿠터',
+    vehicleIcon: '🛵',
+    nextBase: '캠퍼스 동아리방',
+    weaponReward: 'pistol',
+    weaponName: '권총 (Pistol)',
+    bremenUnlock: true,
+    dialog: {
+      en: "Watch out, {petName}! Let's go!",
+      es: '¡Cuidado, {petName}! ¡Vamos!',
+      ko: '조심해, {petName}! 이쪽이야!',
+    },
+    recoveryDescription: '주인이 무기를 잡고 일어섰습니다! 브레멘 동물 합체(상하 탑승 슬롯)가 해금되었습니다!',
+  },
+  90: {
+    chapter: 3,
+    vehicle: '캠퍼스 연구용 밴',
+    vehicleIcon: '🚐',
+    nextBase: '병원 지하 연구소',
+    weaponReward: 'smg',
+    weaponName: '기관단총 (SMG)',
+    bremenUnlock: false,
+    dialog: {
+      en: "We did it! You're amazing!",
+      es: '¡Lo logramos! ¡Eres increíble!',
+      ko: '우리가 해냈어! 정말 대단해!',
+    },
+    recoveryDescription: '주인의 감염 수치가 크게 감소하여 안정적으로 엄호 사격을 가합니다!',
+  },
+  120: {
+    chapter: 4,
+    vehicle: '방역 장갑차',
+    vehicleIcon: '🚚',
+    nextBase: '방송 타워 송신실',
+    weaponReward: 'rifle',
+    weaponName: '돌격소총 (Rifle)',
+    bremenUnlock: false,
+    dialog: {
+      en: "Don't worry about me, I've got your back!",
+      es: '¡No te preocupes, yo te cubro!',
+      ko: '내 걱정은 마, 내가 뒤에서 엄호할게!',
+    },
+    recoveryDescription: '주인이 정예 생존자로서 든든한 화력 지원을 펼칩니다!',
+  },
+  150: {
+    chapter: 5,
+    vehicle: '월드 투어 구조선',
+    vehicleIcon: '🚢',
+    nextBase: '글로벌 구조 본부',
+    weaponReward: 'plasma_rifle',
+    weaponName: '플라즈마 라이플 (Plasma Rifle)',
+    bremenUnlock: false,
+    season2Unlock: true,
+    dialog: {
+      en: "You never gave up on me. Now let's save the world together!",
+      es: 'Nunca te rendiste conmigo. ¡Ahora salvemos el mundo juntos!',
+      ko: '끝까지 나를 포기하지 않아 줘서 고마워. 이제 전 세계 사람들을 구하러 가자!',
+    },
+    recoveryDescription: '완전 인간 복귀 성공! 방송 타워 백신 주파수가 전 세계로 송출되었습니다. 시즌 1 명예 구조자 훈장 수여!',
+  },
+});
+
+/**
+ * 스테이지 번호(1~150+) 기준 챕터 메타데이터 조회
+ * @param {number|string} stage
+ * @returns {object}
+ */
+export function getChapterInfo(stage) {
+  const s = Math.max(1, parseInt(stage, 10) || 1);
+  if (s <= 30) return { ...CHAPTER_INFO[1] };
+  if (s <= 60) return { ...CHAPTER_INFO[2] };
+  if (s <= 90) return { ...CHAPTER_INFO[3] };
+  if (s <= 120) return { ...CHAPTER_INFO[4] };
+  if (s <= 150) return { ...CHAPTER_INFO[5] };
+  return {
+    chapter: 6,
+    season: 2,
+    name: '글로벌 구조 월드 투어 — 전 세계 감염자 구조 작전',
+    base: '이동식 야전 사령선',
+    vehicle: '글로벌 수송기',
+    stageRange: [151, Infinity],
+  };
+}
+
+/**
+ * 오답 복습 스테이지 여부 (매 5판마다: stage % 5 === 0)
+ * @param {number|string} stage
+ * @returns {boolean}
+ */
+export function isReviewStage(stage) {
+  const s = parseInt(stage, 10) || 1;
+  return s > 0 && s % 5 === 0;
+}
+
+/**
+ * 챕터 보스 스테이지 여부 (1~150 스테이지 중 30, 60, 90, 120, 150)
+ * @param {number|string} stage
+ * @returns {boolean}
+ */
+export function isChapterBossStage(stage) {
+  const s = parseInt(stage, 10) || 1;
+  return s > 0 && s <= 150 && s % 30 === 0;
+}
+
+if (typeof window !== 'undefined') {
+  window.ChapterSystem = {
+    getChapterInfo,
+    isReviewStage,
+    isChapterBossStage,
+    CHAPTER_INFO,
+    CHAPTER_BOSS_RECOVERY,
+  };
 }

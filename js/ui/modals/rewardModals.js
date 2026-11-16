@@ -5,8 +5,10 @@
 
 import { ATTENDANCE_30_REWARDS, QUEST_DEFS } from '../../data/catalog.js';
 import { t } from '../../data/i18n.js';
+import settingsStore from '../../settingsStore.js';
 import {
   getSave,
+  updateSave,
   claimAttendance30,
   claimDailyAirDrop,
   openAirDropWithKey,
@@ -137,146 +139,188 @@ export function openQuestsModal(ctx, activeSubtab = 'daily') {
 export function openAirDropSupplyModal(ctx) {
   const { openModal, closeModal, refreshHeader, renderBattleTab } = ctx;
   const today = getTodayDateKey();
+  const MAT_KEYS = ['cloth', 'bandage', 'parts', 'herb'];
+  const MAT_LABELS = { cloth: '🧵 천', bandage: '🩹 붕대', parts: '⚙️ 부품', herb: '🌿 약초' };
 
-  function rollReward() {
-    const roll = Math.random();
-    if (roll < 0.45) {
-      const gold = Math.floor(Math.random() * 21) + 30; // 30 ~ 50
-      return { gold, snacks: 0, gems: 0, label: `+${gold} 금화`, icon: '🪙', bg: 'bg-amber-50 border-amber-300 text-amber-900' };
-    } else if (roll < 0.8) {
-      return { gold: 0, snacks: 1, gems: 0, label: '+1 뼈다귀', icon: '🦴', bg: 'bg-amber-50 border-amber-300 text-amber-900' };
-    } else {
-      const gems = Math.floor(Math.random() * 2) + 2; // 2 ~ 3
-      return { gold: 0, snacks: 0, gems, label: `+${gems} 보석`, icon: '💎', bg: 'bg-cyan-50 border-cyan-300 text-cyan-900' };
+  function getDroneState() {
+    const save = getSave();
+    if (!save.dailyDrone || save.dailyDrone.date !== today) {
+      save.dailyDrone = { date: today, tier: 0 };
     }
+    return save.dailyDrone;
   }
 
-  const renderModalContent = (claimedReward = null) => {
-    const curSave = getSave();
-    const isAvailable = curSave.dailyAirDropDate !== today;
-    const keysCount = curSave.keys || 0;
+  function grantMaterials(count) {
+    const profile = settingsStore.getCurrentProfile();
+    if (!profile.ownerState) profile.ownerState = { recoveryStage: 1, cureProgress: 0, gear: { backpack: 1, shoes: 1, outfit: 1, weapon: 1 }, materials: { cloth: 0, bandage: 0, parts: 0, herb: 0 } };
+    if (!profile.ownerState.materials) profile.ownerState.materials = { cloth: 0, bandage: 0, parts: 0, herb: 0 };
 
-    // 수령 전 화면 (무료 보급품 수령 가능 상태)
-    if (isAvailable && !claimedReward) {
-      openModal(`
-        <div class="space-y-4 text-center py-1">
-          <div class="flex items-center justify-between pb-1 border-b border-[#d2c8b4]">
-            <h2 class="text-base font-black text-[#1f2d24] flex items-center gap-1.5">
-              <span>🪂</span>
-              <span>일일 보급품</span>
-            </h2>
-            <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold cursor-pointer">✕</button>
-          </div>
-
-          <div class="py-3 flex flex-col items-center justify-center">
-            <div class="text-5xl select-none leading-none">🪂📦</div>
-            <div class="mt-3.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-black">
-              🪙 금화 · 🦴 간식 · 💎 보석 중 랜덤 무료 지급!
-            </div>
-          </div>
-
-          <div class="pt-1">
-            <button
-              id="btn-claim-airdrop"
-              type="button"
-              class="w-full py-3.5 rounded-2xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span>[ 🪂 무료 보급품 받기 ]</span>
-            </button>
-          </div>
-        </div>
-      `);
-
-      document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-
-      document.getElementById('btn-claim-airdrop')?.addEventListener('click', () => {
-        const reward = rollReward();
-        const res = claimDailyAirDrop({ gold: reward.gold, snacks: reward.snacks, gems: reward.gems });
-        if (res.ok) {
-          audioEngine.playPowerUp?.();
-          refreshHeader();
-          renderBattleTab();
-          renderModalContent(reward);
-        }
-      });
-      return;
+    const granted = {};
+    for (let i = 0; i < count; i++) {
+      const k = MAT_KEYS[Math.floor(Math.random() * MAT_KEYS.length)];
+      profile.ownerState.materials[k] = (profile.ownerState.materials[k] || 0) + 1;
+      granted[k] = (granted[k] || 0) + 1;
     }
+    settingsStore.saveProfile();
+    return granted;
+  }
 
-    // 개봉 결과 화면 또는 이미 수령 완료 후 화면
+  const renderModalContent = (lastClaimMsg = null) => {
+    const curSave = getSave();
+    const drone = getDroneState();
+    const keysCount = curSave.keys || 0;
+    const gemsCount = curSave.gems || 0;
+
+    const tierLabels = [
+      '1단계: 🎁 무료 드론 보급 (대기 중)',
+      '2단계: 🎬 광고 보고 2차 보급 (대기 중)',
+      '3단계: 💎 보석으로 긴급 보급 (대기 중)',
+      '오늘의 모든 구호 드론 보급 완료 ✓',
+    ];
+
     openModal(`
-      <div class="space-y-4 text-center py-1">
+      <div class="space-y-3.5 text-center py-1">
         <div class="flex items-center justify-between pb-1 border-b border-[#d2c8b4]">
           <h2 class="text-base font-black text-[#1f2d24] flex items-center gap-1.5">
-            <span>🪂</span>
-            <span>일일 보급품</span>
+            <span>🚁</span>
+            <span>일일 구호 드론 보급</span>
           </h2>
           <button id="btn-close-modal" type="button" class="text-[#4a584e] hover:text-[#1f2d24] text-lg font-bold cursor-pointer">✕</button>
         </div>
 
         <div class="py-2 flex flex-col items-center justify-center">
-          <div class="text-4xl select-none leading-none">🪂📦✨</div>
-          <div class="text-sm font-black text-[#1f2d24] mt-2">
-            ${claimedReward ? '보급품 개봉 완료!' : '오늘의 무료 보급품 수령 완료'}
+          <div class="text-5xl select-none leading-none animate-bounce">🚁📦</div>
+          <div class="text-xs font-black text-emerald-800 mt-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300">
+            ${tierLabels[drone.tier] || tierLabels[3]}
           </div>
-          ${
-            claimedReward
-              ? `
-                <div class="mt-2.5 p-3 rounded-2xl ${claimedReward.bg} border text-center inline-flex items-center justify-center gap-2 min-w-[160px] shadow-xs">
-                  <span class="text-2xl">${claimedReward.icon}</span>
-                  <span class="text-sm font-black">${claimedReward.label}</span>
-                </div>
-              `
-              : `
-                <p class="text-xs text-[#5c6e60] mt-1">내일 새로운 무료 보급품이 다시 투하됩니다.</p>
-              `
-          }
+          ${lastClaimMsg ? `
+            <div class="mt-2.5 p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold shadow-xs">
+              ${lastClaimMsg}
+            </div>
+          ` : `
+            <p class="text-[11px] text-[#5c6e60] mt-1.5">
+              전장 상공에서 구호 드론이 코인과 주인 장비 제작 재료를 투하합니다!
+            </p>
+          `}
         </div>
 
+        <!-- 3단계 드론 보급 버튼 영역 -->
         <div class="space-y-2 pt-1 border-t border-[#d2c8b4]">
+          ${drone.tier === 0 ? `
+            <button
+              id="btn-drone-free"
+              type="button"
+              class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>[ 🎁 무료 드론 보급 받기 ]</span>
+            </button>
+          ` : drone.tier === 1 ? `
+            <button
+              id="btn-drone-ad"
+              type="button"
+              class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-black text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>[ 🎬 광고 보고 2차 보급 받기 ]</span>
+            </button>
+          ` : drone.tier === 2 ? `
+            <button
+              id="btn-drone-gem"
+              type="button"
+              class="w-full py-3.5 rounded-2xl ${gemsCount >= 5 ? 'bg-gradient-to-r from-cyan-600 via-teal-500 to-cyan-700 text-white cursor-pointer active:scale-95 shadow-md' : 'bg-stone-300 text-stone-500 cursor-not-allowed opacity-75'} font-black text-sm transition flex items-center justify-center gap-2"
+              ${gemsCount >= 5 ? '' : 'disabled'}
+            >
+              <span>[ 💎 보석 5개로 긴급 보급 (보유: ${gemsCount}개) ]</span>
+            </button>
+          ` : `
+            <div class="p-3 rounded-xl bg-stone-100 text-stone-600 text-xs font-bold">
+              오늘의 드론 보급이 모두 완료되었습니다. 내일 다시 만나요!
+            </div>
+          `}
+
+          <!-- 기존 열쇠 보급품 열기 옵션 유지 -->
           <button
             id="btn-airdrop-key"
             type="button"
-            class="w-full py-3 rounded-xl font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 ${
+            class="w-full py-2.5 rounded-xl font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5 ${
               keysCount > 0
                 ? 'bg-amber-600 hover:bg-amber-700 text-white cursor-pointer active:scale-95'
                 : 'bg-[#e6dec8] text-[#8c9c8f] cursor-not-allowed opacity-75'
             }"
             ${keysCount > 0 ? '' : 'disabled'}
           >
-            <span>[ 🔑 열쇠 1개로 보급품 열기 (보유: ${keysCount}개) ]</span>
-          </button>
-          ${
-            keysCount === 0
-              ? `
-                <p class="text-[10px] text-[#5c6e60] leading-tight break-keep">
-                  💡 보급 열쇠 획득처: 일일 미션 달성, 주간 챌린지 랭킹 보상, 30일 출석부
-                </p>
-              `
-              : ''
-          }
-
-          <button
-            id="btn-airdrop-confirm"
-            type="button"
-            class="w-full py-2.5 rounded-xl bg-[#2d6a4f] hover:bg-[#245840] text-[#f8f5ec] font-bold text-xs active:scale-95 transition cursor-pointer"
-          >
-            확인
+            <span>[ 🔑 열쇠 1개로 추가 보급 (보유: ${keysCount}개) ]</span>
           </button>
         </div>
       </div>
     `);
 
     document.getElementById('btn-close-modal')?.addEventListener('click', closeModal);
-    document.getElementById('btn-airdrop-confirm')?.addEventListener('click', closeModal);
 
+    // 1단계: 무료 드론 보급
+    document.getElementById('btn-drone-free')?.addEventListener('click', () => {
+      const mats = grantMaterials(1);
+      const gold = 120;
+      updateSave((s) => {
+        s.gold = (s.gold || 0) + gold;
+        if (!s.dailyDrone) s.dailyDrone = { date: today, tier: 0 };
+        s.dailyDrone.tier = 1;
+        s.dailyAirDropDate = today;
+      });
+      audioEngine.playPowerUp?.();
+      refreshHeader();
+      renderBattleTab();
+      const matNames = Object.entries(mats).map(([k, c]) => `${MAT_LABELS[k] || k} +${c}`).join(', ');
+      renderModalContent(`🎉 1차 무료 보급 완료! (+${gold} 🪙, ${matNames})`);
+    });
+
+    // 2단계: 광고 보고 2차 보급
+    document.getElementById('btn-drone-ad')?.addEventListener('click', () => {
+      const btn = document.getElementById('btn-drone-ad');
+      if (btn) btn.innerHTML = '<span>🎬 보급 신호 수신 중...</span>';
+      setTimeout(() => {
+        const mats = grantMaterials(2);
+        const gold = 180;
+        updateSave((s) => {
+          s.gold = (s.gold || 0) + gold;
+          if (!s.dailyDrone) s.dailyDrone = { date: today, tier: 1 };
+          s.dailyDrone.tier = 2;
+        });
+        audioEngine.playPowerUp?.();
+        refreshHeader();
+        renderBattleTab();
+        const matNames = Object.entries(mats).map(([k, c]) => `${MAT_LABELS[k] || k} +${c}`).join(', ');
+        renderModalContent(`🎬 2차 보급 투하 완료! (+${gold} 🪙, ${matNames})`);
+      }, 700);
+    });
+
+    // 3단계: 보석 5개로 긴급 보급
+    document.getElementById('btn-drone-gem')?.addEventListener('click', () => {
+      if ((curSave.gems || 0) < 5) return;
+      const mats = grantMaterials(3);
+      const gold = 300;
+      updateSave((s) => {
+        s.gems = Math.max(0, (s.gems || 0) - 5);
+        s.gold = (s.gold || 0) + gold;
+        if (!s.dailyDrone) s.dailyDrone = { date: today, tier: 2 };
+        s.dailyDrone.tier = 3;
+      });
+      audioEngine.playPowerUp?.();
+      refreshHeader();
+      renderBattleTab();
+      const matNames = Object.entries(mats).map(([k, c]) => `${MAT_LABELS[k] || k} +${c}`).join(', ');
+      renderModalContent(`💎 긴급 3차 보급 완료! (+${gold} 🪙, ${matNames})`);
+    });
+
+    // 열쇠로 추가 보급품
     document.getElementById('btn-airdrop-key')?.addEventListener('click', () => {
-      const reward = rollReward();
-      const res = openAirDropWithKey({ gold: reward.gold, snacks: reward.snacks, gems: reward.gems });
+      const mats = grantMaterials(1);
+      const res = openAirDropWithKey({ gold: 80, snacks: 1, gems: 1 });
       if (res.ok) {
         audioEngine.playPowerUp?.();
         refreshHeader();
         renderBattleTab();
-        renderModalContent(reward);
+        const matNames = Object.entries(mats).map(([k, c]) => `${MAT_LABELS[k] || k} +${c}`).join(', ');
+        renderModalContent(`🔑 열쇠 보급 완료! (+80 🪙, +1 🦴, +1 💎, ${matNames})`);
       }
     });
   };

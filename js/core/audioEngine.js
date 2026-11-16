@@ -4,7 +4,8 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { getSave } from './saveStore.js';
+import { getSave, updateSave } from './saveStore.js';
+import settingsStore from '../settingsStore.js';
 
 let audioCtx = null;
 let bgmGain = null;
@@ -150,10 +151,43 @@ function ensureAudioContext() {
   return audioCtx;
 }
 
+function getBgmConfig() {
+  const storeBgmVol = settingsStore?.get ? settingsStore.get('bgmVolume') : null;
+  const storeBgmMuted = settingsStore?.get ? settingsStore.get('bgmMuted') : null;
+  const saveAudio = getSave()?.audio || {};
+
+  const volume = storeBgmVol !== null && storeBgmVol !== undefined ? Number(storeBgmVol) : ((saveAudio.bgmVolume ?? 0.7) * 100);
+  const muted = storeBgmMuted !== null && storeBgmMuted !== undefined ? Boolean(storeBgmMuted) : (saveAudio.bgmEnabled === false);
+
+  return { volume: Math.max(0, Math.min(100, Math.round(volume))), muted };
+}
+
+function getSfxConfig() {
+  const storeSfxVol = settingsStore?.get ? settingsStore.get('sfxVolume') : null;
+  const storeSfxMuted = settingsStore?.get ? settingsStore.get('sfxMuted') : null;
+  const saveAudio = getSave()?.audio || {};
+
+  const volume = storeSfxVol !== null && storeSfxVol !== undefined ? Number(storeSfxVol) : ((saveAudio.sfxVolume ?? 0.8) * 100);
+  const muted = storeSfxMuted !== null && storeSfxMuted !== undefined ? Boolean(storeSfxMuted) : (saveAudio.sfxEnabled === false);
+
+  return { volume: Math.max(0, Math.min(100, Math.round(volume))), muted };
+}
+
+function getTtsConfig() {
+  const storeTtsVol = settingsStore?.get ? settingsStore.get('ttsVolume') : null;
+  const storeTtsMuted = settingsStore?.get ? settingsStore.get('ttsMuted') : null;
+  const storeTtsEnabled = settingsStore?.get ? settingsStore.get('ttsEnabled') : null;
+
+  const volume = storeTtsVol !== null && storeTtsVol !== undefined ? Number(storeTtsVol) : 100;
+  const muted = storeTtsMuted !== null && storeTtsMuted !== undefined ? Boolean(storeTtsMuted) : (storeTtsEnabled === false);
+
+  return { volume: Math.max(0, Math.min(100, Math.round(volume))), muted };
+}
+
 function getTargetBgmGain() {
-  const { audio } = getSave();
-  if (!audio.bgmEnabled) return 0;
-  const base = audio.bgmVolume ?? 0.42;
+  const { volume, muted } = getBgmConfig();
+  if (muted) return 0;
+  const base = (volume / 100) * 0.42;
   return isDucked ? base * BALANCE.VOCA.AUDIO_DUCKING_BGM_RATIO : base;
 }
 
@@ -172,13 +206,16 @@ function setDucking(duck) {
 }
 
 /**
- * 간단한 사인/트라이앵글 톤 재생
+ * 간단한 사인/트라이앵글 톤 재생 (독립 SFX 볼륨 반영)
  */
 function playTone(freq, duration, type = 'sine', volume = 0.14, destNode = null) {
-  const { audio } = getSave();
-  if (!audio.sfxEnabled && destNode !== bgmGain) return;
+  const { volume: sfxVol, muted } = getSfxConfig();
+  if (destNode !== bgmGain && muted) return;
   const ctx = ensureAudioContext();
   if (!ctx) return;
+
+  const effectiveVol = destNode === bgmGain ? volume : (volume * (sfxVol / 100));
+  if (effectiveVol <= 0.0001) return;
 
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
@@ -188,7 +225,7 @@ function playTone(freq, duration, type = 'sine', volume = 0.14, destNode = null)
   osc.frequency.setValueAtTime(freq, now);
 
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(volume, now + 0.012);
+  gain.gain.linearRampToValueAtTime(effectiveVol, now + 0.012);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
   osc.connect(gain);
@@ -268,6 +305,12 @@ export const audioEngine = {
     lastSpokenWord = cleanWord;
     lastSpokenAt = now;
 
+    const { volume: ttsVol, muted: ttsMuted } = getTtsConfig();
+    if (ttsMuted || ttsVol <= 0) {
+      onFinished?.();
+      return;
+    }
+
     try {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(cleanWord);
@@ -279,7 +322,7 @@ export const audioEngine = {
       }
       utter.rate = isSpanish ? 0.92 : 0.95;
       utter.pitch = 1.0;
-      utter.volume = 1.0;
+      utter.volume = Math.max(0, Math.min(1, ttsVol / 100));
 
       let finished = false;
       const clearDuck = () => {
@@ -486,6 +529,69 @@ export const audioEngine = {
     [440, 554.37, 659.25, 880].forEach((f, idx) => {
       setTimeout(() => playTone(f, 0.14, 'triangle', 0.15), idx * 75);
     });
+  },
+
+  getBgmConfig,
+  getSfxConfig,
+  getTtsConfig,
+
+  setBgmVolume(val) {
+    const num = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+    settingsStore?.set?.('bgmVolume', num);
+    updateSave?.((s) => {
+      if (!s.audio) s.audio = {};
+      s.audio.bgmVolume = num / 100;
+    });
+    applyBgmGain(0.05);
+  },
+
+  setBgmMuted(muted) {
+    const isMuted = Boolean(muted);
+    settingsStore?.set?.('bgmMuted', isMuted);
+    updateSave?.((s) => {
+      if (!s.audio) s.audio = {};
+      s.audio.bgmEnabled = !isMuted;
+    });
+    applyBgmGain(0.05);
+  },
+
+  setSfxVolume(val) {
+    const num = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+    settingsStore?.set?.('sfxVolume', num);
+    updateSave?.((s) => {
+      if (!s.audio) s.audio = {};
+      s.audio.sfxVolume = num / 100;
+    });
+  },
+
+  setSfxMuted(muted) {
+    const isMuted = Boolean(muted);
+    settingsStore?.set?.('sfxMuted', isMuted);
+    updateSave?.((s) => {
+      if (!s.audio) s.audio = {};
+      s.audio.sfxEnabled = !isMuted;
+    });
+  },
+
+  setTtsVolume(val) {
+    const num = Math.max(0, Math.min(100, Math.round(Number(val) || 0)));
+    settingsStore?.set?.('ttsVolume', num);
+  },
+
+  setTtsMuted(muted) {
+    const isMuted = Boolean(muted);
+    settingsStore?.set?.('ttsMuted', isMuted);
+    settingsStore?.set?.('ttsEnabled', !isMuted);
+  },
+
+  playSampleSfx() {
+    playTone(880, 0.08, 'triangle', 0.16);
+  },
+
+  playSampleTts(forcedLang = null) {
+    const lang = forcedLang || (settingsStore?.get ? settingsStore.get('activeLanguage') : null) || getSave().studyLang || 'es';
+    const sample = lang === 'es' ? '¡Excelente!' : 'Wonderful!';
+    this.speakWordOnce(sample, null, lang);
   },
 };
 

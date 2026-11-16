@@ -9,6 +9,7 @@ import {
   SUPPLY_BOX_DEFS,
   ATTENDANCE_30_REWARDS,
   QUEST_DEFS,
+  COSTUMES,
 } from '../data/catalog.js';
 import {
   MAX_SUPPORTERS,
@@ -16,8 +17,6 @@ import {
   CURRENT_SAVE_VERSION,
   STUDY_LANGS,
   STUDY_CEFRS,
-  LEAGUE_TIERS,
-  RIVAL_PROFILES,
   DEFAULT_SAVE,
   createDefaultLangProgress,
   normalizeLangProgress,
@@ -31,8 +30,6 @@ export {
   CURRENT_SAVE_VERSION,
   STUDY_LANGS,
   STUDY_CEFRS,
-  LEAGUE_TIERS,
-  RIVAL_PROFILES,
   DEFAULT_SAVE,
   createDefaultLangProgress,
   normalizeLangProgress,
@@ -75,13 +72,13 @@ export function loadSave() {
       }
     }
 
-    // 기본 무기(나무 뼈다귀 부메랑) 마이그레이션: 없으면 owned에 추가 및 기본 장착
-    if (!state.costumes.owned.includes('weapon_boomerang')) {
-      state.costumes.owned.unshift('weapon_boomerang');
+    // 기본 하네스 마이그레이션: 없으면 owned에 추가 및 기본 장착
+    if (!state.costumes.owned.includes('basic_harness')) {
+      state.costumes.owned.unshift('basic_harness');
       persistSave();
     }
-    if (!state.costumes.equipped.weapon) {
-      state.costumes.equipped.weapon = 'weapon_boomerang';
+    if (!state.costumes.equipped.harness) {
+      state.costumes.equipped.harness = 'basic_harness';
       persistSave();
     }
 
@@ -300,128 +297,6 @@ export function importSaveBase64(base64Str) {
   }
 }
 
-/**
- * 매주 월요일 00:00:00 기준 주차 키 (예: "2026-W-1109")
- */
-export function getWeekKey(d = new Date()) {
-  const target = new Date(d);
-  const day = (target.getDay() + 6) % 7; // 월: 0 ~ 일: 6
-  target.setDate(target.getDate() - day);
-  const y = target.getFullYear();
-  const m = String(target.getMonth() + 1).padStart(2, '0');
-  const date = String(target.getDate()).padStart(2, '0');
-  return `${y}-W-${m}${date}`;
-}
-
-/**
- * 다음 주 월요일 00:00:00까지 남은 시간
- */
-export function getTimeUntilNextWeeklyReset(now = new Date()) {
-  const nextMonday = new Date(now);
-  const day = (nextMonday.getDay() + 6) % 7;
-  const daysUntilMonday = 7 - day;
-  nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
-  nextMonday.setHours(0, 0, 0, 0);
-  const diffMs = Math.max(0, nextMonday.getTime() - now.getTime());
-  const days = Math.floor(diffMs / (24 * 3600 * 1000));
-  const hours = Math.floor((diffMs % (24 * 3600 * 1000)) / (3600 * 1000));
-  const minutes = Math.floor((diffMs % (3600 * 1000)) / (60 * 1000));
-  return { days, hours, minutes, diffMs };
-}
-
-function pseudoHash(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-/**
- * 특정 티어와 주차 키에 따른 19명 가상 라이벌 점수 생성 (시드 기반)
- */
-export function generateRivals(tier, weekKey = getWeekKey()) {
-  const TIER_RANGES = {
-    bronze: { min: 400, max: 2400 },
-    silver: { min: 1400, max: 4200 },
-    gold: { min: 2800, max: 6800 },
-    ruby: { min: 5000, max: 9800 },
-    diamond: { min: 7500, max: 14500 },
-  };
-  const range = TIER_RANGES[tier] || TIER_RANGES.bronze;
-
-  return RIVAL_PROFILES.map((rival) => {
-    const seed = pseudoHash(`${weekKey}_${rival.id}_${tier}`);
-    const normalized = (seed % 1000) / 1000;
-    const base = range.min + Math.round(normalized * (range.max - range.min));
-    const score = Math.max(50, Math.round(base / 10) * 10);
-    return {
-      ...rival,
-      score,
-      isPlayer: false,
-    };
-  });
-}
-
-/**
- * 주차 변경 여부 검사 및 주간 20인 리그 정산
- * @param {object} save
- * @returns {object|null} 정산 결과
- */
-export function checkAndSettleWeeklyLeague(save) {
-  if (!save.challenge) {
-    save.challenge = { leagueTier: 'bronze', weeklyScore: 0, weekKey: '', dailyFreeUsedDate: '' };
-  }
-  const currentWeek = getWeekKey();
-  if (!save.challenge.weekKey) {
-    save.challenge.weekKey = currentWeek;
-    return null;
-  }
-  if (save.challenge.weekKey === currentWeek) {
-    return null;
-  }
-
-  const prevTier = save.challenge.leagueTier || 'bronze';
-  const myScore = save.challenge.weeklyScore || 0;
-  const rivals = generateRivals(prevTier, save.challenge.weekKey);
-  const fullLeaderboard = [
-    { isPlayer: true, score: myScore },
-    ...rivals.map((r) => ({ isPlayer: false, score: r.score })),
-  ].sort((a, b) => b.score - a.score);
-
-  const rank = fullLeaderboard.findIndex((item) => item.isPlayer) + 1;
-  const curIdx = Math.max(0, LEAGUE_TIERS.indexOf(prevTier));
-
-  let outcome = 'stay';
-  let rewardSnacks = 0;
-  let newTier = prevTier;
-
-  if (rank <= 5) {
-    const nextIdx = Math.min(LEAGUE_TIERS.length - 1, curIdx + 1);
-    newTier = LEAGUE_TIERS[nextIdx];
-    outcome = nextIdx > curIdx ? 'promoted' : 'stay_top';
-    const REWARD_MAP = { bronze: 3, silver: 4, gold: 5, ruby: 7, diamond: 10 };
-    rewardSnacks = REWARD_MAP[prevTier] || 3;
-    save.snacks = (save.snacks || 0) + rewardSnacks;
-  } else if (rank >= 18 && curIdx > 0) {
-    newTier = LEAGUE_TIERS[curIdx - 1];
-    outcome = 'demoted';
-  }
-
-  save.challenge.leagueTier = newTier;
-  save.challenge.weeklyScore = 0;
-  save.challenge.weekKey = currentWeek;
-
-  return {
-    outcome,
-    prevTier,
-    newTier,
-    rank,
-    rewardSnacks,
-  };
-}
-
 const AFFECTION_STAGES = [
   { level: 1, max: 50,  title: '낯선 친구',   hearts: '🐾', desc: '경계심이 많아 뒤로 물러납니다.' },
   { level: 2, max: 120, title: '장난꾸러기', hearts: '💖', desc: '주변에서 꼬리를 흔들며 장난칩니다.' },
@@ -490,6 +365,29 @@ export function getTodayDateKey(d = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+export function getWeekKey(d = new Date()) {
+  const target = new Date(d);
+  const day = (target.getDay() + 6) % 7; // 월: 0 ~ 일: 6
+  target.setDate(target.getDate() - day);
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, '0');
+  const date = String(target.getDate()).padStart(2, '0');
+  return `${y}-W-${m}${date}`;
+}
+
+export function getTimeUntilNextWeeklyReset(now = new Date()) {
+  const nextMonday = new Date(now);
+  const day = (nextMonday.getDay() + 6) % 7;
+  const daysUntilMonday = 7 - day;
+  nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
+  nextMonday.setHours(0, 0, 0, 0);
+  const diffMs = Math.max(0, nextMonday.getTime() - now.getTime());
+  const days = Math.floor(diffMs / (24 * 3600 * 1000));
+  const hours = Math.floor((diffMs % (24 * 3600 * 1000)) / (3600 * 1000));
+  const mins = Math.floor((diffMs % (3600 * 1000)) / (60 * 1000));
+  return { diffMs, days, hours, mins };
 }
 
 /**
@@ -661,12 +559,12 @@ export function claimAttendance30() {
     }
 
     if (reward.costume) {
-      if (!s.costumes) s.costumes = { owned: ['weapon_boomerang'], equipped: {} };
+      if (!s.costumes) s.costumes = { owned: ['basic_harness'], equipped: { harness: 'basic_harness' } };
       if (!s.costumes.owned.includes(reward.costume)) s.costumes.owned.push(reward.costume);
     }
 
     if (reward.weapon) {
-      if (!s.costumes) s.costumes = { owned: ['weapon_boomerang'], equipped: {} };
+      if (!s.costumes) s.costumes = { owned: ['basic_harness'], equipped: { harness: 'basic_harness' } };
       if (!s.costumes.owned.includes(reward.weapon)) {
         s.costumes.owned.push(reward.weapon);
       } else {
@@ -719,8 +617,8 @@ export function rollSupplyBox(boxId, is10x = false, isFree = false) {
     }
 
     if (!s.gachaPity) s.gachaPity = { heroCount: 0 };
-    if (!s.costumes) s.costumes = { owned: ['weapon_boomerang'], equipped: {} };
-    if (!s.costumes.owned) s.costumes.owned = ['weapon_boomerang'];
+    if (!s.costumes) s.costumes = { owned: ['basic_harness'], equipped: { harness: 'basic_harness' } };
+    if (!s.costumes.owned) s.costumes.owned = ['basic_harness'];
 
     for (let i = 0; i < pullCount; i++) {
       let rolledRarity = 'common';
@@ -750,20 +648,20 @@ export function rollSupplyBox(boxId, is10x = false, isFree = false) {
         }
       }
 
-      // 해당 등급의 무기 중 랜덤 1개 선택
-      const candidateWeapons = WEAPONS.filter((w) => w.rarity === rolledRarity);
-      const weapon = candidateWeapons.length > 0
-        ? candidateWeapons[Math.floor(Math.random() * candidateWeapons.length)]
-        : WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+      // 해당 등급의 장비 중 랜덤 1개 선택
+      const candidateGear = COSTUMES.filter((w) => w.rarity === rolledRarity);
+      const gear = candidateGear.length > 0
+        ? candidateGear[Math.floor(Math.random() * candidateGear.length)]
+        : (COSTUMES[0] || { id: 'basic_harness', rarity: 'common' });
 
-      const isNew = !s.costumes.owned.includes(weapon.id);
+      const isNew = !s.costumes.owned.includes(gear.id);
       let duplicateRefund = null;
 
       if (isNew) {
-        s.costumes.owned.push(weapon.id);
+        s.costumes.owned.push(gear.id);
       } else {
         const DUP_REWARD = { common: 100, rare: 250, epic: 500, legend: 1000, mythic: 2500 };
-        const goldRefund = DUP_REWARD[weapon.rarity] || 100;
+        const goldRefund = DUP_REWARD[gear.rarity] || 100;
         s.gold = (s.gold || 0) + goldRefund;
         duplicateRefund = { gold: goldRefund };
       }

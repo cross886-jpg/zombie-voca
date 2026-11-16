@@ -11,6 +11,7 @@ import { getSave, updateSave, recordQuestProgress } from '../core/saveStore.js';
 import { audioEngine } from '../core/audioEngine.js';
 import { wordEngine } from '../core/wordEngine.js';
 import { recordStudyMastery, formatCourseBadge } from '../core/courseEngine.js';
+import settingsStore from '../settingsStore.js';
 
 export class WordEventManager {
   constructor(engine) {
@@ -81,6 +82,11 @@ export class WordEventManager {
       engine.stageDirector.spawnBoss();
     }
 
+    // 챕터 보스 스테이지 (30, 60, 90, 120, 150): 5번째 문제(questionIndex >= 4) 진입 시 보스 출현
+    if (engine.runStats.isChapterBossStage && this.questionIndex >= 4 && !engine.enemies.boss) {
+      engine.stageDirector.spawnBoss();
+    }
+
     this.currentWord = this.deck[this.questionIndex];
     if (engine.runStats.isPlacementTest && this.currentWord) {
       this.usedWordIds = this.usedWordIds || new Set();
@@ -103,6 +109,15 @@ export class WordEventManager {
       }
     } else {
       choices = wordEngine.createQuestionChoices(this.currentWord);
+    }
+
+    // 캠퍼스 부엉이 고유 특기: 퀴즈 출제 시 오답 보기 1개 자동 제거 힌트
+    if (engine.companions?.tryEliminateWrongChoice?.(choices)) {
+      engine.combat?.spawnDamageText?.(engine.player.x, engine.player.y - 35, '🦉 부엉이 힌트! 오답 1개 제거', '#818cf8', 1.2);
+      const elimIdx = choices.findIndex((c) => c.isEliminated);
+      if (elimIdx !== -1) {
+        choices.splice(elimIdx, 1);
+      }
     }
 
     engine.monoliths.spawnMonoliths(
@@ -157,6 +172,12 @@ export class WordEventManager {
       engine.player.heal(correctHeal);
       engine.combat.spawnDamageText(engine.player.x, engine.player.y - 28, `+${correctHeal} HP`, '#4ade80', 1.0);
 
+      // 벙커 해치 정답 시 주인(Owner) 기력 100% 즉시 완충
+      if (engine.player?.owner?.restoreFullStamina) {
+        engine.player.owner.restoreFullStamina();
+        engine.combat?.spawnDamageText?.(engine.player.owner.x, engine.player.owner.y - 20, '⚡ 기력 100% 완충!', '#38bdf8', 0.9);
+      }
+
       // 전술 구조 캡슐 개방 굵직한 기본 금화 보상 (+25 🪙, 실력 진단 테스트 제외)
       const podGold = engine.runStats.isPlacementTest ? 0 : 25;
       if (podGold > 0) {
@@ -167,6 +188,11 @@ export class WordEventManager {
       // 캡슐 해치 개방 및 넉백 선명한 단일 충격파 + 스파크
       engine.combat.triggerCorrectShockwave(monolith, engine.camera, engine.player);
       audioEngine.playCorrect();
+
+      // settingsStore 단어 정답 결과 기록 (최근 배운 단어 갱신 및 오답 큐 졸업)
+      if (this.currentWord?.id !== undefined && this.currentWord?.id !== null) {
+        settingsStore.recordWordResult(this.currentWord.id, true);
+      }
 
       // [실력 진단 테스트 전용]: 8번째 정답(correctCount === 8) 시 랜덤 서포트 1마리 구출 & 배치 방법 튜토리얼 안내
       if (engine.runStats.isPlacementTest && engine.runStats.correctCount === 8 && !engine.runStats.placementCompanionRescued) {
@@ -292,6 +318,11 @@ export class WordEventManager {
       engine.combat.spawnDamageText(monolith.x, monolith.y - 42, '🚨 좀비 기습 매복 트랩!', '#ef4444', 1.3);
       engine.camera?.shake(10, 0.28);
       audioEngine.playWrong();
+
+      // settingsStore 단어 오답 결과 기록 (오답 큐에 누적)
+      if (this.currentWord?.id !== undefined && this.currentWord?.id !== null) {
+        settingsStore.recordWordResult(this.currentWord.id, false);
+      }
 
       const ambushCount = 2 + (Math.random() < 0.5 ? 1 : 0);
       for (let i = 0; i < ambushCount; i++) {

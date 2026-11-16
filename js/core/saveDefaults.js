@@ -13,30 +13,6 @@ export const CURRENT_SAVE_VERSION = 1;
 export const STUDY_LANGS = Object.freeze(['en', 'es']);
 export const STUDY_CEFRS = Object.freeze(['A1', 'A2', 'B1', 'B2']);
 
-export const LEAGUE_TIERS = ['bronze', 'silver', 'gold', 'ruby', 'diamond'];
-
-export const RIVAL_PROFILES = [
-  { id: 'r1', name: '뽀삐', breed: 'pomeranian', level: 'A2' },
-  { id: 'r2', name: '초코', breed: 'retriever', level: 'B1' },
-  { id: 'r3', name: '콩이', breed: 'corgi', level: 'A1' },
-  { id: 'r4', name: '보리', breed: 'shiba', level: 'B2' },
-  { id: 'r5', name: '두부', breed: 'beagle', level: 'A2' },
-  { id: 'r6', name: '뭉치', breed: 'pomeranian', level: 'B1' },
-  { id: 'r7', name: '별이', breed: 'retriever', level: 'C1' },
-  { id: 'r8', name: '호두', breed: 'corgi', level: 'A2' },
-  { id: 'r9', name: '루키', breed: 'shiba', level: 'B1' },
-  { id: 'r10', name: '코코', breed: 'beagle', level: 'B2' },
-  { id: 'r11', name: '망고', breed: 'pomeranian', level: 'A1' },
-  { id: 'r12', name: '까미', breed: 'retriever', level: 'A2' },
-  { id: 'r13', name: '모찌', breed: 'corgi', level: 'B1' },
-  { id: 'r14', name: '몽이', breed: 'shiba', level: 'A1' },
-  { id: 'r15', name: '쿠키', breed: 'beagle', level: 'B2' },
-  { id: 'r16', name: '나비', breed: 'pomeranian', level: 'A2' },
-  { id: 'r17', name: '레오', breed: 'retriever', level: 'B2' },
-  { id: 'r18', name: '하루', breed: 'corgi', level: 'C1' },
-  { id: 'r19', name: '루루', breed: 'shiba', level: 'B1' },
-];
-
 export function createDefaultLangProgress() {
   return { cefr: 'A1', tier: 1, unitIndex: 0, masteredWords: [] };
 }
@@ -72,16 +48,11 @@ export function createDefaultSave() {
       pomeranian: { level: 1, xp: 0 },
     },
     certifiedLevel: 'A1',
-    challenge: {
-      leagueTier: 'bronze',
-      weeklyScore: 0,
-      weekKey: '',
-      dailyFreeUsedDate: '',
-    },
     tutorialCompleted: false,
     tutorialDone: false,
     onboardingCompleted: false,
     onboardingStep: 0,
+    lobbyTourCompleted: false,
     gold: 35,
     keys: 1,
     snacks: 0,
@@ -119,15 +90,27 @@ export function createDefaultSave() {
       ultChargeLv: 0,
       shieldLv: 0,
     },
+    ownerTraining: {
+      hpLv: 0,
+      speedLv: 0,
+      cureEfficiencyLv: 0,
+      supportAtkLv: 0,
+    },
     companions: {
       unlocked: [],
       active: [],
+      activeGround: null,
+      activeRider: null,
       levels: {},
     },
     costumes: {
-      owned: ['weapon_boomerang'],
+      owned: ['basic_harness'],
       equipped: {
-        weapon: 'weapon_boomerang',
+        harness: 'basic_harness',
+        vest: null,
+        boots: null,
+        scarf: null,
+        weapon: null,
         hat: null,
         outfit: null,
         aura: null,
@@ -248,7 +231,7 @@ export function mergeWithDefaults(defaults, saved, isRoot = true) {
     }
   }
 
-  // 최상위 루트 객체가 아닌 하위 프로퍼티(training, challenge 등)는 루트 전용 정산 로직을 건너뜀
+  // 최상위 루트 객체가 아닌 하위 프로퍼티(training 등)는 루트 전용 정산 로직을 건너뜀
   if (!isRoot) {
     return result;
   }
@@ -266,6 +249,7 @@ export function mergeWithDefaults(defaults, saved, isRoot = true) {
   result.onboardingStep = typeof saved?.onboardingStep === 'number'
     ? saved.onboardingStep
     : (result.onboardingCompleted ? 5 : 0);
+  result.lobbyTourCompleted = Boolean(saved?.lobbyTourCompleted);
   result.haptic = saved && typeof saved.haptic === 'boolean' ? saved.haptic : true;
   result.lowFx = saved && typeof saved.lowFx === 'boolean' ? saved.lowFx : false;
   if (saved && typeof saved.langConfirmed === 'boolean') {
@@ -305,19 +289,6 @@ export function mergeWithDefaults(defaults, saved, isRoot = true) {
   if (!result.courseProgress || typeof result.courseProgress !== 'object') result.courseProgress = {};
   for (const lang of STUDY_LANGS) {
     result.courseProgress[lang] = normalizeLangProgress(result.courseProgress[lang], totalUnits);
-  }
-  if (!result.challenge) {
-    result.challenge = {
-      leagueTier: 'bronze',
-      weeklyScore: 0,
-      weekKey: '',
-      dailyFreeUsedDate: '',
-    };
-  } else {
-    if (!result.challenge.leagueTier) result.challenge.leagueTier = 'bronze';
-    if (typeof result.challenge.weeklyScore !== 'number') result.challenge.weeklyScore = 0;
-    if (typeof result.challenge.weekKey !== 'string') result.challenge.weekKey = '';
-    if (typeof result.challenge.dailyFreeUsedDate !== 'string') result.challenge.dailyFreeUsedDate = '';
   }
   return result;
 }

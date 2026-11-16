@@ -17,7 +17,6 @@ import { createLobbyUI } from './ui/lobbyUI.js';
 import { openInitialStudyLangModal } from './ui/lobbyModals.js';
 import { createGrowthUI } from './ui/growthUI.js';
 import { createShopUI } from './ui/shopUI.js';
-import { createChallengeUI } from './ui/challengeUI.js';
 
 async function bootstrap() {
   const save = loadSave();
@@ -36,7 +35,6 @@ async function bootstrap() {
   let lobbyUI = null;
   let growthUI = null;
   let shopUI = null;
-  let challengeUI = null;
 
   const hudUI = createHudUI(engine, {
     onReturnToLobby() {
@@ -105,9 +103,6 @@ async function bootstrap() {
     onRenderShop() {
       shopUI?.renderShopTab();
     },
-    onRenderChallenge() {
-      challengeUI?.renderChallengeTab();
-    },
   });
 
   growthUI = createGrowthUI({
@@ -120,15 +115,6 @@ async function bootstrap() {
     onResourcesChanged: () => lobbyUI.refreshHeader(),
     openModal: (html) => lobbyUI.openModal(html),
     closeModal: () => lobbyUI.closeModal(),
-  });
-
-  challengeUI = createChallengeUI({
-    onResourcesChanged: () => lobbyUI.refreshHeader(),
-    openModal: (html) => lobbyUI.openModal(html),
-    closeModal: () => lobbyUI.closeModal(),
-    onStartPromotion({ targetLevel }) {
-      startBattleFlow({ isPromotion: true, targetLevel });
-    },
   });
 
   // 화면 리사이즈 대응

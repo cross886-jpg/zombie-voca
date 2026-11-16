@@ -12,3 +12,4 @@
 export { getEvolutionStage, computePlayerStats } from './playerStats.js';
 export { Player } from './playerEntity.js';
 export { drawDogCharacter, drawDogSkin } from '../render/dogCharacterDraw.js';
+export { Owner } from './ownerEntity.js';

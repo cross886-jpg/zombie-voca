@@ -21,6 +21,7 @@ export {
   openEditDogNameModal,
   openSettingsModal,
   openCefrModal,
+  openOwnerCompanionModal,
 } from './modals/profileModals.js';
 
 export {
@@ -42,6 +43,7 @@ import {
   openEditDogNameModal,
   openSettingsModal,
   openCefrModal,
+  openOwnerCompanionModal,
 } from './modals/profileModals.js';
 
 import {
@@ -61,6 +63,7 @@ export function createLobbyModals(ctx) {
     openNoticeModal: () => openNoticeModal(ctx),
     openProfileModal: () => openProfileModal(ctx),
     openSettingsModal: () => openSettingsModal(ctx),
+    openOwnerCompanionModal: (initialTab) => openOwnerCompanionModal(ctx, initialTab),
     openInitialStudyLangModal: (options) => openInitialStudyLangModal(ctx, options),
     openStarterAdoptionModal: (options) => openStarterAdoptionModal(ctx, options),
     openWordLevelSelectModal: (options) => openWordLevelSelectModal(ctx, options),

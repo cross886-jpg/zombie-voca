@@ -5,13 +5,14 @@
  */
 
 import { BALANCE, GAME_STATES, calcStageReward } from '../config/balance.js';
-import { getChapter, getChapterNumberForUnit } from '../data/chapters.js';
+import { getChapter, getChapterNumberForUnit, getChapterInfo, isReviewStage, isChapterBossStage, CHAPTER_INFO, CHAPTER_BOSS_RECOVERY } from '../data/chapters.js';
 import { getTotalUnits } from '../data/data_en.js?v=2';
 import { getSave, updateSave, recordQuestProgress } from '../core/saveStore.js';
+import settingsStore from '../settingsStore.js';
 import { audioEngine } from '../core/audioEngine.js';
 import { wordEngine } from '../core/wordEngine.js';
 import { getCurrentStudyUnitId, getLangUnitWords, calcPlacementTier, WORD_LEVEL_TIERS } from '../core/courseEngine.js';
-import { generatePlacementDeck, evaluatePlacementScore } from './placementTest.js';
+import { generatePlacementDeck, evaluatePlacementScore, calculateSteppedPlacementResult } from './placementTest.js';
 
 export class StageDirector {
   constructor(engine) {
@@ -41,6 +42,9 @@ export class StageDirector {
       ? (targetUnitNum || 1)
       : parseInt((chosenUnitId || 'unit_001').replace(/\D/g, ''), 10) || 1;
     const stageChapterNum = getChapterNumberForUnit(curUnitNum);
+
+    const isReview = !isTutorial && !isAnyPlacement && !isPromotion && isReviewStage(curUnitNum);
+    const isChapBoss = !isTutorial && !isAnyPlacement && !isPromotion && isChapterBossStage(curUnitNum);
 
     engine.chapter = getChapter(chapterNumber || stageChapterNum || save.selectedChapter || 1);
     engine.course = BALANCE.COURSES.find((c) => c.id === chosenCourseId) || BALANCE.COURSES[0];
@@ -73,6 +77,9 @@ export class StageDirector {
 
     engine.runStats = {
       unitId: chosenUnitId,
+      stageNumber: curUnitNum,
+      isReviewStage: isReview,
+      isChapterBossStage: isChapBoss,
       correctCount: 0,
       wrongCount: 0,
       answeredCount: 0,
@@ -112,6 +119,10 @@ export class StageDirector {
       engine.tutorial.stop();
       engine.deck = generatePlacementDeck(save.studyLang || 'en', selectedTier);
       this.spawnInitialWave('placement', startX, startY);
+    } else if (isReview) {
+      engine.tutorial.stop();
+      engine.deck = this.buildReviewDeck(curUnitNum);
+      this.spawnInitialWave('normal', startX, startY);
     } else {
       engine.tutorial.stop();
       // 벙커 퀴즈 단어는 전투 스테이지 번호가 아닌 현재 학습 언어/유닛 진도에서 출제
@@ -171,6 +182,64 @@ export class StageDirector {
     engine.enemies.spawnBoss(engine.chapter, 1.0, engine.player.x, engine.player.y);
     engine.camera.triggerZoomSequence(BALANCE.BOSS.ZOOM_SEQUENCE_SEC);
     audioEngine.playBossSiren?.();
+  }
+
+  buildReviewDeck(stageNum) {
+    const profile = settingsStore.getCurrentProfile ? settingsStore.getCurrentProfile() : null;
+    const lang = (settingsStore.get ? settingsStore.get('activeLanguage') : null) || getSave().studyLang || 'es';
+    const care = profile?.careSystem || {};
+    const wrongQueue = Array.isArray(care.wrongAnswerQueue) ? care.wrongAnswerQueue : [];
+    const recentLearned = Array.isArray(care.recentLearnedWords) ? care.recentLearnedWords : [];
+
+    const candidateIds = [];
+    // 1. wrongAnswerQueue 우선 출제
+    for (const wid of wrongQueue) {
+      if (wid !== undefined && wid !== null && !candidateIds.includes(String(wid))) {
+        candidateIds.push(String(wid));
+        if (candidateIds.length >= 7) break;
+      }
+    }
+
+    // 2. 7개 미만 시 recentLearnedWords로 보충
+    if (candidateIds.length < 7) {
+      for (const wid of recentLearned) {
+        if (wid !== undefined && wid !== null && !candidateIds.includes(String(wid))) {
+          candidateIds.push(String(wid));
+          if (candidateIds.length >= 7) break;
+        }
+      }
+    }
+
+    // 3. 단어 데이터 매핑
+    const allWords = (typeof window !== 'undefined' && window.CareSentenceBuilder?.getWordList)
+      ? window.CareSentenceBuilder.getWordList(lang)
+      : wordEngine.getCourseWords();
+
+    const pickedWords = [];
+    const usedWordIds = new Set();
+
+    for (const wid of candidateIds) {
+      const entry = (typeof window !== 'undefined' && window.CareSentenceBuilder?.findWordEntry)
+        ? window.CareSentenceBuilder.findWordEntry(wid, lang)
+        : allWords.find((w) => String(w.id) === String(wid));
+      if (entry && !usedWordIds.has(String(entry.id))) {
+        usedWordIds.add(String(entry.id));
+        pickedWords.push(entry);
+      }
+    }
+
+    // 4. 부족한 개수는 활성 단어 목록에서 보충하여 7문제 완성
+    let cursor = Math.max(0, Number(profile?.wordCursor) || 0);
+    while (pickedWords.length < 7 && allWords.length > 0) {
+      const w = allWords[cursor % allWords.length];
+      cursor++;
+      if (w && !usedWordIds.has(String(w.id))) {
+        usedWordIds.add(String(w.id));
+        pickedWords.push(w);
+      }
+    }
+
+    return pickedWords.slice(0, 7);
   }
 
   completeTutorialToLobby() {
@@ -247,21 +316,30 @@ export class StageDirector {
       engine.runStats.placementPassed = placementPassed;
       engine.runStats.bossDefeated = bossDefeated;
 
+      // 12문제 계단식 배치 결과 산출 (정답 수 기반 wordCursor 및 추천 레벨 산출)
+      const evalResult = calculateSteppedPlacementResult(correctCount);
       const assignedTier = isPlacementTest
         ? (engine.runStats.selectedTier
-          ? (placementPassed ? engine.runStats.selectedTier : evaluatePlacementScore(correctCount))
-          : evaluatePlacementScore(correctCount))
-        : (placementPassed ? calcPlacementTier(correctCount, lives) : WORD_LEVEL_TIERS[0]);
+          ? (placementPassed ? engine.runStats.selectedTier : evalResult.tier)
+          : evalResult.tier)
+        : evalResult.tier;
 
       updateSave((s) => {
         s.dailyMissions.progress.battles += 1;
         s.dailyMissions.progress.wordsCorrect += engine.runStats.correctCount;
         s.dailyMissions.progress.kills += engine.combat.kills;
-        // 주의: hasSelectedWordLevel은 결과 팝업에서 유저가 확인 버튼을 눌러야 확정되므로 미완료 이탈 시 false를 유지함
-        // 게임 전투 스테이지는 항상 CH.1 STAGE 1부터 시작 유지
         s.selectedChapter = 1;
         s.selectedUnit = 'unit_001';
       });
+
+      // 언어 프로필에 시작 레벨(wordCursor) 영구 저장
+      if (typeof window !== 'undefined' && window.settingsStore) {
+        const curProf = window.settingsStore.getCurrentProfile();
+        if (curProf) {
+          curProf.wordCursor = evalResult.wordCursor;
+          window.settingsStore.saveProfile();
+        }
+      }
 
       engine.handlers.onStageResult?.({
         isPlacement: true,
@@ -270,12 +348,19 @@ export class StageDirector {
         bossDefeated,
         targetUnitNum: 1,
         assignedTier,
+        evalResult,
+        assignedCursor: evalResult.wordCursor,
         selectedTier: engine.runStats.selectedTier,
         correctCount: engine.runStats.correctCount,
         lives: engine.runStats.placementLives,
         kills: engine.combat.kills,
       });
       return;
+    }
+
+    let clearResult = null;
+    if (cleared && !engine.runStats.isTutorial && !isPromo && !isPlacement) {
+      clearResult = settingsStore.recordStageClear(curUnitNum);
     }
 
     updateSave((s) => {
@@ -304,15 +389,15 @@ export class StageDirector {
           s.selectedChapter = nextCh;
         }
       }
+      if (clearResult?.stage3Unlocked) {
+        if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
+        if (!s.companions.unlocked.includes('sniffer_dog')) s.companions.unlocked.push('sniffer_dog');
+        if (!s.companions.active.includes('sniffer_dog')) s.companions.active.push('sniffer_dog');
+        s.companions.activeGround = 'sniffer_dog';
+      }
       if (promoPassed && engine.runStats.targetLevel) {
         s.certifiedLevel = engine.runStats.targetLevel;
       }
-
-      // 주간 챌린지 점수 자동 누적
-      if (!s.challenge) {
-        s.challenge = { leagueTier: 'bronze', weeklyScore: 0, weekKey: '', dailyFreeUsedDate: '' };
-      }
-      s.challenge.weeklyScore = (s.challenge.weeklyScore || 0) + stageScore;
 
       // 일일 미션 누적
       s.dailyMissions.progress.battles += 1;
@@ -331,6 +416,10 @@ export class StageDirector {
     engine.handlers.onStageResult?.({
       cleared,
       ...engine.runStats,
+      stageNumber: curUnitNum,
+      reviewMaterials: clearResult?.reviewMaterials,
+      stage3FirstClear: Boolean(clearResult?.stage3Unlocked),
+      chapterBossClear: clearResult?.chapterBossClear,
       kills: engine.combat.kills,
       chapterNumber: engine.chapter.number,
     });

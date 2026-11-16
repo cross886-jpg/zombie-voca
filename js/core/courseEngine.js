@@ -36,140 +36,115 @@ export const COURSE_TIER_LABELS = Object.freeze({
   B2: ['심화 어휘 도약', '원어민 관용구', '고급 마스터'],
 });
 
-/** 9단계 세분화 단어 레벨 정의 (초급·중급·고급 × Lv.1 / Lv.2 / Lv.3) */
+/** 6단계 통일 단어 레벨 정의 (왕초보 · 초급 · 초중급 · 중급 · 중고급 · 고급) */
 export const WORD_LEVEL_TIERS = Object.freeze([
-  // 🌱 초급 (A1)
+  // 1단계: 왕초보 (A1 입문)
   {
-    id: 'beginner_lv1',
-    group: '초급',
-    groupIcon: '🌱',
-    groupCefr: 'A1',
+    id: 'novice',
+    aliases: ['beginner_lv1'],
+    group: '왕초보',
+    groupIcon: '🐣',
+    groupCefr: 'A1 입문',
     level: 1,
-    label: '초급 Lv.1',
-    badgeLabel: '초급 Lv.1',
+    label: '왕초보',
+    badgeLabel: '왕초보',
     unitOffset: 0,
     unit: 1,
-    cefr: 'A1',
-    recommendMsg: '기초부터 탄탄하게 시작해 볼까요?',
+    cefr: 'A1 입문',
+    recommendMsg: '가장 기초적인 단어부터 차근차근 시작해 봅시다!',
   },
+  // 2단계: 초급 (A1 완성)
   {
-    id: 'beginner_lv2',
+    id: 'beginner',
+    aliases: ['beginner_lv2', 'beginner_lv3'],
     group: '초급',
     groupIcon: '🌱',
-    groupCefr: 'A1',
+    groupCefr: 'A1 완성',
     level: 2,
-    label: '초급 Lv.2',
-    badgeLabel: '초급 Lv.2',
-    unitOffset: 80,
-    unit: 80,
-    cefr: 'A1',
-    recommendMsg: '기초 어휘를 빠르게 마스터해 보세요!',
+    label: '초급',
+    badgeLabel: '초급',
+    unitOffset: 30,
+    unit: 30,
+    cefr: 'A1 완성',
+    recommendMsg: '기초 어휘를 복습하며 즐겁게 확장해 보세요!',
   },
+  // 3단계: 초중급 (A2 실전)
   {
-    id: 'beginner_lv3',
-    group: '초급',
-    groupIcon: '🌱',
-    groupCefr: 'A1',
+    id: 'pre_intermediate',
+    aliases: ['intermediate_lv1'],
+    group: '초중급',
+    groupIcon: '🌿',
+    groupCefr: 'A2 실전',
     level: 3,
-    label: '초급 Lv.3',
-    badgeLabel: '초급 Lv.3',
-    unitOffset: 160,
-    unit: 160,
-    cefr: 'A2',
-    recommendMsg: '탄탄한 기초를 바탕으로 도약해 보세요!',
+    label: '초중급',
+    badgeLabel: '초중급',
+    unitOffset: 60,
+    unit: 60,
+    cefr: 'A2 실전',
+    recommendMsg: '기본기가 훌륭합니다! 실전 어휘로 나아가 보세요!',
   },
-
-  // 🌿 중급 (A2~B1)
+  // 4단계: 중급 (B1 도약)
   {
-    id: 'intermediate_lv1',
+    id: 'intermediate',
+    aliases: ['intermediate_lv2'],
     group: '중급',
-    groupIcon: '🌿',
-    groupCefr: 'A2~B1',
-    level: 1,
-    label: '중급 Lv.1',
-    badgeLabel: '중급 Lv.1',
-    unitOffset: 240,
-    unit: 240,
-    cefr: 'B1',
-    recommendMsg: '실전 회화와 독해에 도전해 보세요!',
+    groupIcon: '🌳',
+    groupCefr: 'B1 도약',
+    level: 4,
+    label: '중급',
+    badgeLabel: '중급',
+    unitOffset: 90,
+    unit: 90,
+    cefr: 'B1 도약',
+    recommendMsg: '중급 핵심 어휘를 완벽히 정복할 수 있는 단계입니다!',
   },
+  // 5단계: 중고급 (B2 심화)
   {
-    id: 'intermediate_lv2',
-    group: '중급',
-    groupIcon: '🌿',
-    groupCefr: 'A2~B1',
-    level: 2,
-    label: '중급 Lv.2',
-    badgeLabel: '중급 Lv.2',
-    unitOffset: 320,
-    unit: 320,
-    cefr: 'B1',
-    recommendMsg: '중급 핵심 어휘를 완벽히 정복해 보세요!',
+    id: 'upper_intermediate',
+    aliases: ['intermediate_lv3', 'advanced_lv1'],
+    group: '중고급',
+    groupIcon: '⚡',
+    groupCefr: 'B2 심화',
+    level: 5,
+    label: '중고급',
+    badgeLabel: '중고급',
+    unitOffset: 120,
+    unit: 120,
+    cefr: 'B2 심화',
+    recommendMsg: '실력이 탄탄하시네요! 심화 단어로 도약해 보세요!',
   },
+  // 6단계: 고급 (C1 마스터)
   {
-    id: 'intermediate_lv3',
-    group: '중급',
-    groupIcon: '🌿',
-    groupCefr: 'A2~B1',
-    level: 3,
-    label: '중급 Lv.3',
-    badgeLabel: '중급 Lv.3',
-    unitOffset: 400,
-    unit: 400,
-    cefr: 'B1',
-    recommendMsg: '풍부한 어휘로 실전 응용력을 키워보세요!',
-  },
-
-  // 🔥 고급 (B2~C1)
-  {
-    id: 'advanced_lv1',
+    id: 'advanced',
+    aliases: ['advanced_lv2', 'advanced_lv3'],
     group: '고급',
     groupIcon: '🔥',
-    groupCefr: 'B2~C1',
-    level: 1,
-    label: '고급 Lv.1',
-    badgeLabel: '고급 Lv.1',
-    unitOffset: 480,
-    unit: 480,
-    cefr: 'B2',
-    recommendMsg: '실력이 뛰어나시네요! 심화 단어로 도전해 보세요!',
-  },
-  {
-    id: 'advanced_lv2',
-    group: '고급',
-    groupIcon: '🔥',
-    groupCefr: 'B2~C1',
-    level: 2,
-    label: '고급 Lv.2',
-    badgeLabel: '고급 Lv.2',
-    unitOffset: 560,
-    unit: 560,
-    cefr: 'B2',
-    recommendMsg: '고급 독해와 관용 표현을 마스터해 보세요!',
-  },
-  {
-    id: 'advanced_lv3',
-    group: '고급',
-    groupIcon: '🔥',
-    groupCefr: 'B2~C1',
-    level: 3,
-    label: '고급 Lv.3',
-    badgeLabel: '고급 Lv.3',
-    unitOffset: 640,
-    unit: 640,
-    cefr: 'C1',
-    recommendMsg: '최상위 마스터 어휘에 도전해 보세요!',
+    groupCefr: 'C1 마스터',
+    level: 6,
+    label: '고급',
+    badgeLabel: '고급',
+    unitOffset: 150,
+    unit: 150,
+    cefr: 'C1 마스터',
+    recommendMsg: '최고 난이도 완주! 최상위 마스터 어휘에 도전해 보세요!',
   },
 ]);
 
+export function getTierById(tierId) {
+  if (!tierId) return WORD_LEVEL_TIERS[0];
+  const found = WORD_LEVEL_TIERS.find((t) => t.id === tierId || (t.aliases && t.aliases.includes(tierId)));
+  return found || WORD_LEVEL_TIERS[0];
+}
+
+/** 12문제 기준 정답 수(0~12)에 따른 6단계 등급 산출 */
 export function calcQuizRecommendedTier(score) {
-  const s = Math.max(0, Number(score) || 0);
-  if (s >= 6) return WORD_LEVEL_TIERS.find((t) => t.id === 'advanced_lv1') || WORD_LEVEL_TIERS[6];
-  if (s === 5) return WORD_LEVEL_TIERS.find((t) => t.id === 'intermediate_lv2') || WORD_LEVEL_TIERS[4];
-  if (s === 4) return WORD_LEVEL_TIERS.find((t) => t.id === 'intermediate_lv1') || WORD_LEVEL_TIERS[3];
-  if (s === 3) return WORD_LEVEL_TIERS.find((t) => t.id === 'beginner_lv3') || WORD_LEVEL_TIERS[2];
-  if (s === 2) return WORD_LEVEL_TIERS.find((t) => t.id === 'beginner_lv2') || WORD_LEVEL_TIERS[1];
-  return WORD_LEVEL_TIERS[0];
+  const s = Math.max(0, Math.min(12, Number(score) || 0));
+  if (s >= 11) return WORD_LEVEL_TIERS[5]; // 고급 (11~12개)
+  if (s >= 9) return WORD_LEVEL_TIERS[4];  // 중고급 (9~10개)
+  if (s >= 7) return WORD_LEVEL_TIERS[3];  // 중급 (7~8개)
+  if (s >= 5) return WORD_LEVEL_TIERS[2];  // 초중급 (5~6개)
+  if (s >= 3) return WORD_LEVEL_TIERS[1];  // 초급 (3~4개)
+  return WORD_LEVEL_TIERS[0];              // 왕초보 (0~2개)
 }
 
 // 하위 호환

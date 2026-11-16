@@ -8,6 +8,179 @@ import { COMPANIONS } from '../data/catalog.js';
 
 export const MAX_EQUIPPED_COMPANIONS = 3;
 
+/**
+ * 강아지 5대 야생 액션 스킬 (전 구간 네 발 반려견 본연의 야생 액션)
+ */
+export const DOG_WILD_SKILLS = Object.freeze([
+  {
+    id: 'bark',
+    slot: 1,
+    name: '우렁찬 멍멍 짖기',
+    icon: '🗣️',
+    color: '#38bdf8',
+    projectileType: 'sonic_crescent',
+    desc: '원거리 전방 부채꼴/초승달 음파 투사체를 발사하며 강아지 입 벌림 모션을 트리거합니다.',
+    cooldown: 0.72,
+    range: 220,
+    baseDamageMult: 1.0,
+    pierce: 1,
+    motion: 'mouth_open',
+  },
+  {
+    id: 'tail_whirl',
+    slot: 2,
+    name: '회오리 꼬리치기',
+    icon: '🌪️',
+    color: '#34d399',
+    projectileType: 'mini_tornado',
+    desc: '원거리 미니 회오리(토네이도) 관통 투사체를 발사하고 꼬리 흔들기 모션을 활성화합니다.',
+    cooldown: 1.15,
+    range: 260,
+    baseDamageMult: 1.15,
+    pierce: 3,
+    motion: 'tail_wag',
+  },
+  {
+    id: 'bite',
+    slot: 3,
+    name: '야무지게 물어뜯기',
+    icon: '🦷',
+    color: '#f8fafc',
+    projectileType: 'white_fangs',
+    desc: '원거리 고속 하얀 이빨 모양 에너지 탄환을 발사하며 입 벌림 모션을 트리거합니다.',
+    cooldown: 0.88,
+    range: 240,
+    baseDamageMult: 1.3,
+    pierce: 0,
+    motion: 'mouth_open',
+  },
+  {
+    id: 'paw_swipe',
+    slot: 4,
+    name: '앞발 날리기',
+    icon: '🐾',
+    color: '#f472b6',
+    projectileType: 'pink_paw_swipe',
+    desc: '강아지 전방 근접 반경에 분홍 젤리 발바닥 스와이프(할퀴기) 이펙트를 생성합니다.',
+    cooldown: 0.65,
+    range: 95,
+    baseDamageMult: 1.25,
+    pierce: 99,
+    motion: 'paw_swipe',
+  },
+  {
+    id: 'hip_slam',
+    slot: 5,
+    name: '엉덩이 쿵!',
+    icon: '🍑',
+    color: '#fb923c',
+    projectileType: 'hip_slam_ring',
+    desc: '강아지 주변 360도 동심원 충격파 링을 방출해 범위 내 좀비를 밀어냅니다.',
+    cooldown: 1.45,
+    range: 125,
+    baseDamageMult: 1.4,
+    pierce: 99,
+    motion: 'hip_slam',
+  },
+]);
+
+/**
+ * 주인(Owner) 전용 무기 카테고리 (주인의 위치에서 발사)
+ */
+export const OWNER_WEAPONS = Object.freeze({
+  stone: {
+    id: 'stone',
+    name: '던지는 돌멩이',
+    icon: '🪨',
+    color: '#78716c',
+    type: 'parabolic',
+    speed: 310,
+    radius: 7,
+    cooldown: 1.6,
+    range: 230,
+    damageMult: 0.9,
+    desc: '바닥의 돌멩이/깡통을 집어 포물선으로 던집니다.',
+  },
+  slingshot: {
+    id: 'slingshot',
+    name: '새총 구슬',
+    icon: '🪵',
+    color: '#b45309',
+    type: 'pellet',
+    speed: 480,
+    radius: 6,
+    cooldown: 1.2,
+    range: 270,
+    damageMult: 1.15,
+    desc: 'Y자 새총으로 고속 쇠구슬을 발사합니다.',
+  },
+  pistol: {
+    id: 'pistol',
+    name: '호신용 권총',
+    icon: '🔫',
+    color: '#fbbf24',
+    type: 'bullet',
+    speed: 520,
+    radius: 5,
+    cooldown: 0.9,
+    range: 310,
+    damageMult: 1.35,
+    desc: '가볍고 다루기 쉬운 9mm 호신용 권총으로 사격합니다.',
+  },
+  smg: {
+    id: 'smg',
+    name: '경량 기관단총',
+    icon: '💥',
+    color: '#38bdf8',
+    type: 'bullet',
+    speed: 560,
+    radius: 4,
+    cooldown: 0.55,
+    range: 330,
+    damageMult: 1.55,
+    desc: '빠른 연사 속도로 전방의 좀비를 제압합니다.',
+  },
+  rifle: {
+    id: 'rifle',
+    name: '정밀 돌격소총',
+    icon: '🎯',
+    color: '#f87171',
+    type: 'bullet',
+    speed: 620,
+    radius: 5,
+    cooldown: 0.7,
+    range: 380,
+    damageMult: 1.9,
+    desc: '원거리의 위험한 좀비를 저격하여 큰 타격을 줍니다.',
+  },
+  plasma_rifle: {
+    id: 'plasma_rifle',
+    name: '플라즈마 라이플',
+    icon: '⚡',
+    color: '#a855f7',
+    type: 'bullet',
+    speed: 650,
+    radius: 7,
+    cooldown: 0.6,
+    range: 420,
+    damageMult: 2.5,
+    desc: '감염 억제 파장을 압축 발사하는 최종 결전 화기입니다.',
+  },
+  firearm: {
+    id: 'firearm',
+    name: '지원 사격 화기',
+    icon: '🔫',
+    color: '#fbbf24',
+    type: 'bullet',
+    speed: 520,
+    radius: 5,
+    cooldown: 0.85,
+    range: 320,
+    damageMult: 1.45,
+    desc: '안정적인 자세로 원거리 화기 지원 사격을 가합니다.',
+  },
+});
+
 export const GAME_STATES = Object.freeze({
   IDLE: 'IDLE',
   PLAYING: 'PLAYING',
@@ -182,6 +355,17 @@ export const BALANCE = Object.freeze({
     },
   },
 
+  OWNER_TRAINING: {
+    BASE_COST_GOLD: 20,
+    COST_GROWTH: 1.35,
+    ITEMS: {
+      hpLv:             { name: '기초 체력 단련', icon: '❤️', baseCost: 20, growth: 1.35, maxLv: 50, perLv: 15, unit: 'HP', desc: '주인의 최대 체력과 기력을 증가시킵니다.' },
+      speedLv:          { name: '신속 발걸음', icon: '👟', baseCost: 25, growth: 1.35, maxLv: 20, perLv: 0.03, unit: '%', desc: '주인의 보행 및 추종 이동속도가 빨라집니다.' },
+      cureEfficiencyLv: { name: '백신 항체 강화', icon: '💉', baseCost: 30, growth: 1.38, maxLv: 20, perLv: 0.05, unit: '%', desc: '벙커 해치 해독 시 회복 효율과 기력 완충 속도를 올립니다.' },
+      supportAtkLv:     { name: '호신 사격술', icon: '🎯', baseCost: 25, growth: 1.35, maxLv: 50, perLv: 2, unit: '공격력', desc: '주인의 지원 사격(돌멩이/총기) 공격력을 강화합니다.' },
+    },
+  },
+
   SHOP: {
     SUPPLY_BOX_GEM_COST: 50,
     MINI_REVIEW_REWARD_GOLD: 25,
@@ -212,6 +396,20 @@ export function getTrainingUpgradeCost(key, currentLv = 0) {
 
 export function getTrainingBonusValue(key, currentLv = 0) {
   const cfg = BALANCE.TRAINING.ITEMS[key];
+  if (!cfg) return 0;
+  const clampedLv = Math.min(cfg.maxLv, Math.max(0, currentLv));
+  return clampedLv * cfg.perLv;
+}
+
+export function getOwnerTrainingUpgradeCost(key, currentLv = 0) {
+  const cfg = BALANCE.OWNER_TRAINING?.ITEMS?.[key];
+  const base = cfg ? cfg.baseCost : 20;
+  const growth = cfg ? cfg.growth : 1.35;
+  return Math.round(base * Math.pow(growth, Math.max(0, currentLv)));
+}
+
+export function getOwnerTrainingBonusValue(key, currentLv = 0) {
+  const cfg = BALANCE.OWNER_TRAINING?.ITEMS?.[key];
   if (!cfg) return 0;
   const clampedLv = Math.min(cfg.maxLv, Math.max(0, currentLv));
   return clampedLv * cfg.perLv;
