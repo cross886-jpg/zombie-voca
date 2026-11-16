@@ -18,10 +18,7 @@ export {
 
 export {
   openProfileModal,
-  openEditDogNameModal,
   openSettingsModal,
-  openCefrModal,
-  openOwnerCompanionModal,
 } from './modals/profileModals.js';
 
 export {
@@ -40,10 +37,7 @@ import {
 
 import {
   openProfileModal,
-  openEditDogNameModal,
   openSettingsModal,
-  openCefrModal,
-  openOwnerCompanionModal,
 } from './modals/profileModals.js';
 
 import {
@@ -55,15 +49,12 @@ import {
 
 export function createLobbyModals(ctx) {
   return {
-    openEditDogNameModal: (options) => openEditDogNameModal(ctx, options),
     openQuestsModal: (activeSubtab) => openQuestsModal(ctx, activeSubtab),
     openAirDropSupplyModal: () => openAirDropSupplyModal(ctx),
-    openCefrModal: () => openCefrModal(ctx),
     openAttendance30Modal: () => openAttendance30Modal(ctx),
     openNoticeModal: () => openNoticeModal(ctx),
     openProfileModal: () => openProfileModal(ctx),
     openSettingsModal: () => openSettingsModal(ctx),
-    openOwnerCompanionModal: (initialTab) => openOwnerCompanionModal(ctx, initialTab),
     openInitialStudyLangModal: (options) => openInitialStudyLangModal(ctx, options),
     openStarterAdoptionModal: (options) => openStarterAdoptionModal(ctx, options),
     openWordLevelSelectModal: (options) => openWordLevelSelectModal(ctx, options),

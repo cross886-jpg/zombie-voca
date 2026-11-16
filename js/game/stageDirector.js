@@ -55,12 +55,12 @@ export class StageDirector {
     const startX = engine.arenaWidth / 2;
     const startY = engine.arenaHeight / 2;
 
-    const minHpRatio = isTutorial ? 0.5 : (isPlacementTest ? 0.1 : (isAnyPlacement ? 0.2 : 0.1));
+    const minHpRatio = isTutorial ? 0.5 : (isAnyPlacement ? 0.2 : 0.1);
     engine.player.resetForBattle(startX, startY, save, {
-      isProtected: Boolean(isTutorial || isAnyPlacement || isPlacementTest),
+      isProtected: Boolean(isTutorial || isAnyPlacement),
       minHpRatio,
     });
-    if (isPlacementTest || isPlacement) {
+    if (isAnyPlacement) {
       engine.companions.resetForBattle(engine.player, { companions: { active: [] } });
     } else {
       engine.companions.resetForBattle(engine.player, save);
@@ -95,10 +95,10 @@ export class StageDirector {
       isPromotion,
       targetLevel,
       isPlacement: isAnyPlacement,
-      isPlacementTest: Boolean(isPlacementTest),
+      isPlacementTest: false,
       selectedTier,
       targetUnitNum: resolvedTargetUnitNum,
-      placementLives: isPlacementTest ? null : (isPlacement ? 3 : null),
+      placementLives: isAnyPlacement ? 3 : null,
       placementPassed: false,
       bossDefeated: false,
       rescuedCompanionCount: 0, // 스테이지당 동료 구출 최대 1회 제한 카운터
@@ -306,23 +306,18 @@ export class StageDirector {
     engine.runStats.isFirstClear = reward.isFirstClear;
     engine.runStats.isRepeatFarm = reward.isRepeatFarm;
 
-    if (isPlacement || engine.runStats.isPlacementTest) {
-      const isPlacementTest = Boolean(engine.runStats.isPlacementTest);
+    if (isPlacement) {
       const correctCount = engine.runStats.correctCount;
-      const lives = engine.runStats.placementLives;
+      const lives = engine.runStats.placementLives ?? 0;
       const bossDefeated = Boolean(engine.runStats.bossDefeated);
-      const placementPassed = isPlacementTest ? (correctCount >= 7 && bossDefeated) : (cleared && lives > 0);
+      const placementPassed = Boolean(cleared && lives > 0);
 
       engine.runStats.placementPassed = placementPassed;
       engine.runStats.bossDefeated = bossDefeated;
 
       // 12문제 계단식 배치 결과 산출 (정답 수 기반 wordCursor 및 추천 레벨 산출)
       const evalResult = calculateSteppedPlacementResult(correctCount);
-      const assignedTier = isPlacementTest
-        ? (engine.runStats.selectedTier
-          ? (placementPassed ? engine.runStats.selectedTier : evalResult.tier)
-          : evalResult.tier)
-        : evalResult.tier;
+      const assignedTier = evalResult.tier;
 
       updateSave((s) => {
         s.dailyMissions.progress.battles += 1;
@@ -343,7 +338,7 @@ export class StageDirector {
 
       engine.handlers.onStageResult?.({
         isPlacement: true,
-        isPlacementTest,
+        isPlacementTest: false,
         placementPassed,
         bossDefeated,
         targetUnitNum: 1,

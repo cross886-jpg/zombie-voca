@@ -463,7 +463,7 @@ export const CHAPTER_BOSS_RECOVERY = Object.freeze({
       es: '¡Cuidado, {petName}! ¡Vamos!',
       ko: '조심해, {petName}! 이쪽이야!',
     },
-    recoveryDescription: '주인이 무기를 잡고 일어섰습니다! 브레멘 동물 합체(상하 탑승 슬롯)가 해금되었습니다!',
+    recoveryDescription: '주인이 무기를 잡고 일어섰습니다! 브레멘 동행(등·어깨 동반 탑승)이 해금되었습니다!',
   },
   90: {
     chapter: 3,

@@ -4,7 +4,7 @@
  * 오답 복습 큐(Spaced Repetition) 및 오답 일시정지 브레이크 관리 모듈
  */
 
-import { BALANCE, getTrainingBonusValue } from '../config/balance.js';
+import { BALANCE, getTrainingBonusValue, getOwnerTrainingBonusValue } from '../config/balance.js';
 import { COMPANIONS } from '../data/catalog.js';
 import { t } from '../data/i18n.js';
 import { getSave, updateSave, recordQuestProgress } from '../core/saveStore.js';
@@ -41,19 +41,6 @@ export class WordEventManager {
   presentCurrentQuestion() {
     const engine = this.engine;
 
-    if (engine.runStats.isPlacementTest) {
-      this.usedWordIds = this.usedWordIds || new Set();
-      while (this.questionIndex < this.deck.length && this.usedWordIds.has(this.deck[this.questionIndex]?.id)) {
-        this.questionIndex++;
-      }
-      if (this.questionIndex >= 10 || (engine.runStats.answeredCount || 0) >= 10 || this.questionIndex >= this.deck.length) {
-        engine.monoliths.clearMonoliths();
-        this.waitingRespawn = false;
-        engine._finishStage(true);
-        return;
-      }
-    }
-
     if (this.questionIndex >= this.deck.length) {
       if (engine.runStats.isPlacement) {
         engine._finishStage(true);
@@ -73,12 +60,7 @@ export class WordEventManager {
     }
 
     // 28번 문제(index 27) 진입 시 챕터 보스 등장 + 1.5초 줌아웃→줌인 연출 (월반 및 튜토리얼 제외)
-    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && !engine.runStats.isPlacementTest && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !engine.enemies.boss) {
-      engine.stageDirector.spawnBoss();
-    }
-
-    // 실력 진단 테스트: 5번째 문제 완료 직후(6번째 문제 진입 시점: questionIndex >= 5) 스테이지 군단장 보스 출현
-    if (engine.runStats.isPlacementTest && this.questionIndex >= 5 && !engine.enemies.boss) {
+    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && this.questionIndex === BALANCE.BOSS.ENTRY_QUESTION_INDEX && !engine.enemies.boss) {
       engine.stageDirector.spawnBoss();
     }
 
@@ -88,13 +70,9 @@ export class WordEventManager {
     }
 
     this.currentWord = this.deck[this.questionIndex];
-    if (engine.runStats.isPlacementTest && this.currentWord) {
-      this.usedWordIds = this.usedWordIds || new Set();
-      this.usedWordIds.add(this.currentWord.id);
-    }
 
     let choices;
-    if (engine.runStats.isPlacementTest && Array.isArray(this.currentWord?.choices) && this.currentWord.choices.length > 0) {
+    if (engine.runStats.isPlacement && Array.isArray(this.currentWord?.choices) && this.currentWord.choices.length > 0) {
       const targetMeaning = (this.currentWord._correctMeaning || this.currentWord.meaning || '').trim().toLowerCase();
       choices = this.currentWord.choices.map((c) => {
         const meaningStr = (typeof c === 'string' ? c : (c.meaning || '')).trim();
@@ -148,14 +126,14 @@ export class WordEventManager {
     audioEngine.stopWordLoop();
 
     const isCorrect = monolith.isCorrect;
-    const wordRes = engine.runStats.isPlacementTest
+    const wordRes = engine.runStats.isPlacement
       ? { newlyMastered: false, streak: 0 }
       : wordEngine.submitAnswer(this.currentWord.id, isCorrect);
 
     if (isCorrect) {
       engine.runStats.correctCount += 1;
       engine.runStats.earnedEvoXp += BALANCE.MONOLITH.CORRECT_XP;
-      if (wordRes.newlyMastered && !engine.runStats.isPlacementTest) {
+      if (wordRes.newlyMastered && !engine.runStats.isPlacement) {
         engine.runStats.newlyMasteredCount += 1;
         // 현재 학습 유닛 단어를 모두 마스터하면 다음 유닛 및 티어/등급 게이지 자동 상승
         if (recordStudyMastery(this.currentWord.id)) {
@@ -167,8 +145,9 @@ export class WordEventManager {
         engine.player.addUltGauge(BALANCE.COMBAT.ULT_CHARGE_PER_CORRECT);
       }
 
-      // 단어 정답 시 체력 회복량: 최대 체력의 4% 수준으로 대폭 축소 (과잉 회복 방지)
-      const correctHeal = Math.max(1, Math.round(engine.player.maxHp * (BALANCE.MONOLITH.CORRECT_HEAL_RATIO || 0.04)));
+      // 단어 정답 시 체력 회복량: 최대 체력의 4% 기본 + 주인 백신 항체 강화(cureEfficiencyLv) 보너스 연동
+      const cureBonus = getOwnerTrainingBonusValue('cureEfficiencyLv', getSave().ownerTraining?.cureEfficiencyLv || 0);
+      const correctHeal = Math.max(1, Math.round(engine.player.maxHp * (BALANCE.MONOLITH.CORRECT_HEAL_RATIO || 0.04) * (1 + cureBonus)));
       engine.player.heal(correctHeal);
       engine.combat.spawnDamageText(engine.player.x, engine.player.y - 28, `+${correctHeal} HP`, '#4ade80', 1.0);
 
@@ -179,7 +158,7 @@ export class WordEventManager {
       }
 
       // 전술 구조 캡슐 개방 굵직한 기본 금화 보상 (+25 🪙, 실력 진단 테스트 제외)
-      const podGold = engine.runStats.isPlacementTest ? 0 : 25;
+      const podGold = engine.runStats.isPlacement ? 0 : 25;
       if (podGold > 0) {
         engine.runStats.podGoldEarned = (engine.runStats.podGoldEarned || 0) + podGold;
         engine.combat.spawnDamageText(monolith.x + 24, monolith.y - 18, `+${podGold} 🪙`, '#fbbf24', 1.15);
@@ -194,39 +173,8 @@ export class WordEventManager {
         settingsStore.recordWordResult(this.currentWord.id, true);
       }
 
-      // [실력 진단 테스트 전용]: 8번째 정답(correctCount === 8) 시 랜덤 서포트 1마리 구출 & 배치 방법 튜토리얼 안내
-      if (engine.runStats.isPlacementTest && engine.runStats.correctCount === 8 && !engine.runStats.placementCompanionRescued) {
-        engine.runStats.placementCompanionRescued = true;
-        const curSave = getSave();
-        const unlocked = curSave.companions?.unlocked || [];
-        const unrescued = COMPANIONS.filter((c) => !unlocked.includes(c.id));
-        const candidateList = unrescued.length > 0 ? unrescued : COMPANIONS;
-        const rescuedDef = candidateList[Math.floor(Math.random() * candidateList.length)];
-
-        updateSave((s) => {
-          if (!s.companions) s.companions = { unlocked: [], active: [], levels: {} };
-          if (!s.companions.unlocked) s.companions.unlocked = [];
-          if (!s.companions.unlocked.includes(rescuedDef.id)) {
-            s.companions.unlocked.push(rescuedDef.id);
-          }
-          s.unlockedCompanions = s.companions.unlocked;
-        });
-
-        audioEngine.playPowerUp?.();
-        engine.combat.spawnDamageText(monolith.x, monolith.y - 42, `🎉 ${rescuedDef.name} 구출 성공!`, '#34d399', 1.5);
-
-        // 게임 일시정지 후 안내 팝업 표출
-        engine.pause();
-        engine.handlers.onCompanionRescueTutorial?.({
-          companion: rescuedDef,
-          onConfirm: () => {
-            engine.resume();
-          },
-        });
-      }
-
-      // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품 (튜토리얼, 월반, 실력 진단 테스트 제외)
-      if (!engine.runStats.isTutorial && !engine.runStats.isPlacementTest && !engine.runStats.isPlacement) {
+      // [정답 캡슐 개방 서프라이즈]: 아기 동물 구출 지원 vs 특수 전술 보급품 (튜토리얼, 배치 테스트 제외)
+      if (!engine.runStats.isTutorial && !engine.runStats.isPlacement) {
         // 스테이지당 동료 구출은 최대 1회(1마리)로 제한
         const canRescue = (engine.runStats.rescuedCompanionCount || 0) < 1;
         const curSave = getSave();
@@ -337,8 +285,8 @@ export class WordEventManager {
         }
       }
 
-      // 월반 도전 시 오답 1회당 하트(남은 기회) 1개 차감, 3회 소진 시 즉시 실패 종료 (실력 진단 테스트는 10문제 끝까지 완주 보장)
-      if (engine.runStats.isPlacement && !engine.runStats.isPlacementTest) {
+      // 배치/실력 테스트 시 오답 1회당 하트(남은 목숨) 1개 차감, 3회 소진 시 즉시 종료
+      if (engine.runStats.isPlacement) {
         engine.runStats.placementLives = Math.max(0, (engine.runStats.placementLives ?? 3) - 1);
         if (engine.runStats.placementLives <= 0) {
           engine._finishStage(false);
@@ -346,23 +294,13 @@ export class WordEventManager {
         }
       }
 
-      if (engine.runStats.isPlacementTest) {
-        this.wrongReviewTimer = 0.6;
-        this.wrongReviewWord = {
-          word: '❌ 오답입니다!',
-          phonetic: '',
-          meaning: '',
-          isPlacementTest: true,
-        };
-      } else {
-        this.wrongReviewTimer = 1.2;
-        this.wrongReviewWord = {
-          word: this.currentWord.word,
-          phonetic: this.currentWord.phonetic || '',
-          meaning: this.currentWord.meaning,
-        };
-        audioEngine.speakWord(this.currentWord.word);
-      }
+      this.wrongReviewTimer = 1.2;
+      this.wrongReviewWord = {
+        word: this.currentWord.word,
+        phonetic: this.currentWord.phonetic || '',
+        meaning: this.currentWord.meaning,
+      };
+      audioEngine.speakWord(this.currentWord.word);
 
       if (engine.enemies.boss && engine.enemies.boss.hp > 0) {
         engine.enemies.enrageBoss();
@@ -372,19 +310,8 @@ export class WordEventManager {
 
     this.questionIndex += 1;
 
-    if (engine.runStats.isPlacementTest) {
-      engine.runStats.answeredCount = (engine.runStats.answeredCount || 0) + 1;
-      if (engine.runStats.answeredCount >= 10 || this.questionIndex >= 10 || this.questionIndex >= this.deck.length) {
-        engine.monoliths.clearMonoliths();
-        this.waitingRespawn = false;
-        const cleared = engine.runStats.correctCount >= 7 && Boolean(engine.runStats.bossDefeated);
-        engine._finishStage(cleared);
-        return;
-      }
-    }
-
-    // 오답 시 해당 단어를 2~3문제 뒤 큐에 재삽입 (Spaced Repetition, 월반, 실력 진단 테스트 및 튜토리얼 제외)
-    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && !engine.runStats.isPlacementTest && !isCorrect && this.currentWord) {
+    // 오답 시 해당 단어를 2~3문제 뒤 큐에 재삽입 (Spaced Repetition, 배치 테스트 및 튜토리얼 제외)
+    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && !isCorrect && this.currentWord) {
       const offset = Math.random() < 0.5 ? 2 : 3;
       let insertIdx = Math.min(this.deck.length, this.questionIndex + offset);
       const prevSame = this.deck[insertIdx - 1]?.id === this.currentWord.id;
@@ -418,9 +345,9 @@ export class WordEventManager {
     this.waitingRespawn = true;
     this.respawnTimer = BALANCE.MONOLITH.RESPAWN_DELAY_SEC;
 
-    // 본게임에서 단어 3문제 정답마다 정확히 1회 스킬 선택 모달 오픈 (튜토리얼 및 실력 진단 테스트 제외)
+    // 본게임에서 단어 3문제 정답마다 정확히 1회 스킬 선택 모달 오픈 (튜토리얼 및 배치 테스트 제외)
     const solvedCount = engine.runStats.correctCount;
-    if (!engine.runStats.isTutorial && !engine.runStats.isPlacementTest && isCorrect && solvedCount > 0 && solvedCount % 3 === 0) {
+    if (!engine.runStats.isTutorial && !engine.runStats.isPlacement && isCorrect && solvedCount > 0 && solvedCount % 3 === 0) {
       engine.openSkillSelect();
     }
   }

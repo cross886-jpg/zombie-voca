@@ -57,19 +57,6 @@ export function openWordLevelSelectModal(ctx, options = {}) {
     refreshHeader();
     renderActiveTab();
     renderBattleTab?.();
-
-    if (!isChange) {
-      const cur = getSave();
-      onStartBattle?.({
-        chapterNumber: 1,
-        courseId: cur.selectedCourse || 'lv1',
-        unitId: 'unit_001',
-        isPlacement: true,
-        isPlacementTest: true,
-        selectedTier: tier,
-        targetUnitNum: Number(tier.unitOffset) + 1,
-      });
-    }
   }
 
   function renderLevelSelection(highlightTierId = null) {
@@ -161,7 +148,7 @@ export function openWordLevelSelectModal(ctx, options = {}) {
         courseId: cur.selectedCourse || 'lv1',
         unitId: 'unit_001',
         isPlacement: true,
-        isPlacementTest: true,
+        isPlacementTest: false,
         targetUnitNum: 1,
       });
     });

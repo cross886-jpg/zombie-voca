@@ -12,7 +12,8 @@
  *    - 벙커 해치 퀴즈 정답 시 기력 즉시 100% 회복
  */
 
-import { OWNER_WEAPONS } from '../config/balance.js';
+import { OWNER_WEAPONS, getOwnerTrainingBonusValue } from '../config/balance.js';
+import { renderOwnerInBattle } from '../render/ownerRenderer.js';
 
 export class Owner {
   constructor(player) {
@@ -23,9 +24,13 @@ export class Owner {
     this.speed = 100;
     this.walkPhase = 0;
 
-    // 기력 (Stamina: 0~100) — 절대 사망 없음
+    // 기력 (Stamina: 0~100 + 기초 체력 단련 보너스) — 절대 사망 없음
     this.stamina = 100;
     this.maxStamina = 100;
+    this.bonusHp = 0;
+    this.speedBonusMult = 1.0;
+    this.cureEfficiencyMult = 1.0;
+    this.supportAtkBonus = 0;
     this.recoveryStage = 1; // 1~5 회복 단계
     this.cureProgress = 0;
 
@@ -45,8 +50,17 @@ export class Owner {
     this.x = player.x - 36;
     this.y = player.y + 12;
     this.facingAngle = player.facingAngle;
-    this.speed = player.speed * 0.9;
     this.walkPhase = 0;
+
+    // 주인 생존 훈련 4종 보너스 반영
+    const ownerTraining = saveData?.ownerTraining || {};
+    this.bonusHp = getOwnerTrainingBonusValue('hpLv', ownerTraining.hpLv || 0);
+    this.speedBonusMult = 1 + getOwnerTrainingBonusValue('speedLv', ownerTraining.speedLv || 0);
+    this.cureEfficiencyMult = 1 + getOwnerTrainingBonusValue('cureEfficiencyLv', ownerTraining.cureEfficiencyLv || 0);
+    this.supportAtkBonus = getOwnerTrainingBonusValue('supportAtkLv', ownerTraining.supportAtkLv || 0);
+
+    this.maxStamina = 100 + this.bonusHp;
+    this.speed = player.speed * 0.9 * this.speedBonusMult;
 
     // 세이브 데이터로부터 회복 단계 및 진행도 동기화
     const ownerState = saveData?.ownerState || {};
@@ -68,7 +82,7 @@ export class Owner {
       this.equippedWeapon = 'stone';
     }
 
-    this.stamina = 100;
+    this.stamina = this.maxStamina;
     this.isSitting = false;
     this.restTimer = 0;
     this.wobble = 0;
@@ -79,7 +93,7 @@ export class Owner {
    * 벙커 해치 정답 시 호출: 기력 100% 즉시 완충
    */
   restoreFullStamina() {
-    this.stamina = 100;
+    this.stamina = this.maxStamina || 100;
     this.isSitting = false;
     this.restTimer = 0;
   }
@@ -139,8 +153,8 @@ export class Owner {
 
       if (this.isSitting) {
         this.restTimer -= dt;
-        this.stamina = Math.min(100, this.stamina + dt * 18);
-        if (this.restTimer <= 0 && this.stamina >= 50) {
+        this.stamina = Math.min(this.maxStamina, this.stamina + dt * 18 * (this.cureEfficiencyMult || 1));
+        if (this.restTimer <= 0 && this.stamina >= this.maxStamina * 0.5) {
           this.isSitting = false;
         }
       }
@@ -157,14 +171,14 @@ export class Owner {
         }
       }
       // 안전할 때 자연 기력 회복
-      if (this.stamina < 100) {
-        this.stamina = Math.min(100, this.stamina + dt * 12);
+      if (this.stamina < this.maxStamina) {
+        this.stamina = Math.min(this.maxStamina, this.stamina + dt * 12 * (this.cureEfficiencyMult || 1));
       }
     }
 
     // 3. 이동 물리 갱신
     if (!this.isSitting && dist > 5) {
-      const stepSpeed = player.speed * baseSpeedRatio * staminaDebuff;
+      const stepSpeed = player.speed * baseSpeedRatio * (this.speedBonusMult || 1) * staminaDebuff;
       const step = Math.min(dist, stepSpeed * dt);
       this.x += (dx / dist) * step;
       this.y += (dy / dist) * step;
@@ -212,7 +226,7 @@ export class Owner {
 
   _fireSupportAttack(target, weaponDef, combatSystem) {
     const angle = Math.atan2(target.y - this.y, target.x - this.x);
-    const dmg = Math.round(12 * weaponDef.damageMult);
+    const dmg = Math.round((12 + (this.supportAtkBonus || 0)) * weaponDef.damageMult);
 
     if (weaponDef.id === 'stone') {
       // 포물선 돌멩이 투척
@@ -264,189 +278,6 @@ export class Owner {
   }
 
   render(ctx, time) {
-    ctx.save();
-    ctx.translate(this.x + this.wobble, this.y);
-
-    // 1. 바닥 그림자
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-    ctx.beginPath();
-    ctx.ellipse(0, 14, 13, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 2. 회복 단계별 인간(Owner) 스프라이트 렌더링
-    const s = 1.0;
-    const legPhase = Math.sin(this.walkPhase);
-
-    if (this.recoveryStage === 1) {
-      // [Stage 1: Ch.1 공항 탈출] 바닥에 주저앉거나 절뚝임 (생존 배낭 + 짝짝이 양말)
-      const sitOffset = this.isSitting ? 6 : 0;
-
-      // 생존 배낭 (뒤)
-      ctx.fillStyle = '#78350f';
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(-14 * s, (-10 + sitOffset) * s, 10 * s, 16 * s, 3) : ctx.rect(-14 * s, (-10 + sitOffset) * s, 10 * s, 16 * s);
-      ctx.fill();
-
-      // 감염된 창백한 몸통 (환자복/티셔츠)
-      ctx.fillStyle = '#94a3b8';
-      ctx.beginPath();
-      ctx.ellipse(0, (2 + sitOffset) * s, 9 * s, 12 * s, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 짝짝이 양말 다리
-      ctx.fillStyle = '#10b981'; // 녹색 양말
-      ctx.fillRect(-6 * s, (12 + sitOffset) * s, 4 * s, 6 * s);
-      ctx.fillStyle = '#f59e0b'; // 노란 줄무늬 양말
-      ctx.fillRect(2 * s, (12 + sitOffset + (this.isSitting ? 0 : legPhase * 2)) * s, 4 * s, 6 * s);
-
-      // 머리 & 붕대
-      ctx.fillStyle = '#fde68a';
-      ctx.beginPath();
-      ctx.arc(0, (-10 + sitOffset) * s, 8.5 * s, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 이마 붕대
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(-8 * s, (-13 + sitOffset) * s, 16 * s, 3 * s);
-
-      // 머리카락
-      ctx.fillStyle = '#451a03';
-      ctx.beginPath();
-      ctx.arc(0, (-12 + sitOffset) * s, 8.5 * s, Math.PI, Math.PI * 2);
-      ctx.fill();
-    } else if (this.recoveryStage === 2) {
-      // [Stage 2: Ch.2 하숙집] 허리를 숙인 구부정한 자세 (하숙집 캐주얼 후드티)
-      ctx.fillStyle = '#3b82f6'; // 파란 후드티
-      ctx.beginPath();
-      ctx.ellipse(0, 3 * s, 10 * s, 11 * s, 0.25, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 바지 & 다리
-      ctx.fillStyle = '#334155';
-      ctx.fillRect(-6 * s, 12 * s, 4.5 * s, 8 * s);
-      ctx.fillRect(1.5 * s, (12 + legPhase * 3) * s, 4.5 * s, 8 * s);
-
-      // 머리 (약간 앞으로 숙임)
-      ctx.fillStyle = '#fde68a';
-      ctx.beginPath();
-      ctx.arc(3 * s, -8 * s, 8 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#1e293b';
-      ctx.beginPath();
-      ctx.arc(3 * s, -10 * s, 8 * s, Math.PI, Math.PI * 2);
-      ctx.fill();
-    } else if (this.recoveryStage === 3) {
-      // [Stage 3: Ch.3 대학 캠퍼스] 허리를 펴고 안정적으로 걸음 (캠퍼스 점퍼 + 안경)
-      ctx.fillStyle = '#065f46'; // 녹색 캠퍼스 점퍼
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(-8 * s, -4 * s, 16 * s, 18 * s, 4) : ctx.rect(-8 * s, -4 * s, 16 * s, 18 * s);
-      ctx.fill();
-
-      // 청바지 & 스니커즈
-      ctx.fillStyle = '#1e40af';
-      ctx.fillRect(-6 * s, 14 * s, 5 * s, 8 * s);
-      ctx.fillRect(1 * s, (14 + legPhase * 4) * s, 5 * s, 8 * s);
-
-      // 머리 & 안경
-      ctx.fillStyle = '#fde68a';
-      ctx.beginPath();
-      ctx.arc(0, -11 * s, 8 * s, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 갈색 댄디컷
-      ctx.fillStyle = '#78350f';
-      ctx.beginPath();
-      ctx.arc(0, -13 * s, 8 * s, Math.PI * 0.9, Math.PI * 2.1);
-      ctx.fill();
-
-      // 안경 👓
-      ctx.strokeStyle = '#0284c7';
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(-5 * s, -11 * s, 4 * s, 3 * s);
-      ctx.strokeRect(1 * s, -11 * s, 4 * s, 3 * s);
-    } else if (this.recoveryStage === 4) {
-      // [Stage 4: Ch.4 연구소] 꼿꼿이 서서 나란히 달림 (방역 연구원 롱코트)
-      ctx.fillStyle = '#f8fafc'; // 흰색 연구원 코트
-      ctx.strokeStyle = '#cbd5e1';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(-9 * s, -6 * s, 18 * s, 22 * s, 4) : ctx.rect(-9 * s, -6 * s, 18 * s, 22 * s);
-      ctx.fill();
-      ctx.stroke();
-
-      // 다리 (조깅 모션)
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(-6 * s, 15 * s, 4.5 * s, 9 * s);
-      ctx.fillRect(1.5 * s, (15 + legPhase * 5) * s, 4.5 * s, 9 * s);
-
-      // 머리
-      ctx.fillStyle = '#fde68a';
-      ctx.beginPath();
-      ctx.arc(0, -13 * s, 8.5 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#0f172a';
-      ctx.beginPath();
-      ctx.arc(0, -15 * s, 8.5 * s, Math.PI * 0.9, Math.PI * 2.1);
-      ctx.fill();
-    } else {
-      // [Stage 5: Ch.5 종결 & 시즌2] 완전 회복된 건강하고 당당한 인간 영웅
-      ctx.fillStyle = '#d97706'; // 영웅의 전술 재킷
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(-9 * s, -7 * s, 18 * s, 22 * s, 5) : ctx.rect(-9 * s, -7 * s, 18 * s, 22 * s);
-      ctx.fill();
-
-      // 스카프 휘날림
-      ctx.fillStyle = '#ef4444';
-      ctx.beginPath();
-      ctx.moveTo(0, -6 * s);
-      ctx.lineTo(-14 * s, (-3 + Math.sin(time * 8) * 3) * s);
-      ctx.lineTo(-12 * s, (3 + Math.sin(time * 8) * 3) * s);
-      ctx.fill();
-
-      // 다리
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(-6 * s, 15 * s, 5 * s, 10 * s);
-      ctx.fillRect(1 * s, (15 + legPhase * 5) * s, 5 * s, 10 * s);
-
-      // 머리
-      ctx.fillStyle = '#fde68a';
-      ctx.beginPath();
-      ctx.arc(0, -14 * s, 8.5 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#451a03';
-      ctx.beginPath();
-      ctx.arc(0, -16 * s, 8.5 * s, Math.PI * 0.85, Math.PI * 2.15);
-      ctx.fill();
-    }
-
-    // 3. 기력 저하 시 땀방울 이펙트 (💦)
-    if (this.stamina < 40) {
-      ctx.font = '10px sans-serif';
-      ctx.fillText('💦', 8 * s, -18 * s);
-    }
-
-    // 4. 주저앉았을 때 "기력 부족" 말풍선
-    if (this.isSitting) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(-24 * s, -28 * s, 48 * s, 14 * s, 4) : ctx.rect(-24 * s, -28 * s, 48 * s, 14 * s);
-      ctx.fill();
-      ctx.fillStyle = '#fde047';
-      ctx.font = 'bold 8.5px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('휴식 중... 💤', 0, -18 * s);
-    }
-
-    // 5. 컴팩트 미니 기력 바 (Stamina Bar)
-    const barW = 26;
-    const barH = 3;
-    const barY = 22 * s;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(-barW / 2, barY, barW, barH);
-    const stamRatio = Math.max(0, Math.min(1, this.stamina / 100));
-    ctx.fillStyle = this.stamina < 40 ? '#ef4444' : '#38bdf8';
-    ctx.fillRect(-barW / 2, barY, barW * stamRatio, barH);
-
-    ctx.restore();
+    renderOwnerInBattle(ctx, this, time);
   }
 }

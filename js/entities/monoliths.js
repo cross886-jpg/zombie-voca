@@ -513,8 +513,10 @@ export class MonolithManager {
       const isOffscreen = scrPos ? isMonolithOffscreen(scrPos.x, scrPos.y, viewW, viewH) : false;
 
       if (!isOffscreen) {
-        const bannerW = 120;
-        const bannerH = 32;
+        const mText = m.meaning || '';
+        const mLen = mText.length;
+        const bannerW = Math.max(120, Math.min(220, mLen * 11 + 36));
+        const bannerH = mLen >= 18 ? 36 : 32;
         const bannerY = -hatchR - 18 + pulse;
 
         ctx.save();
@@ -538,12 +540,13 @@ export class MonolithManager {
         const lockIcon = isSuccess ? '🔓' : (isTrap ? '🚨' : (isHacking ? '⚡' : '🔒'));
         ctx.fillText(lockIcon, -bannerW / 2 + 15, bannerY);
 
-        // 단어 뜻 텍스트 (우측, 크고 또렷한 굵은 폰트)
+        // 단어 뜻 텍스트 (우측, 글자 수에 맞춘 반응형 폰트 크기)
+        const fontSize = mLen >= 18 ? 10.5 : mLen >= 12 ? 12.5 : 14.5;
         ctx.fillStyle = '#ffffff';
-        ctx.font = '800 15px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = `800 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(m.meaning, 10, bannerY);
+        ctx.fillText(mText, 10, bannerY);
 
         // [D. 튜토리얼 Step 3 정답 해치 전용: 통통 튀는 큰 강아지 발바닥(🐾) 포인터]
         if (isTutorialTarget) {

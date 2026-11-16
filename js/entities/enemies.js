@@ -6,6 +6,28 @@
 import { BALANCE } from '../config/balance.js';
 import { getWaveForQuestion } from '../data/chapters.js';
 import { resolveCircleCollisions } from '../game/obstacles.js';
+import { getSave, updateSave } from '../core/saveStore.js';
+
+function recordEncounteredEnemy(enemyId) {
+  if (!enemyId) return;
+  try {
+    const save = getSave();
+    if (!save) return;
+    const list = Array.isArray(save.encounteredEnemies) ? save.encounteredEnemies : [];
+    if (!list.includes(enemyId)) {
+      updateSave((s) => {
+        if (!Array.isArray(s.encounteredEnemies)) {
+          s.encounteredEnemies = [];
+        }
+        if (!s.encounteredEnemies.includes(enemyId)) {
+          s.encounteredEnemies.push(enemyId);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[enemies] Failed to record encounter:', err);
+  }
+}
 
 function getQuestionSpeedMult(questionNumber = 1) {
   const c = BALANCE.ENEMIES.SPEED_CURVE;
@@ -65,6 +87,7 @@ export class EnemyManager {
   spawnEnemy(typeKey, x, y, hpMult = 1, atkMult = 1, speedMult = 1) {
     if (this.enemies.length >= BALANCE.ENEMIES.MAX_ACTIVE) return null;
     const base = BALANCE.ENEMIES.TYPES[typeKey] || BALANCE.ENEMIES.TYPES.walker;
+    recordEncounteredEnemy(typeKey);
 
     const enemy = {
       id: Math.random().toString(36).slice(2),
@@ -105,6 +128,9 @@ export class EnemyManager {
 
   spawnBoss(chapter, courseEnemyMult, centerX, centerY) {
     const bossDef = chapter.boss;
+    if (bossDef?.id) {
+      recordEncounteredEnemy(bossDef.id);
+    }
     const maxHp = Math.round(BALANCE.BOSS.BASE_HP * bossDef.hpMult);
     this.boss = {
       isBoss: true,

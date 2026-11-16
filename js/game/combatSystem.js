@@ -565,6 +565,7 @@ export class CombatSystem {
     const r = BALANCE.COMBAT.ULT_RADIUS;
     const dmg = Math.round(player.atk * BALANCE.COMBAT.ULT_DAMAGE_MULT);
     player.consumeUltGauge();
+    player.triggerBremenAssault?.(0.65);
     audioEngine.playUlt();
     camera.shake(16, 0.4);
 
@@ -593,6 +594,18 @@ export class CombatSystem {
           t.knockVy = (dy / dist) * 520;
         }
         this.damageEnemy(t, dmg, '#fb923c');
+      }
+    }
+
+    // 브레멘 동행 친구 순간 분리 돌격 연계 보너스 타격
+    if (player.activeGroundComp || player.activeRiderComp) {
+      for (const t of targets) {
+        const dx = t.x - player.x;
+        const dy = t.y - player.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        if (dist <= r * 0.85) {
+          this.damageEnemy(t, Math.round(dmg * 0.35), '#f59e0b');
+        }
       }
     }
   }

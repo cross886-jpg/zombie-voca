@@ -117,6 +117,7 @@ export function createDefaultSave() {
         acc: null,
       },
     },
+    encounteredEnemies: [],
     wordStats: {},
     dailyMissions: {
       date: '',
@@ -272,6 +273,12 @@ export function mergeWithDefaults(defaults, saved, isRoot = true) {
   if (typeof result.dailyAirDropDate !== 'string') result.dailyAirDropDate = '';
   if (typeof result.petDate !== 'string') result.petDate = '';
   if (typeof result.petDailyCount !== 'number') result.petDailyCount = 0;
+  if (!Array.isArray(result.encounteredEnemies)) {
+    result.encounteredEnemies = [];
+  }
+  if (result.tutorialCompleted && !result.encounteredEnemies.includes('walker')) {
+    result.encounteredEnemies.push('walker', 'conehead');
+  }
   const totalUnits = getTotalUnits();
   const rawSelUnitNum = parseInt((result.selectedUnit || 'unit_001').replace(/\D/g, ''), 10) || 1;
   const selUnitNum = Math.min(Math.max(1, rawSelUnitNum), totalUnits);

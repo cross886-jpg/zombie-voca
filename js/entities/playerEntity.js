@@ -4,7 +4,7 @@
  */
 
 import { BALANCE } from '../config/balance.js';
-import { COSTUMES } from '../data/catalog.js';
+import { COSTUMES, COMPANIONS } from '../data/catalog.js';
 import { resolveCircleCollisions } from '../game/obstacles.js';
 import { getEvolutionStage, computePlayerStats } from './playerStats.js';
 import { drawDogCharacter, drawDogSkin } from '../render/dogCharacterDraw.js';
@@ -50,6 +50,15 @@ export class Player {
 
     // 전장 추종 인간 주인(Owner) 객체
     this.owner = new Owner(this);
+
+    // 브레멘 동행 친구들
+    this.activeGroundComp = null;
+    this.activeRiderComp = null;
+    this.bremenAssaultTimer = 0;
+  }
+
+  triggerBremenAssault(duration = 0.65) {
+    this.bremenAssaultTimer = duration;
   }
 
   triggerMouthOpen(duration = 0.25) {
@@ -110,6 +119,14 @@ export class Player {
     if (this.owner) {
       this.owner.resetForBattle(this, saveData);
     }
+
+    // 브레멘 동행 친구들 리셋
+    const compData = saveData?.companions || {};
+    const gId = compData.activeGround || compData.active?.[0];
+    const rId = compData.activeRider || (compData.activeGround ? compData.active?.[1] : null);
+    this.activeGroundComp = COMPANIONS.find((c) => c.id === gId) || null;
+    this.activeRiderComp = COMPANIONS.find((c) => c.id === rId) || null;
+    this.bremenAssaultTimer = 0;
   }
 
   recalcStats(resetHpToMax = false) {
@@ -147,6 +164,7 @@ export class Player {
     if (this.tailWagTimer > 0) this.tailWagTimer = Math.max(0, this.tailWagTimer - dt);
     if (this.pawSwipeTimer > 0) this.pawSwipeTimer = Math.max(0, this.pawSwipeTimer - dt);
     if (this.hipSlamTimer > 0) this.hipSlamTimer = Math.max(0, this.hipSlamTimer - dt);
+    if (this.bremenAssaultTimer > 0) this.bremenAssaultTimer = Math.max(0, this.bremenAssaultTimer - dt);
 
     const slowMult = this.slowTimer > 0 ? BALANCE.MONOLITH.WRONG_SLOW_MULT : 1;
     const effectiveSpeed = this.speed * slowMult;
@@ -450,6 +468,89 @@ export class Player {
     // [레이어 6] 상점 프리미엄 우유 스킨 시각 효과 (모든 견종 호환)
     if (this.equippedSkin) {
       drawDogSkin(ctx, this.equippedSkin, s, bodyY);
+    }
+
+    // [레이어 6-B] 브레멘 동행 친구들 탑승 대열 & 궁극기 분리 돌격 연출
+    if (this.activeGroundComp || this.activeRiderComp) {
+      if (this.bremenAssaultTimer > 0) {
+        // [궁극기 발동 시]: 순간 분리 돌격 연출 (주변을 고속 회전하며 광역 타격 후 복귀)
+        const ratio = this.bremenAssaultTimer / 0.65;
+        const orbitDist = Math.sin((1 - ratio) * Math.PI) * 110 * s;
+        const angle = (1 - ratio) * Math.PI * 4;
+
+        if (this.activeGroundComp) {
+          const gx = Math.cos(angle) * orbitDist;
+          const gy = Math.sin(angle) * orbitDist;
+          ctx.save();
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 3 * s;
+          ctx.shadowColor = '#fbbf24';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.moveTo(0, bodyY * s);
+          ctx.lineTo(gx, gy);
+          ctx.stroke();
+
+          ctx.font = `${Math.round(18 * s)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.activeGroundComp.icon, gx, gy);
+          ctx.restore();
+        }
+
+        if (this.activeRiderComp) {
+          const rx = Math.cos(angle + Math.PI) * orbitDist;
+          const ry = Math.sin(angle + Math.PI) * orbitDist;
+          ctx.save();
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 3 * s;
+          ctx.shadowColor = '#0284c7';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.moveTo(0, bodyY * s);
+          ctx.lineTo(rx, ry);
+          ctx.stroke();
+
+          ctx.font = `${Math.round(17 * s)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.activeRiderComp.icon, rx, ry);
+          ctx.restore();
+        }
+      } else {
+        // [평상시 보행/대기 시]: 우유의 등과 어깨에 밀착 탑승하여 함께 이동
+        if (this.activeGroundComp) {
+          const gx = -16 * s;
+          const gy = (bodyY - 6) * s + Math.sin(time * 8) * 1.5;
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+          ctx.beginPath();
+          ctx.ellipse(gx, gy + 8 * s, 6 * s, 2.8 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.font = `${Math.round(15 * s)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.activeGroundComp.icon, gx, gy);
+          ctx.restore();
+        }
+
+        if (this.activeRiderComp) {
+          const rx = 13 * s;
+          const ry = (bodyY - 24) * s + Math.sin(time * 10 + 1) * 2.2;
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+          ctx.beginPath();
+          ctx.ellipse(rx, ry + 8 * s, 5.5 * s, 2.5 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.font = `${Math.round(14 * s)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.activeRiderComp.icon, rx, ry);
+          ctx.restore();
+        }
+      }
     }
 
     // [레이어 7] 탕탕특공대 스타일 캐릭터 발밑 컴팩트 미니 체력바 (HP Bar)
